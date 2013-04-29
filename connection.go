@@ -16,18 +16,18 @@ type connection struct {
   queue              [][]byte
   nextServerStreamID uint32 // even
   nextClientStreamID uint32 // odd
-	goaway             bool
+  goaway             bool
 }
 
 type stream struct {
-  conn        *connection
-  streamID    uint32
-  state       StreamState
-  priority    uint8
-  certificate []byte
-	headers     []*HEADERS_BLOCK
-	settings    []*SETTINGS_ENTRY
-	credentials []*CERTIFICATE
+  conn         *connection
+  streamID     uint32
+  state        StreamState
+  priority     uint8
+  certificates [][]byte
+  headers      []*HEADERS_BLOCK
+  settings     []*SETTINGS_ENTRY
+  credentials  []*CERTIFICATE
 }
 
 type StreamState uint8

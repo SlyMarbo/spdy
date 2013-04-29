@@ -3,6 +3,7 @@ package spdy
 import (
   //"encoding/hex"
   "fmt"
+  "io"
 )
 
 const (
@@ -48,6 +49,7 @@ func (i *InvalidField) Error() string {
 type Frame interface {
   Bytes() []byte
   Parse([]byte) error
+  WriteTo(io.Writer) error
 }
 
 func Parse(data []byte) (int, error) {
@@ -196,6 +198,11 @@ func (s *SYN_STREAM_FRAME) Bytes() []byte {
   return out
 }
 
+func (s *SYN_STREAM_FRAME) WriteTo(w io.Writer) error {
+  _, err := w.Write(s.Bytes())
+  return err
+}
+
 /*****************
  *** SYN_REPLY ***
  *****************/
@@ -314,6 +321,11 @@ func (s *SYN_REPLY_FRAME) Bytes() []byte {
   return out
 }
 
+func (s *SYN_REPLY_FRAME) WriteTo(w io.Writer) error {
+  _, err := w.Write(s.Bytes())
+  return err
+}
+
 /******************
  *** RST_STREAM ***
  ******************/
@@ -389,6 +401,11 @@ func (s *RST_STREAM_FRAME) Bytes() []byte {
   out[15] = byte(s.StatusCode)
 
   return out
+}
+
+func (s *RST_STREAM_FRAME) WriteTo(w io.Writer) error {
+  _, err := w.Write(s.Bytes())
+  return err
 }
 
 /****************
@@ -498,6 +515,11 @@ func (s *SETTINGS_FRAME) Bytes() []byte {
   return out
 }
 
+func (s *SETTINGS_FRAME) WriteTo(w io.Writer) error {
+  _, err := w.Write(s.Bytes())
+  return err
+}
+
 /************
  *** PING ***
  ************/
@@ -567,6 +589,11 @@ func (s *PING_FRAME) Bytes() []byte {
   out[11] = byte(s.PingID)
 
   return out
+}
+
+func (s *PING_FRAME) WriteTo(w io.Writer) error {
+  _, err := w.Write(s.Bytes())
+  return err
 }
 
 /**************
@@ -651,6 +678,11 @@ func (s *GOAWAY_FRAME) Bytes() []byte {
   return out
 }
 
+func (s *GOAWAY_FRAME) WriteTo(w io.Writer) err {
+  _, err := w.Write(s.Bytes())
+  return err
+}
+
 type Headers struct {
 }
 
@@ -731,8 +763,8 @@ func (h *HEADERS_FRAME) Parse(data []byte) error {
   h.Length = bytesToUint24(data[5:8])
   h.StreamID = bytesToUint32(data[8:12])
   h.Headers = make([]*HEADERS_BLOCK, bytesToUint32(data[12:16]))
-	
-	// TODO: add headers parsing.
+
+  // TODO: add headers parsing.
 
   return nil
 }
@@ -771,6 +803,11 @@ func (h *HEADERS_FRAME) Bytes() []byte {
   }
 
   return out
+}
+
+func (h *HEADERS_FRAME) WriteTo(w io.Writer) error {
+  _, err := w.Write(h.Bytes())
+  return err
 }
 
 type WINDOW_UPDATE_FRAME struct {
@@ -840,6 +877,11 @@ func (w *WINDOW_UPDATE_FRAME) Bytes() []byte {
   out[15] = byte(w.DeltaWindowSize)
 
   return out
+}
+
+func (s *WINDOW_UPDATE_FRAME) WriteTo(w io.Writer) error {
+  _, err := w.Write(s.Bytes())
+  return err
 }
 
 type CREDENTIAL_FRAME struct {
