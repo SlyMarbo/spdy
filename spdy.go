@@ -18,6 +18,10 @@ const (
   CREDENTIAL
 )
 
+func bytesToUint16(b []byte) uint32 {
+  return (uint32(b[0]) << 8) + uint32(b[1])
+}
+
 func bytesToUint24(b []byte) uint32 {
   return (uint32(b[0]) << 16) + (uint32(b[1]) << 8) + uint32(b[2])
 }
@@ -26,13 +30,17 @@ func bytesToUint32(b []byte) uint32 {
   return (uint32(b[0]) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
 }
 
+func bytesToUint31(b []byte) uint32 {
+  return (uint32(b[0] & 0x7f) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
+}
+
 /*** ERRORS ***/
-type InsufficientData struct {
+type IncorrectDataLength struct {
   got, expected int
 }
 
-func (i *InsufficientData) Error() string {
-  return fmt.Sprintf("Error: Insufficient data for frame: got %d bytes, expected %d.", i.got,
+func (i *IncorrectDataLength) Error() string {
+  return fmt.Sprintf("Error: Incorrect amount of data for frame: got %d bytes, expected %d.", i.got,
     i.expected)
 }
 
@@ -47,12 +55,12 @@ func (i *InvalidField) Error() string {
 }
 
 type Frame interface {
-  Bytes() []byte
+  Bytes() ([]byte, error)
   Parse([]byte) error
   WriteTo(io.Writer) error
 }
 
-func Parse(data []byte) (int, error) {
+func Parse(data []byte) (Frame, error) {
   if data[0]&0x80 != 0 {
     // Control frame.
 
@@ -69,26 +77,23 @@ func Parse(data []byte) (int, error) {
 /******************
  *** SYN_STREAM ***
  ******************/
-type SYN_STREAM_FRAME struct {
-  ControlBit    byte
+type SynStreamFrame struct {
   Version       uint16
-  Type          uint16
   Flags         byte
-  Length        uint32
   StreamID      uint32
   AssocStreamID uint32
   Priority      byte
   Slot          byte
-  Headers       []*HEADERS_BLOCK
+  Headers       *Headers
 }
 
-func (s *SYN_STREAM_FRAME) Parse(data []byte) error {
+func (frame *SynStreamFrame) Parse(data []byte) error {
   // Check size.
-  size := len(data)
-  if size < 22 {
-    return &InsufficientData{size, 22}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
+  length := len(data)
+  if length < 22 {
+    return &IncorrectDataLength{length, 22}
+  } else if length != 8+int(bytesToUint24(data[5:8])) {
+    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
   }
 
   // Check control bit.
@@ -98,7 +103,7 @@ func (s *SYN_STREAM_FRAME) Parse(data []byte) error {
 
   // Check type.
   if data[2] != 0 || data[3] != 1 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 1}
+    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 1}
   }
 
   // Check unused space.
@@ -108,121 +113,108 @@ func (s *SYN_STREAM_FRAME) Parse(data []byte) error {
     return &InvalidField{"Unused", int(data[16] & 0x1f), 0}
   }
 
-  s.ControlBit = 1
-  s.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  s.Type = 1
-  s.Flags = data[4]
-  s.Length = bytesToUint24(data[5:8])
-  s.StreamID = bytesToUint32(data[8:12])
-  s.AssocStreamID = bytesToUint32(data[12:16])
-  s.Priority = data[16] >> 5
-  s.Slot = data[17]
-  s.Headers = make([]*HEADERS_BLOCK, 0, bytesToUint32(data[18:22]))
-  offset := 22
-  if cap(s.Headers) != 0 {
-    for offset < size {
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.Flags = data[4]
+  frame.StreamID = bytesToUint31(data[8:12])
+  frame.AssocStreamID = bytesToUint31(data[12:16])
+  frame.Priority = data[16] >> 5
+  frame.Slot = data[17]
 
-      header := &HEADERS_BLOCK{}
-      if offset+4 > size {
-        return &InsufficientData{size, offset + 4}
-      }
-      length := (int(data[offset]) << 24) + (int(data[offset+1]) << 16) +
-        (int(data[offset+2]) << 8) + int(data[offset+3])
-      if offset+4+length > size {
-        return &InsufficientData{size, offset + 4 + length}
-      }
-      header.Name = string(data[offset+4 : offset+4+length])
-      offset += 4 + length
-
-      if offset+4 > size {
-        return &InsufficientData{size, offset + 4}
-      }
-      length = (int(data[offset]) << 24) + (int(data[offset+1]) << 16) +
-        (int(data[offset+2]) << 8) + int(data[offset+3])
-      if offset+4+length > size {
-        return &InsufficientData{size, offset + 4 + length}
-      }
-      header.Value = string(data[offset+4 : offset+4+length])
-      offset += 4 + length
-
-      s.Headers = append(s.Headers, header)
-    }
+  headers := new(Headers)
+  err := headers.Parse(data[18:])
+  if err != nil {
+    return err
   }
+  frame.Headers = headers
 
   return nil
 }
 
-func (s *SYN_STREAM_FRAME) Bytes() []byte {
-  size := 22
-  num := uint32(0)
-  for _, h := range s.Headers {
-    num++
-    size += 8 + len(h.Name) + len(h.Value)
-  }
-  out := make([]byte, size)
+func (frame *SynStreamFrame) Bytes() ([]byte, error) {
 
-  out[0] = 0x80 | byte(s.Version>>8)
-  out[1] = byte(s.Version)
-  out[2] = 0
-  out[3] = 1
-  out[4] = s.Flags
-  out[5] = byte(s.Length >> 16)
-  out[6] = byte(s.Length >> 8)
-  out[7] = byte(s.Length)
-  out[8] = byte(s.StreamID>>24) & 0x7f
-  out[9] = byte(s.StreamID >> 16)
-  out[10] = byte(s.StreamID >> 8)
-  out[11] = byte(s.StreamID)
-  out[12] = byte(s.AssocStreamID>>24) & 0x7f
-  out[13] = byte(s.AssocStreamID >> 16)
-  out[14] = byte(s.AssocStreamID >> 8)
-  out[15] = byte(s.AssocStreamID)
-  out[16] = ((s.Priority & 0x7) << 5)
-  out[17] = s.Slot
-  out[18] = byte(num >> 24)
-  out[19] = byte(num >> 16)
-  out[20] = byte(num >> 8)
-  out[21] = byte(num)
-
-  offset := 22
-  for _, h := range s.Headers {
-    bs := h.Bytes()
-    var j int
-    for i, b := range bs {
-      out[offset+i] = b
-      j = offset + i
-    }
-    offset = j + 1
+  headers, err := frame.Headers.Compressed()
+  if err != nil {
+    return nil, err
   }
 
-  return out
+  length := 10 + len(headers)
+  out := make([]byte, 18, 8+length)
+
+  out[0] = 0x80 | byte(frame.Version>>8)         // Control bit and Version
+  out[1] = byte(frame.Version)                   // Version
+  out[2] = 0                                     // Type
+  out[3] = 1                                     // Type
+  out[4] = frame.Flags                           // Flags
+  out[5] = byte(length >> 16)                    // Length
+  out[6] = byte(length >> 8)                     // Length
+  out[7] = byte(length)                          // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f       // Stream ID
+  out[9] = byte(frame.StreamID >> 16)            // Stream ID
+  out[10] = byte(frame.StreamID >> 8)            // Stream ID
+  out[11] = byte(frame.StreamID)                 // Stream ID
+  out[12] = byte(frame.AssocStreamID>>24) & 0x7f // Associated Stream ID
+  out[13] = byte(frame.AssocStreamID >> 16)      // Associated Stream ID
+  out[14] = byte(frame.AssocStreamID >> 8)       // Associated Stream ID
+  out[15] = byte(frame.AssocStreamID)            // Associated Stream ID
+  out[16] = ((frame.Priority & 0x7) << 5)        // Priority and unused
+  out[17] = frame.Slot                           // Slot
+  out = append(out, headers...)                  // Name/Value Header Block
+
+  return out, nil
 }
 
-func (s *SYN_STREAM_FRAME) WriteTo(w io.Writer) error {
-  _, err := w.Write(s.Bytes())
+func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
+  headers, err := frame.Headers.Compressed()
+  if err != nil {
+    return err
+  }
+
+  length := 10 + len(headers)
+  out := make([]byte, 18)
+
+  out[0] = 0x80 | byte(frame.Version>>8)         // Control bit and Version
+  out[1] = byte(frame.Version)                   // Version
+  out[2] = 0                                     // Type
+  out[3] = 1                                     // Type
+  out[4] = frame.Flags                           // Flags
+  out[5] = byte(length >> 16)                    // Length
+  out[6] = byte(length >> 8)                     // Length
+  out[7] = byte(length)                          // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f       // Stream ID
+  out[9] = byte(frame.StreamID >> 16)            // Stream ID
+  out[10] = byte(frame.StreamID >> 8)            // Stream ID
+  out[11] = byte(frame.StreamID)                 // Stream ID
+  out[12] = byte(frame.AssocStreamID>>24) & 0x7f // Associated Stream ID
+  out[13] = byte(frame.AssocStreamID >> 16)      // Associated Stream ID
+  out[14] = byte(frame.AssocStreamID >> 8)       // Associated Stream ID
+  out[15] = byte(frame.AssocStreamID)            // Associated Stream ID
+  out[16] = ((frame.Priority & 0x7) << 5)        // Priority and unused
+  out[17] = frame.Slot                           // Slot
+
+  _, err := writer.Write(out)
+  if err != nil {
+    return err
+  }
+
+  _, err = writer.Write(headers)
   return err
 }
 
 /*****************
  *** SYN_REPLY ***
  *****************/
-type SYN_REPLY_FRAME struct {
-  ControlBit byte
-  Version    uint16
-  Type       uint16
-  Flags      byte
-  Length     uint32
-  StreamID   uint32
-  Headers    []*HEADERS_BLOCK
+type SynReplyFrame struct {
+  Version  uint16
+  Flags    byte
+  StreamID uint32
+  Headers  *Headers
 }
 
-func (s *SYN_REPLY_FRAME) Parse(data []byte) error {
+func (frame *SynReplyFrame) Parse(data []byte) error {
   // Check size.
-  size := len(data)
-  if size < 16 {
-    return &InsufficientData{size, 16}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
+  length := len(data)
+  if length < 12 {
+    return &IncorrectDataLength{length, 12}
   }
 
   // Check control bit.
@@ -232,7 +224,7 @@ func (s *SYN_REPLY_FRAME) Parse(data []byte) error {
 
   // Check type.
   if data[2] != 0 || data[3] != 2 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 2}
+    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 2}
   }
 
   // Check unused space.
@@ -240,112 +232,94 @@ func (s *SYN_REPLY_FRAME) Parse(data []byte) error {
     return &InvalidField{"Unused", 1, 0}
   }
 
-  s.ControlBit = 1
-  s.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  s.Type = 2
-  s.Flags = data[4]
-  s.Length = bytesToUint24(data[5:8])
-  s.StreamID = bytesToUint32(data[8:12])
-  s.Headers = make([]*HEADERS_BLOCK, 0, bytesToUint32(data[12:16]))
-  offset := 16
-  if cap(s.Headers) != 0 {
-    for offset < size {
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.Flags = data[4]
+  frame.StreamID = bytesToUint31(data[8:12])
 
-      header := &HEADERS_BLOCK{}
-      if offset+4 > size {
-        return &InsufficientData{size, offset + 4}
-      }
-      length := (int(data[offset]) << 24) + (int(data[offset+1]) << 16) +
-        (int(data[offset+2]) << 8) + int(data[offset+3])
-      if offset+4+length > size {
-        return &InsufficientData{size, offset + 4 + length}
-      }
-      header.Name = string(data[offset+4 : offset+4+length])
-      offset += 4 + length
-
-      if offset+4 > size {
-        return &InsufficientData{size, offset + 4}
-      }
-      length = (int(data[offset]) << 24) + (int(data[offset+1]) << 16) +
-        (int(data[offset+2]) << 8) + int(data[offset+3])
-      if offset+4+length > size {
-        return &InsufficientData{size, offset + 4 + length}
-      }
-      header.Value = string(data[offset+4 : offset+4+length])
-      offset += 4 + length
-
-      s.Headers = append(s.Headers, header)
-    }
+  headers := new(Headers)
+  err := headers.Parse(data[12:])
+  if err != nil {
+    return err
   }
+  frame.Headers = headers
 
   return nil
 }
 
-func (s *SYN_REPLY_FRAME) Bytes() []byte {
-  size := 16
-  num := uint32(0)
-  for _, h := range s.Headers {
-    num++
-    size += 8 + len(h.Name) + len(h.Value)
-  }
-  out := make([]byte, size)
+func (frame *SynReplyFrame) Bytes() ([]byte, error) {
 
-  out[0] = 0x80 | byte(s.Version>>8)
-  out[1] = byte(s.Version)
-  out[2] = 0
-  out[3] = 2
-  out[4] = s.Flags
-  out[5] = byte(s.Length >> 16)
-  out[6] = byte(s.Length >> 8)
-  out[7] = byte(s.Length)
-  out[8] = byte(s.StreamID>>24) & 0x7f
-  out[9] = byte(s.StreamID >> 16)
-  out[10] = byte(s.StreamID >> 8)
-  out[11] = byte(s.StreamID)
-  out[12] = byte(num >> 24)
-  out[13] = byte(num >> 16)
-  out[14] = byte(num >> 8)
-  out[15] = byte(num)
-
-  offset := 16
-  for _, h := range s.Headers {
-    bs := h.Bytes()
-    var j int
-    for i, b := range bs {
-      out[offset+i] = b
-      j = offset + i
-    }
-    offset = j + 1
+  headers, err := frame.Headers.Compressed()
+  if err != nil {
+    return nil, err
   }
 
-  return out
+  length := 4 + len(headers)
+  out := make([]byte, 12, 8+length)
+
+  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
+  out[1] = byte(frame.Version)             // Version
+  out[2] = 0                               // Type
+  out[3] = 2                               // Type
+  out[4] = frame.Flags                     // Flags
+  out[5] = byte(length >> 16)              // Length
+  out[6] = byte(length >> 8)               // Length
+  out[7] = byte(length)                    // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f // Stream ID
+  out[9] = byte(frame.StreamID >> 16)      // Stream ID
+  out[10] = byte(frame.StreamID >> 8)      // Stream ID
+  out[11] = byte(frame.StreamID)           // Stream ID
+  out = append(out, headers...)            // Name/Value Header Block
+
+  return out, nil
 }
 
-func (s *SYN_REPLY_FRAME) WriteTo(w io.Writer) error {
-  _, err := w.Write(s.Bytes())
+func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
+
+  headers, err := frame.Headers.Compressed()
+  if err != nil {
+    return nil, err
+  }
+
+  length := 4 + len(headers)
+  out := make([]byte, 12)
+
+  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
+  out[1] = byte(frame.Version)             // Version
+  out[2] = 0                               // Type
+  out[3] = 2                               // Type
+  out[4] = frame.Flags                     // Flags
+  out[5] = byte(length >> 16)              // Length
+  out[6] = byte(length >> 8)               // Length
+  out[7] = byte(length)                    // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f // Stream ID
+  out[9] = byte(frame.StreamID >> 16)      // Stream ID
+  out[10] = byte(frame.StreamID >> 8)      // Stream ID
+  out[11] = byte(frame.StreamID)           // Stream ID
+
+  _, err := writer.Write(out)
+  if err != nil {
+    return err
+  }
+
+  _, err = writer.Write(headers)
   return err
 }
 
 /******************
  *** RST_STREAM ***
  ******************/
-type RST_STREAM_FRAME struct {
-  ControlBit byte
+type RstStreamFrame struct {
   Version    uint16
-  Type       uint16
   Flags      byte
-  Length     uint32
   StreamID   uint32
   StatusCode uint32
 }
 
-func (s *RST_STREAM_FRAME) Parse(data []byte) error {
+func (frame *RstStreamFrame) Parse(data []byte) error {
   // Check size.
-  size := len(data)
-  if size < 16 {
-    return &InsufficientData{size, 16}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
+  length := len(data)
+  if length != 8 {
+    return &IncorrectDataLength{length, 8}
   }
 
   // Check control bit.
@@ -355,7 +329,7 @@ func (s *RST_STREAM_FRAME) Parse(data []byte) error {
 
   // Check type.
   if data[2] != 0 || data[3] != 3 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 3}
+    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 3}
   }
 
   // Check unused space.
@@ -368,56 +342,146 @@ func (s *RST_STREAM_FRAME) Parse(data []byte) error {
     return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 8}
   }
 
-  s.ControlBit = 1
-  s.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  s.Type = 3
-  s.Flags = data[4]
-  s.Length = 8
-  s.StreamID = bytesToUint32(data[8:12])
-  s.StatusCode = bytesToUint32(data[12:16])
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.Flags = data[4]
+  frame.StreamID = bytesToUint31(data[8:12])
+  frame.StatusCode = bytesToUint32(data[12:16])
 
   return nil
 }
 
-func (s *RST_STREAM_FRAME) Bytes() []byte {
-  size := 16
-  out := make([]byte, size)
+func (frame *RstStreamFrame) Bytes() ([]byte, error) {
+  out := make([]byte, 8)
 
-  out[0] = 0x80 | byte(s.Version>>8)
-  out[1] = byte(s.Version)
-  out[2] = 0
-  out[3] = 3
-  out[4] = s.Flags
-  out[5] = 0
-  out[6] = 0
-  out[7] = 8
-  out[8] = byte(s.StreamID>>24) & 0x7f
-  out[9] = byte(s.StreamID >> 16)
-  out[10] = byte(s.StreamID >> 8)
-  out[11] = byte(s.StreamID)
-  out[12] = byte(s.StatusCode >> 24)
-  out[13] = byte(s.StatusCode >> 16)
-  out[14] = byte(s.StatusCode >> 8)
-  out[15] = byte(s.StatusCode)
+  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
+  out[1] = byte(frame.Version)             // Version
+  out[2] = 0                               // Type
+  out[3] = 3                               // Type
+  out[4] = frame.Flags                     // Flag
+  out[5] = 0                               // Length
+  out[6] = 0                               // Length
+  out[7] = 8                               // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f // Stream ID
+  out[9] = byte(frame.StreamID >> 16)      // Stream ID
+  out[10] = byte(frame.StreamID >> 8)      // Stream ID
+  out[11] = byte(frame.StreamID)           // Stream ID
+  out[12] = byte(frame.StatusCode >> 24)   // Status code
+  out[13] = byte(frame.StatusCode >> 16)   // Status code
+  out[14] = byte(frame.StatusCode >> 8)    // Status code
+  out[15] = byte(frame.StatusCode)         // Status code
 
-  return out
+  return out, nil
 }
 
-func (s *RST_STREAM_FRAME) WriteTo(w io.Writer) error {
-  _, err := w.Write(s.Bytes())
+func (frame *RstStreamFrame) WriteTo(writer io.Writer) error {
+  bytes, err := frame.Bytes()
+  if err != nil {
+    return err
+  }
+  _, err = writer.Write(bytes)
   return err
 }
 
 /****************
  *** SETTINGS ***
  ****************/
-type SETTINGS_ENTRY struct {
+type SettingsFrame struct {
+  Version  uint16
+  Flags    byte
+  Settings []*Setting
+}
+
+func (frame *SettingsFrame) Parse(data []byte) error {
+  // Check size.
+  length := len(data)
+  numSettings := int(bytesToUint32(data[8:12]))
+  if length < 12 {
+    return &IncorrectDataLength{size, 12}
+  } else if length != 8+int(bytesToUint24(data[5:8])) {
+    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
+  } else if length < 12+(8*numSettings) {
+    return &IncorrectDataLength{length, 12 + (8 * numSettings)}
+  }
+
+  // Check control bit.
+  if data[0]&0x80 == 0 {
+    return &InvalidField{"Control bit", 0, 1}
+  }
+
+  // Check type.
+  if data[2] != 0 || data[3] != 4 {
+    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 4}
+  }
+
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.Flags = data[4]
+  frame.Settings = make([]*Setting, numSettings)
+  offset := 12
+  for i := 0; i < numSettings; i++ {
+    frame.Settings[i] = &Setting{
+      Flags: data[offset],
+      ID:    bytesToUint24(data[offset+1 : offset+4]),
+      Value: bytesToUint32(data[offset+4 : offset+8]),
+    }
+
+    offset += 8
+  }
+
+  return nil
+}
+
+func (frame *SettingsFrame) Bytes() ([]byte, error) {
+  numSettings := uint32(len(s.Entries))
+  length := 4 + (8 * num)
+  out := make([]byte, 12, 8+length)
+
+  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
+  out[1] = byte(frame.Version)           // Version
+  out[2] = 0                             // Type
+  out[3] = 4                             // Type
+  out[4] = frame.Flags                   // Flags
+  out[5] = byte(length >> 16)            // Length
+  out[6] = byte(length >> 8)             // Length
+  out[7] = byte(length)                  // Length
+  out[8] = byte(numSettings >> 24)       // Number of Entries
+  out[9] = byte(numSettings >> 16)       // Number of Entries
+  out[10] = byte(numSettings >> 8)       // Number of Entries
+  out[11] = byte(numSettings)            // Number of Entries
+
+  offset := 12
+  for _, setting := range s.Settings {
+    bytes := setting.Bytes()
+    for i, b := range bytes {
+      out[offset+i] = b
+    }
+    offset += 8
+  }
+
+  return out, nil
+}
+
+func (frame *SettingsFrame) WriteTo(writer io.Writer) error {
+  bytes, err := frame.Bytes()
+  if err != nil {
+    return err
+  }
+  _, err = writer.Write(bytes)
+  return err
+}
+
+func (frame *SettingsFrame) Add(flags byte, id, value uint32) error {
+  // TODO: Check for a matching setting.
+  frame.Settings = append(frame.Settings, &Setting{flags, id, value})
+  return nil
+}
+
+type Setting struct {
   Flags byte
   ID    uint32
   Value uint32
 }
 
-func (s *SETTINGS_ENTRY) Bytes() []byte {
+func (s *Setting) Bytes() []byte {
   out := make([]byte, 8)
 
   out[0] = s.Flags
@@ -432,113 +496,19 @@ func (s *SETTINGS_ENTRY) Bytes() []byte {
   return out
 }
 
-type SETTINGS_FRAME struct {
-  ControlBit byte
-  Version    uint16
-  Type       uint16
-  Flags      byte
-  Length     uint32
-  Entries    []*SETTINGS_ENTRY
-}
-
-func (s *SETTINGS_FRAME) Parse(data []byte) error {
-  // Check size.
-  size := len(data)
-  if size < 12 {
-    return &InsufficientData{size, 12}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
-  } else if uint32(size) < (uint32(12) + (uint32(8) * bytesToUint32(data[8:12]))) {
-    return &InsufficientData{size, 12 + (8 * int(bytesToUint32(data[8:12])))}
-  }
-
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
-  }
-
-  // Check type.
-  if data[2] != 0 || data[3] != 4 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 4}
-  }
-
-  s.ControlBit = 1
-  s.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  s.Type = 4
-  s.Flags = data[4]
-  s.Length = bytesToUint24(data[5:8])
-  s.Entries = make([]*SETTINGS_ENTRY, 0, bytesToUint32(data[8:12]))
-  offset := 12
-  if cap(s.Entries) != 0 {
-    for offset < size {
-
-      s.Entries = append(s.Entries, &SETTINGS_ENTRY{
-        Flags: data[offset],
-        ID:    bytesToUint24(data[offset+1 : offset+4]),
-        Value: bytesToUint32(data[offset+4 : offset+8]),
-      })
-    }
-  }
-
-  return nil
-}
-
-func (s *SETTINGS_FRAME) Bytes() []byte {
-  num := uint32(len(s.Entries))
-  size := 12 + (8 * num)
-  out := make([]byte, size)
-
-  out[0] = 0x80 | byte(s.Version>>8)
-  out[1] = byte(s.Version)
-  out[2] = 0
-  out[3] = 4
-  out[4] = s.Flags
-  out[5] = byte(s.Length >> 16)
-  out[6] = byte(s.Length >> 8)
-  out[7] = byte(s.Length)
-  out[8] = byte(num >> 24)
-  out[9] = byte(num >> 16)
-  out[10] = byte(num >> 8)
-  out[11] = byte(num)
-
-  offset := 16
-  for _, e := range s.Entries {
-    bs := e.Bytes()
-    var j int
-    for i, b := range bs {
-      out[offset+i] = b
-      j = offset + i
-    }
-    offset = j + 1
-  }
-
-  return out
-}
-
-func (s *SETTINGS_FRAME) WriteTo(w io.Writer) error {
-  _, err := w.Write(s.Bytes())
-  return err
-}
-
 /************
  *** PING ***
  ************/
-type PING_FRAME struct {
-  ControlBit byte
-  Version    uint16
-  Type       uint16
-  Flags      byte
-  Length     uint32
-  PingID     uint32
+type PingFrame struct {
+  Version uint16
+  PingID  uint32
 }
 
-func (s *PING_FRAME) Parse(data []byte) error {
+func (frame *PingFrame) Parse(data []byte) error {
   // Check size.
-  size := len(data)
-  if size < 12 {
-    return &InsufficientData{size, 12}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
+  length := len(data)
+  if length != 12 {
+    return &IncorrectDataLength{length, 12}
   }
 
   // Check control bit.
@@ -561,61 +531,54 @@ func (s *PING_FRAME) Parse(data []byte) error {
     return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 4}
   }
 
-  s.ControlBit = 1
-  s.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  s.Type = 6
-  s.Flags = 0
-  s.Length = 4
-  s.PingID = bytesToUint32(data[8:12])
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.PingID = bytesToUint32(data[8:12])
 
   return nil
 }
 
-func (s *PING_FRAME) Bytes() []byte {
-  size := 12
-  out := make([]byte, size)
+func (frame *PingFrame) Bytes() ([]byte, error) {
+  out := make([]byte, 12)
 
-  out[0] = 0x80 | byte(s.Version>>8)
-  out[1] = byte(s.Version)
-  out[2] = 0
-  out[3] = 6
-  out[4] = 0
-  out[5] = 0
-  out[6] = 0
-  out[7] = 4
-  out[8] = byte(s.PingID >> 24)
-  out[9] = byte(s.PingID >> 16)
-  out[10] = byte(s.PingID >> 8)
-  out[11] = byte(s.PingID)
+  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
+  out[1] = byte(frame.Version)           // Version
+  out[2] = 0                             // Type
+  out[3] = 6                             // Type
+  out[4] = 0                             // Flags
+  out[5] = 0                             // Length
+  out[6] = 0                             // Length
+  out[7] = 4                             // Length
+  out[8] = byte(frame.PingID >> 24)      // Ping ID
+  out[9] = byte(frame.PingID >> 16)      // Ping ID
+  out[10] = byte(frame.PingID >> 8)      // Ping ID
+  out[11] = byte(frame.PingID)           // Ping ID
 
-  return out
+  return out, nil
 }
 
-func (s *PING_FRAME) WriteTo(w io.Writer) error {
-  _, err := w.Write(s.Bytes())
+func (frame *PingFrame) WriteTo(writer io.Writer) error {
+  bytes, err := frame.Bytes()
+  if err != nil {
+    return err
+  }
+  _, err = writer.Write(bytes)
   return err
 }
 
 /**************
  *** GOAWAY ***
  **************/
-type GOAWAY_FRAME struct {
-  ControlBit       byte
+type GoawayFrame struct {
   Version          uint16
-  Type             uint16
-  Flags            byte
-  Length           uint32
   LastGoodStreamID uint32
   StatusCode       uint32
 }
 
-func (s *GOAWAY_FRAME) Parse(data []byte) error {
+func (frame *GoawayFrame) Parse(data []byte) error {
   // Check size.
-  size := len(data)
-  if size < 16 {
-    return &InsufficientData{size, 16}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
+  length := len(data)
+  if length != 16 {
+    return &IncorrectDataLength{length, 16}
   }
 
   // Check control bit.
@@ -625,7 +588,7 @@ func (s *GOAWAY_FRAME) Parse(data []byte) error {
 
   // Check type.
   if data[2] != 0 || data[3] != 7 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 7}
+    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 7}
   }
 
   // Check unused space.
@@ -643,102 +606,62 @@ func (s *GOAWAY_FRAME) Parse(data []byte) error {
     return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 8}
   }
 
-  s.ControlBit = 1
-  s.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  s.Type = 7
-  s.Flags = 0
-  s.Length = 8
-  s.LastGoodStreamID = bytesToUint32(data[8:12])
-  s.StatusCode = bytesToUint32(data[12:16])
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.LastGoodStreamID = bytesToUint31(data[8:12])
+  frame.StatusCode = bytesToUint32(data[12:16])
 
   return nil
 }
 
-func (s *GOAWAY_FRAME) Bytes() []byte {
-  size := 16
-  out := make([]byte, size)
+func (frame *GoawayFrame) Bytes() ([]byte, error) {
+  out := make([]byte, 16)
 
-  out[0] = 0x80 | byte(s.Version>>8)
-  out[1] = byte(s.Version)
-  out[2] = 0
-  out[3] = 7
-  out[4] = 0
-  out[5] = 0
-  out[6] = 0
-  out[7] = 8
-  out[8] = byte(s.LastGoodStreamID>>24) & 0x7f
-  out[9] = byte(s.LastGoodStreamID >> 16)
-  out[10] = byte(s.LastGoodStreamID >> 8)
-  out[11] = byte(s.LastGoodStreamID)
-  out[12] = byte(s.StatusCode >> 24)
-  out[13] = byte(s.StatusCode >> 16)
-  out[14] = byte(s.StatusCode >> 8)
-  out[15] = byte(s.StatusCode)
+  out[0] = 0x80 | byte(frame.Version>>8)           // Control bit and Version
+  out[1] = byte(frame.Version)                     // Version
+  out[2] = 0                                       // Type
+  out[3] = 7                                       // Type
+  out[4] = 0                                       // Flags
+  out[5] = 0                                       // Length
+  out[6] = 0                                       // Length
+  out[7] = 8                                       // Length
+  out[8] = byte(frame.LastGoodStreamID>>24) & 0x7f // Last Good Stream ID
+  out[9] = byte(frame.LastGoodStreamID >> 16)      // Last Good Stream ID
+  out[10] = byte(frame.LastGoodStreamID >> 8)      // Last Good Stream ID
+  out[11] = byte(frame.LastGoodStreamID)           // Last Good Stream ID
+  out[12] = byte(frame.StatusCode >> 24)           // Status Code
+  out[13] = byte(frame.StatusCode >> 16)           // Status Code
+  out[14] = byte(frame.StatusCode >> 8)            // Status Code
+  out[15] = byte(frame.StatusCode)                 // Status Code
 
-  return out
+  return out, nil
 }
 
-func (s *GOAWAY_FRAME) WriteTo(w io.Writer) err {
-  _, err := w.Write(s.Bytes())
+func (frame *GoawayFrame) WriteTo(writer io.Writer) err {
+  bytes, err := frame.Bytes()
+  if err != nil {
+    return err
+  }
+  _, err = writer.Write(bytes)
   return err
 }
 
-type Headers struct {
+/***************
+ *** HEADERS ***
+ ***************/
+type HeadersFrame struct {
+  Version  uint16
+  Flags    byte
+  StreamID uint32
+  Headers  *Headers
 }
 
-/********************
- *** HEADER_BLOCK ***
- ********************/
-type HEADERS_BLOCK struct {
-  Name, Value string
-}
-
-func (h *HEADERS_BLOCK) Parse(data []byte) error {
-  return nil
-}
-
-func (h *HEADERS_BLOCK) Bytes() []byte {
-  out := make([]byte, 8+len(h.Name)+len(h.Value))
-  l := len(h.Name)
-  out[0] = byte(l >> 24)
-  out[1] = byte(l >> 16)
-  out[2] = byte(l >> 8)
-  out[3] = byte(l)
-  var j int
-  for i, b := range []byte(h.Name) {
-    out[4+i] = b
-    j = 5 + i
-  }
-
-  l = len(h.Value)
-  out[0+j] = byte(l >> 24)
-  out[1+j] = byte(l >> 16)
-  out[2+j] = byte(l >> 8)
-  out[3+j] = byte(l)
-  for i, b := range []byte(h.Value) {
-    out[4+j+i] = b
-  }
-
-  return out
-}
-
-type HEADERS_FRAME struct {
-  ControlBit byte
-  Version    uint16
-  Type       uint16
-  Flags      byte
-  Length     uint32
-  StreamID   uint32
-  Headers    []*HEADERS_BLOCK
-}
-
-func (h *HEADERS_FRAME) Parse(data []byte) error {
+func (frame *HeadersFrame) Parse(data []byte) error {
   // Check size.
-  size := len(data)
-  if size < 16 {
-    return &InsufficientData{size, 16}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
+  length := len(data)
+  if length < 12 {
+    return &IncorrectDataLength{length, 12}
+  } else if length != 8+int(bytesToUint24(data[5:8])) {
+    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
   }
 
   // Check control bit.
@@ -748,7 +671,7 @@ func (h *HEADERS_FRAME) Parse(data []byte) error {
 
   // Check type.
   if data[2] != 0 || data[3] != 8 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 8}
+    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 8}
   }
 
   // Check unused space.
@@ -756,77 +679,108 @@ func (h *HEADERS_FRAME) Parse(data []byte) error {
     return &InvalidField{"Unused", 1, 0}
   }
 
-  h.ControlBit = 1
-  h.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  h.Type = 8
-  h.Flags = data[4]
-  h.Length = bytesToUint24(data[5:8])
-  h.StreamID = bytesToUint32(data[8:12])
-  h.Headers = make([]*HEADERS_BLOCK, bytesToUint32(data[12:16]))
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.Flags = data[4]
+  frame.StreamID = bytesToUint31(data[8:12])
 
-  // TODO: add headers parsing.
+  headers := new(Headers)
+  err := headers.Parse(data[12:])
+  if err != nil {
+    return err
+  }
+  frame.Headers = headers
 
   return nil
 }
 
-func (h *HEADERS_FRAME) Bytes() []byte {
-  size := 12
-  num := uint32(0)
-  for _, he := range h.Headers {
-    num++
-    size += 8 + len(he.Name) + len(he.Value)
-  }
-  out := make([]byte, size)
-
-  out[0] = 0x80 | byte(h.Version>>8)
-  out[1] = byte(h.Version)
-  out[2] = 0
-  out[3] = 8
-  out[4] = h.Flags
-  out[5] = byte(h.Length >> 16)
-  out[6] = byte(h.Length >> 8)
-  out[7] = byte(h.Length)
-  out[8] = byte(h.StreamID>>24) & 0x7f
-  out[9] = byte(h.StreamID >> 16)
-  out[10] = byte(h.StreamID >> 8)
-  out[11] = byte(h.StreamID)
-
-  offset := 12
-  for _, he := range h.Headers {
-    bs := he.Bytes()
-    var j int
-    for i, b := range bs {
-      out[offset+i] = b
-      j = offset + i
-    }
-    offset = j + 1
+func (frame *HeadersFrame) Bytes() ([]byte, error) {
+  headers, err := frame.Headers.Compressed()
+  if err != nil {
+    return nil, err
   }
 
-  return out
+  length := 4 + len(headers)
+  out := make([]byte, 12, 8+length)
+
+  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
+  out[1] = byte(frame.Version)             // Version
+  out[2] = 0                               // Type
+  out[3] = 8                               // Type
+  out[4] = frame.Flags                     // Flags
+  out[5] = byte(length >> 16)              // Length
+  out[6] = byte(length >> 8)               // Length
+  out[7] = byte(length)                    // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f // Stream ID
+  out[9] = byte(frame.StreamID >> 16)      // Stream ID
+  out[10] = byte(frame.StreamID >> 8)      // Stream ID
+  out[11] = byte(frame.StreamID)           // Stream ID
+  out = append(out, headers...)            // Name/Value Header Block
+
+  return out, nil
 }
 
-func (h *HEADERS_FRAME) WriteTo(w io.Writer) error {
-  _, err := w.Write(h.Bytes())
+func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
+  headers, err := frame.Headers.Compressed()
+  if err != nil {
+    return err
+  }
+
+  length := 4 + len(headers)
+  out := make([]byte, 12)
+
+  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
+  out[1] = byte(frame.Version)             // Version
+  out[2] = 0                               // Type
+  out[3] = 1                               // Type
+  out[4] = frame.Flags                     // Flags
+  out[5] = byte(length >> 16)              // Length
+  out[6] = byte(length >> 8)               // Length
+  out[7] = byte(length)                    // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f // Stream ID
+  out[9] = byte(frame.StreamID >> 16)      // Stream ID
+  out[10] = byte(frame.StreamID >> 8)      // Stream ID
+  out[11] = byte(frame.StreamID)           // Stream ID
+
+  _, err := writer.Write(out)
+  if err != nil {
+    return err
+  }
+
+  _, err = writer.Write(headers)
   return err
 }
 
-type WINDOW_UPDATE_FRAME struct {
-  ControlBit      byte
+type header struct {
+  name, value string
+}
+
+type Headers struct {
+  headers []*header
+}
+
+func (h *Headers) Parse(data []byte) error {
+  return nil
+}
+
+func (h *Headers) Compressed() ([]byte, error) {
+  // TODO: implement (needs compression)
+  return nil, nil
+}
+
+/*********************
+ *** WINDOW_UPDATE ***
+ *********************/
+type WindowUpdateFrame struct {
   Version         uint16
-  Type            uint16
-  Flags           byte
-  Length          uint32
   StreamID        uint32
   DeltaWindowSize uint32
 }
 
-func (w *WINDOW_UPDATE_FRAME) Parse(data []byte) error {
+func (frame *WindowUpdateFrame) Parse(data []byte) error {
   // Check size.
-  size := len(data)
-  if size < 22 {
-    return &InsufficientData{size, 22}
-  } else if uint32(size) < (uint32(8) + bytesToUint24(data[5:8])) {
-    return &InsufficientData{size, 8 + int(bytesToUint24(data[5:8]))}
+  length := len(data)
+  if length < 12 {
+    return &IncorrectDataLength{length, 12}
   }
 
   // Check control bit.
@@ -835,57 +789,263 @@ func (w *WINDOW_UPDATE_FRAME) Parse(data []byte) error {
   }
 
   // Check type.
-  if data[2] != 0 || data[3] != 8 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 8}
+  if data[2] != 0 || data[3] != 9 {
+    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 9}
   }
 
   // Check unused space.
-  if (data[8] >> 7) != 0 {
+  if (data[8]>>7)|(data[12]>>7) != 0 {
     return &InvalidField{"Unused", 1, 0}
   }
 
-  w.ControlBit = 1
-  w.Version = (uint16(data[0]) << 8) + uint16(data[1])
-  w.Type = 8
-  w.Flags = data[4]
-  w.Length = bytesToUint24(data[5:8])
-  w.StreamID = bytesToUint32(data[8:12])
-  w.DeltaWindowSize = bytesToUint32(data[12:16]) & 0x7f
+  // Check length.
+  if bytesToUint24(data[5:8]) != uint32(8) {
+    return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 8}
+  }
+
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.StreamID = bytesToUint31(data[8:12])
+  frame.DeltaWindowSize = bytesToUint32(data[12:16]) & 0x7f
 
   return nil
 }
 
-func (w *WINDOW_UPDATE_FRAME) Bytes() []byte {
-  size := 12
-  out := make([]byte, size)
+func (frame *WindowUpdateFrame) Bytes() []byte {
+  out := make([]byte, 12)
 
-  out[0] = 0x80 | byte(w.Version>>8)
-  out[1] = byte(w.Version)
-  out[2] = 0
-  out[3] = 8
-  out[4] = w.Flags
-  out[5] = byte(w.Length >> 16)
-  out[6] = byte(w.Length >> 8)
-  out[7] = byte(w.Length)
-  out[8] = byte(w.StreamID>>24) & 0x7f
-  out[9] = byte(w.StreamID >> 16)
-  out[10] = byte(w.StreamID >> 8)
-  out[11] = byte(w.StreamID)
-  out[12] = byte(w.DeltaWindowSize>>24) & 0x7f
-  out[13] = byte(w.DeltaWindowSize >> 16)
-  out[14] = byte(w.DeltaWindowSize >> 8)
-  out[15] = byte(w.DeltaWindowSize)
+  out[0] = 0x80 | byte(frame.Version>>8)           // Control bit and Version
+  out[1] = byte(frame.Version)                     // Version
+  out[2] = 0                                       // Type
+  out[3] = 8                                       // Type
+  out[4] = 0                                       // Flags
+  out[5] = 0                                       // Length
+  out[6] = 0                                       // Length
+  out[7] = 8                                       // Length
+  out[8] = byte(frame.StreamID>>24) & 0x7f         // Stream ID
+  out[9] = byte(frame.StreamID >> 16)              // Stream ID
+  out[10] = byte(frame.StreamID >> 8)              // Stream ID
+  out[11] = byte(frame.StreamID)                   // Stream ID
+  out[12] = byte(frame.DeltaWindowSize>>24) & 0x7f // Delta Window Size
+  out[13] = byte(frame.DeltaWindowSize >> 16)      // Delta Window Size
+  out[14] = byte(frame.DeltaWindowSize >> 8)       // Delta Window Size
+  out[15] = byte(frame.DeltaWindowSize)            // Delta Window Size
 
   return out
 }
 
-func (s *WINDOW_UPDATE_FRAME) WriteTo(w io.Writer) error {
-  _, err := w.Write(s.Bytes())
+func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
+  bytes, err := frame.Bytes()
+  if err != nil {
+    return err
+  }
+  _, err = writer.Write(bytes)
   return err
 }
 
-type CREDENTIAL_FRAME struct {
+/******************
+ *** CREDENTIAL ***
+ ******************/
+type CredentialFrame struct {
+  Version      uint16
+  Slot         uint16
+  Proof        []byte
+  Certificates [][]byte
 }
 
-type CERTIFICATE struct {
+func (frame *CredentialFrame) Parse(data []byte) error {
+  // Check size.
+  length := len(data)
+  if length < 14 {
+    return &IncorrectDataLength{length, 14}
+  } else if length != 8+int(bytesToUint24(data[5:8])) {
+    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
+  }
+
+  // Check control bit.
+  if data[0]&0x80 == 0 {
+    return &InvalidField{"Control bit", 0, 1}
+  }
+
+  // Check type.
+  if data[2] != 0 || data[3] != 10 {
+    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 10}
+  }
+
+  // Check flags.
+  if (data[4]) != 0 {
+    return &InvalidField{"Flags", int(data[4]), 0}
+  }
+
+  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.Slot = bytesToUint16(data[8:10])
+
+  proofLen := int(bytesToUint32(data[10:14]))
+  if proofLen > 0 {
+    frame.Proof = data[14 : 14+proofLen]
+  } else {
+    frame.Proof = []byte{}
+  }
+
+  numCerts := 0
+  for offset := 14 + proofLen; offset < length; {
+    offset += int(bytesToUint32(data[offset:offset+4])) + 4
+    numCerts++
+  }
+
+  frame.Certificates = make([][]byte, numCerts)
+  for i, offset := 0, 14+proofLen; offset < length; i++ {
+    length := int(bytesToUint32(data[offset : offset+4]))
+    frame.Certificates[i] = data[offset+4 : offset+4+length]
+    offset += length + 4
+  }
+
+  return nil
+}
+
+func (frame *CredentialFrame) Bytes() ([]byte, error) {
+
+  proofLength := len(frame.Proof)
+  certsLength := 0
+  for _, cert := range frame.Certificates {
+    certsLength += len(cert)
+  }
+
+  length := 6 + proofLength + certsLength
+  out := make([]byte, 14, 8+length)
+
+  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
+  out[1] = byte(frame.Version)           // Version
+  out[2] = 0                             // Type
+  out[3] = 10                            // Type
+  out[4] = 0                             // Flags
+  out[5] = byte(length >> 16)            // Length
+  out[6] = byte(length >> 8)             // Length
+  out[7] = byte(length)                  // Length
+  out[8] = byte(frame.Slot >> 8)         // Slot
+  out[9] = byte(frame.Slot)              // Slot
+  out[10] = byte(proofLength >> 24)      // Proof Length
+  out[11] = byte(proofLength >> 16)      // Proof Length
+  out[12] = byte(proofLength >> 8)       // Proof Length
+  out[13] = byte(proofLength)            // Proof Length
+  out = append(out, frame.Proof...)      // Proof
+  for _, cert := range frame.Certificates {
+    out = append(out, cert...) // Certificates
+  }
+
+  return out, nil
+}
+
+func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
+  proofLength := len(frame.Proof)
+  certsLength := 0
+  for _, cert := range frame.Certificates {
+    certsLength += len(cert)
+  }
+
+  length := 6 + proofLength + certsLength
+  out := make([]byte, 14, 8+length)
+
+  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
+  out[1] = byte(frame.Version)           // Version
+  out[2] = 0                             // Type
+  out[3] = 10                            // Type
+  out[4] = 0                             // Flags
+  out[5] = byte(length >> 16)            // Length
+  out[6] = byte(length >> 8)             // Length
+  out[7] = byte(length)                  // Length
+  out[8] = byte(frame.Slot >> 8)         // Slot
+  out[9] = byte(frame.Slot)              // Slot
+  out[10] = byte(proofLength >> 24)      // Proof Length
+  out[11] = byte(proofLength >> 16)      // Proof Length
+  out[12] = byte(proofLength >> 8)       // Proof Length
+  out[13] = byte(proofLength)            // Proof Length
+
+  _, err := writer.Write(out)
+  if err != nil {
+    return err
+  }
+
+  _, err = writer.Write(frame.Proof)
+  if err != nil {
+    return err
+  }
+
+  for _, cert := range frame.Certificates {
+    err = writer.Write(cert)
+    if err != nil {
+      return err
+    }
+  }
+
+  return nil
+}
+
+/************
+ *** DATA ***
+ ************/
+type DataFrame struct {
+  StreamID uint32
+  Flags    byte
+  Data     []byte
+}
+
+func (frame *DataFrame) Parse(data []byte) error {
+  // Check size.
+  length := len(data)
+  if length < 8 {
+    return &IncorrectDataLength{length, 8}
+  } else if length < 8 + int(bytesToUint16(data[2:4])) {
+  	return &IncorrectDataLength{length, 8 + int(bytesToUint16(data[2:4]))}
+  }
+
+  // Check control bit.
+  if data[0]&0x80 == 1 {
+    return &InvalidField{"Control bit", 1, 0}
+  }
+
+  frame.StreamID = bytesToUint31(data[0:4])
+  frame.Flags = data[4]
+	length = int(bytesToUint16(data[2:4]))
+	frame.Data = data[8:8+length]
+
+  return nil
+}
+
+func (frame *WindowUpdateFrame) Bytes() []byte {
+	length := len(frame.Data)
+  out := make([]byte, 8, 8+length)
+
+  out[0] = byte(frame.StreamID>>24) & 0x7f // Control bit and Stream ID
+  out[1] = byte(frame.StreamID >> 16)      // Stream ID
+  out[2] = byte(frame.StreamID >> 8)       // Stream ID
+  out[3] = byte(frame.StreamID)            // Stream ID
+  out[4] = frame.Flags                     // Flags
+  out[5] = byte(length >> 16)              // Length
+  out[6] = byte(length >> 8)               // Length
+  out[7] = byte(length)                    // Length
+	out = append(out, frame.Data...)         // Data
+
+  return out
+}
+
+func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
+	length := len(frame.Data)
+  out := make([]byte, 8)
+
+  out[0] = byte(frame.StreamID>>24) & 0x7f // Control bit and Stream ID
+  out[1] = byte(frame.StreamID >> 16)      // Stream ID
+  out[2] = byte(frame.StreamID >> 8)       // Stream ID
+  out[3] = byte(frame.StreamID)            // Stream ID
+  out[4] = frame.Flags                     // Flags
+  out[5] = byte(length >> 16)              // Length
+  out[6] = byte(length >> 8)               // Length
+  out[7] = byte(length)                    // Length
+	
+	_, err := writer.Write(out)
+	if err != nil {
+		return err
+	}
+  
+  _, err = writer.Write(frame.Data)
+  return err
 }
