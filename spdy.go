@@ -7,19 +7,22 @@ import (
 )
 
 const (
-  SYN_STREAM = iota
-  SYN_REPLY
-  RST_STREAM
-  SETTINGS
-  PING
-  GOAWAY
-  HEADERS
-  WINDOW_UPDATE
-  CREDENTIAL
+  SYN_STREAM    = 1
+  SYN_REPLY     = 2
+  RST_STREAM    = 3
+  SETTINGS      = 4
+  PING          = 6
+  GOAWAY        = 7
+  HEADERS       = 8
+  WINDOW_UPDATE = 9
+  CREDENTIAL    = 10
 )
 
-func bytesToUint16(b []byte) uint32 {
-  return (uint32(b[0]) << 8) + uint32(b[1])
+// Maximum frame size (2 ** 24 -1)
+const MAX_FRAME_SIZE = 0xffffff
+
+func bytesToUint16(b []byte) uint16 {
+  return (uint16(b[0]) << 8) + uint16(b[1])
 }
 
 func bytesToUint24(b []byte) uint32 {
@@ -31,7 +34,7 @@ func bytesToUint32(b []byte) uint32 {
 }
 
 func bytesToUint31(b []byte) uint32 {
-  return (uint32(b[0] & 0x7f) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
+  return (uint32(b[0]&0x7f) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
 }
 
 /*** ERRORS ***/
@@ -191,7 +194,7 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
   out[16] = ((frame.Priority & 0x7) << 5)        // Priority and unused
   out[17] = frame.Slot                           // Slot
 
-  _, err := writer.Write(out)
+  _, err = writer.Write(out)
   if err != nil {
     return err
   }
@@ -277,7 +280,7 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
 
   headers, err := frame.Headers.Compressed()
   if err != nil {
-    return nil, err
+    return err
   }
 
   length := 4 + len(headers)
@@ -296,7 +299,7 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
   out[10] = byte(frame.StreamID >> 8)      // Stream ID
   out[11] = byte(frame.StreamID)           // Stream ID
 
-  _, err := writer.Write(out)
+  _, err = writer.Write(out)
   if err != nil {
     return err
   }
@@ -396,7 +399,7 @@ func (frame *SettingsFrame) Parse(data []byte) error {
   length := len(data)
   numSettings := int(bytesToUint32(data[8:12]))
   if length < 12 {
-    return &IncorrectDataLength{size, 12}
+    return &IncorrectDataLength{length, 12}
   } else if length != 8+int(bytesToUint24(data[5:8])) {
     return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
   } else if length < 12+(8*numSettings) {
@@ -431,8 +434,8 @@ func (frame *SettingsFrame) Parse(data []byte) error {
 }
 
 func (frame *SettingsFrame) Bytes() ([]byte, error) {
-  numSettings := uint32(len(s.Entries))
-  length := 4 + (8 * num)
+  numSettings := uint32(len(frame.Settings))
+  length := 4 + (8 * numSettings)
   out := make([]byte, 12, 8+length)
 
   out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
@@ -449,7 +452,7 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
   out[11] = byte(numSettings)            // Number of Entries
 
   offset := 12
-  for _, setting := range s.Settings {
+  for _, setting := range frame.Settings {
     bytes := setting.Bytes()
     for i, b := range bytes {
       out[offset+i] = b
@@ -636,7 +639,7 @@ func (frame *GoawayFrame) Bytes() ([]byte, error) {
   return out, nil
 }
 
-func (frame *GoawayFrame) WriteTo(writer io.Writer) err {
+func (frame *GoawayFrame) WriteTo(writer io.Writer) error {
   bytes, err := frame.Bytes()
   if err != nil {
     return err
@@ -741,7 +744,7 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
   out[10] = byte(frame.StreamID >> 8)      // Stream ID
   out[11] = byte(frame.StreamID)           // Stream ID
 
-  _, err := writer.Write(out)
+  _, err = writer.Write(out)
   if err != nil {
     return err
   }
@@ -810,7 +813,7 @@ func (frame *WindowUpdateFrame) Parse(data []byte) error {
   return nil
 }
 
-func (frame *WindowUpdateFrame) Bytes() []byte {
+func (frame *WindowUpdateFrame) Bytes() ([]byte, error) {
   out := make([]byte, 12)
 
   out[0] = 0x80 | byte(frame.Version>>8)           // Control bit and Version
@@ -830,7 +833,7 @@ func (frame *WindowUpdateFrame) Bytes() []byte {
   out[14] = byte(frame.DeltaWindowSize >> 8)       // Delta Window Size
   out[15] = byte(frame.DeltaWindowSize)            // Delta Window Size
 
-  return out
+  return out, nil
 }
 
 func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
@@ -849,7 +852,7 @@ type CredentialFrame struct {
   Version      uint16
   Slot         uint16
   Proof        []byte
-  Certificates [][]byte
+  Certificates []Certificate
 }
 
 func (frame *CredentialFrame) Parse(data []byte) error {
@@ -892,7 +895,7 @@ func (frame *CredentialFrame) Parse(data []byte) error {
     numCerts++
   }
 
-  frame.Certificates = make([][]byte, numCerts)
+  frame.Certificates = make([]Certificate, numCerts)
   for i, offset := 0, 14+proofLen; offset < length; i++ {
     length := int(bytesToUint32(data[offset : offset+4]))
     frame.Certificates[i] = data[offset+4 : offset+4+length]
@@ -971,7 +974,7 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
   }
 
   for _, cert := range frame.Certificates {
-    err = writer.Write(cert)
+    _, err = writer.Write(cert)
     if err != nil {
       return err
     }
@@ -979,6 +982,8 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
 
   return nil
 }
+
+type Certificate []byte
 
 /************
  *** DATA ***
@@ -994,8 +999,8 @@ func (frame *DataFrame) Parse(data []byte) error {
   length := len(data)
   if length < 8 {
     return &IncorrectDataLength{length, 8}
-  } else if length < 8 + int(bytesToUint16(data[2:4])) {
-  	return &IncorrectDataLength{length, 8 + int(bytesToUint16(data[2:4]))}
+  } else if length < 8+int(bytesToUint16(data[2:4])) {
+    return &IncorrectDataLength{length, 8 + int(bytesToUint16(data[2:4]))}
   }
 
   // Check control bit.
@@ -1005,14 +1010,14 @@ func (frame *DataFrame) Parse(data []byte) error {
 
   frame.StreamID = bytesToUint31(data[0:4])
   frame.Flags = data[4]
-	length = int(bytesToUint16(data[2:4]))
-	frame.Data = data[8:8+length]
+  length = int(bytesToUint16(data[2:4]))
+  frame.Data = data[8 : 8+length]
 
   return nil
 }
 
-func (frame *WindowUpdateFrame) Bytes() []byte {
-	length := len(frame.Data)
+func (frame *DataFrame) Bytes() []byte {
+  length := len(frame.Data)
   out := make([]byte, 8, 8+length)
 
   out[0] = byte(frame.StreamID>>24) & 0x7f // Control bit and Stream ID
@@ -1023,13 +1028,13 @@ func (frame *WindowUpdateFrame) Bytes() []byte {
   out[5] = byte(length >> 16)              // Length
   out[6] = byte(length >> 8)               // Length
   out[7] = byte(length)                    // Length
-	out = append(out, frame.Data...)         // Data
+  out = append(out, frame.Data...)         // Data
 
   return out
 }
 
-func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
-	length := len(frame.Data)
+func (frame *DataFrame) WriteTo(writer io.Writer) error {
+  length := len(frame.Data)
   out := make([]byte, 8)
 
   out[0] = byte(frame.StreamID>>24) & 0x7f // Control bit and Stream ID
@@ -1040,12 +1045,12 @@ func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
   out[5] = byte(length >> 16)              // Length
   out[6] = byte(length >> 8)               // Length
   out[7] = byte(length)                    // Length
-	
-	_, err := writer.Write(out)
-	if err != nil {
-		return err
-	}
-  
+
+  _, err := writer.Write(out)
+  if err != nil {
+    return err
+  }
+
   _, err = writer.Write(frame.Data)
   return err
 }

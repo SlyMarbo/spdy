@@ -25,9 +25,9 @@ type stream struct {
   state        StreamState
   priority     uint8
   certificates [][]byte
-  headers      []*HEADERS_BLOCK
-  settings     []*SETTINGS_ENTRY
-  credentials  []*CERTIFICATE
+  headers      *Headers
+  settings     []*Setting
+  credentials  []Certificate
 }
 
 type StreamState uint8
