@@ -23,11 +23,11 @@ const (
 
 type Frame interface {
   Bytes() ([]byte, error)
-  Parse(bufio.Reader) error
+  Parse(*bufio.Reader) error
   WriteTo(io.Writer) error
 }
 
-func ReadFrame(reader bufio.Reader) (frame Frame, err error) {
+func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
   start, err := reader.Peek(4)
 
   if start[0]&0x80 == 0 {
@@ -77,7 +77,7 @@ type SynStreamFrame struct {
   Headers       *Headers
 }
 
-func (frame *SynStreamFrame) Parse(reader bufio.Reader) error {
+func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -211,7 +211,7 @@ type SynReplyFrame struct {
   Headers  *Headers
 }
 
-func (frame *SynReplyFrame) Parse(reader bufio.Reader) error {
+func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -329,7 +329,7 @@ type RstStreamFrame struct {
   StatusCode uint32
 }
 
-func (frame *RstStreamFrame) Parse(reader bufio.Reader) error {
+func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -413,7 +413,7 @@ type SettingsFrame struct {
   Settings []*Setting
 }
 
-func (frame *SettingsFrame) Parse(reader bufio.Reader) error {
+func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -550,7 +550,7 @@ type PingFrame struct {
   PingID  uint32
 }
 
-func (frame *PingFrame) Parse(reader bufio.Reader) error {
+func (frame *PingFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -628,7 +628,7 @@ type GoawayFrame struct {
   StatusCode       uint32
 }
 
-func (frame *GoawayFrame) Parse(reader bufio.Reader) error {
+func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -717,7 +717,7 @@ type HeadersFrame struct {
   Headers  *Headers
 }
 
-func (frame *HeadersFrame) Parse(reader bufio.Reader) error {
+func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -849,7 +849,7 @@ type WindowUpdateFrame struct {
   DeltaWindowSize uint32
 }
 
-func (frame *WindowUpdateFrame) Parse(reader bufio.Reader) error {
+func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -933,7 +933,7 @@ type CredentialFrame struct {
   Certificates []Certificate
 }
 
-func (frame *CredentialFrame) Parse(reader bufio.Reader) error {
+func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
@@ -1083,7 +1083,7 @@ type DataFrame struct {
   Data     []byte
 }
 
-func (frame *DataFrame) Parse(reader bufio.Reader) error {
+func (frame *DataFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
     return err
