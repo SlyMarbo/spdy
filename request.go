@@ -1,5 +1,47 @@
 package spdy
 
+import (
+  "bytes"
+  "crypto/tls"
+  "encoding/base64"
+  "errors"
+  "fmt"
+  "io"
+  "io/ioutil"
+  "mime"
+  "mime/multipart"
+  "net/url"
+  "strings"
+)
+
+const (
+  maxValueLength   = 4096
+  maxHeaderLines   = 1024
+  chunkSize        = 4 << 10  // 4 KB chunks
+  defaultMaxMemory = 32 << 20 // 32 MB
+)
+
+// ErrMissingFile is returned by FormFile when the provided file field name
+// is either not present in the request or not a file field.
+var ErrMissingFile = errors.New("spdy: no such file")
+
+// HTTP request parsing errors.
+type ProtocolError struct {
+  ErrorString string
+}
+
+func (err *ProtocolError) Error() string { return err.ErrorString }
+
+var (
+  ErrHeaderTooLong        = &ProtocolError{"header too long"}
+  ErrShortBody            = &ProtocolError{"entity body too short"}
+  ErrNotSupported         = &ProtocolError{"feature not supported"}
+  ErrUnexpectedTrailer    = &ProtocolError{"trailer header without chunked transfer encoding"}
+  ErrMissingContentLength = &ProtocolError{"missing ContentLength in HEAD response"}
+  ErrNotMultipart         = &ProtocolError{"request Content-Type isn't multipart/form-data"}
+  ErrMissingBoundary      = &ProtocolError{"no multipart boundary param in Content-Type"}
+)
+
 // A Request represents an HTTP request received by a server
 // or to be sent by a client.
 type Request struct {
@@ -239,7 +281,7 @@ const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
 //     }
 //     host = req.URL.Host
 //   }
-// 
+//
 //   ruri := req.URL.RequestURI()
 //   if usingProxy && req.URL.Scheme != "" && req.URL.Opaque == "" {
 //     ruri = req.URL.Scheme + "://" + host + ruri
@@ -248,7 +290,7 @@ const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
 //     ruri = host
 //   }
 //   // TODO(bradfitz): escape at least newlines in ruri?
-// 
+//
 //   // Wrap the writer in a bufio Writer if it's not already buffered.
 //   // Don't always call NewWriter, as that forces a bytes.Buffer
 //   // and other small bufio Writers to have a minimum 4k buffer
@@ -258,12 +300,12 @@ const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
 //     bw = bufio.NewWriter(w)
 //     w = bw
 //   }
-// 
+//
 //   fmt.Fprintf(w, "%s %s HTTP/1.1\r\n", valueOrDefault(req.Method, "GET"), ruri)
-// 
+//
 //   // Header lines
 //   fmt.Fprintf(w, "Host: %s\r\n", host)
-// 
+//
 //   // Use the defaultUserAgent unless the Header contains one, which
 //   // may be blank to not send the header.
 //   userAgent := defaultUserAgent
@@ -275,7 +317,7 @@ const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
 //   if userAgent != "" {
 //     fmt.Fprintf(w, "User-Agent: %s\r\n", userAgent)
 //   }
-// 
+//
 //   // Process Body,ContentLength,Close,Trailer
 //   tw, err := newTransferWriter(req)
 //   if err != nil {
@@ -285,28 +327,28 @@ const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
 //   if err != nil {
 //     return err
 //   }
-// 
+//
 //   // TODO: split long values?  (If so, should share code with Conn.Write)
 //   err = req.Header.WriteSubset(w, reqWriteExcludeHeader)
 //   if err != nil {
 //     return err
 //   }
-// 
+//
 //   if extraHeaders != nil {
 //     err = extraHeaders.Write(w)
 //     if err != nil {
 //       return err
 //     }
 //   }
-// 
+//
 //   io.WriteString(w, "\r\n")
-// 
+//
 //   // Write body and trailer
 //   err = tw.WriteBody(w)
 //   if err != nil {
 //     return err
 //   }
-// 
+//
 //   if bw != nil {
 //     return bw.Flush()
 //   }
@@ -412,7 +454,7 @@ func (r *Request) ParseForm() error {
 // After one call to ParseMultipartForm, subsequent calls have no effect.
 func (r *Request) ParseMultipartForm(maxMemory int64) error {
   if r.MultipartForm == multipartByReader {
-    return errors.New("http: multipart handled by MultipartReader")
+    return errors.New("spdy: multipart handled by MultipartReader")
   }
   if r.Form == nil {
     err := r.ParseForm()
@@ -474,7 +516,7 @@ func (r *Request) PostFormValue(key string) string {
 // FormFile calls ParseMultipartForm and ParseForm if necessary.
 func (r *Request) FormFile(key string) (multipart.File, *multipart.FileHeader, error) {
   if r.MultipartForm == multipartByReader {
-    return nil, nil, errors.New("http: multipart handled by MultipartReader")
+    return nil, nil, errors.New("spdy: multipart handled by MultipartReader")
   }
   if r.MultipartForm == nil {
     err := r.ParseMultipartForm(defaultMaxMemory)
@@ -493,4 +535,91 @@ func (r *Request) FormFile(key string) (multipart.File, *multipart.FileHeader, e
 
 func (r *Request) expectsContinue() bool {
   return hasToken(r.Header.get("Expect"), "100-continue")
+}
+
+// MaxBytesReader is similar to io.LimitReader but is intended for
+// limiting the size of incoming request bodies. In contrast to
+// io.LimitReader, MaxBytesReader's result is a ReadCloser, returns a
+// non-EOF error for a Read beyond the limit, and Closes the
+// underlying reader when its Close method is called.
+//
+// MaxBytesReader prevents clients from accidentally or maliciously
+// sending a large request and wasting server resources.
+func MaxBytesReader(w ResponseWriter, r io.ReadCloser, n int64) io.ReadCloser {
+  return &maxBytesReader{w: w, r: r, n: n}
+}
+
+type maxBytesReader struct {
+  w       ResponseWriter
+  r       io.ReadCloser // underlying reader
+  n       int64         // max bytes remaining
+  stopped bool
+}
+
+func (l *maxBytesReader) Read(p []byte) (n int, err error) {
+  if l.n <= 0 {
+    if !l.stopped {
+      l.stopped = true
+    }
+    return 0, errors.New("spdy: request body too large")
+  }
+  if int64(len(p)) > l.n {
+    p = p[:l.n]
+  }
+  n, err = l.r.Read(p)
+  l.n -= int64(n)
+  return
+}
+
+func (l *maxBytesReader) Close() error {
+  return l.r.Close()
+}
+
+func copyValues(dst, src url.Values) {
+  for k, vs := range src {
+    for _, value := range vs {
+      dst.Add(k, value)
+    }
+  }
+}
+
+func parsePostForm(r *Request) (vs url.Values, err error) {
+  if r.Body == nil {
+    err = errors.New("missing form body")
+    return
+  }
+  ct := r.Header.Get("Content-Type")
+  ct, _, err = mime.ParseMediaType(ct)
+  switch {
+  case ct == "application/x-www-form-urlencoded":
+    var reader io.Reader = r.Body
+    maxFormSize := int64(1<<63 - 1)
+    if _, ok := r.Body.(*maxBytesReader); !ok {
+      maxFormSize = int64(10 << 20) // 10 MB is a lot of text.
+      reader = io.LimitReader(r.Body, maxFormSize+1)
+    }
+    b, e := ioutil.ReadAll(reader)
+    if e != nil {
+      if err == nil {
+        err = e
+      }
+      break
+    }
+    if int64(len(b)) > maxFormSize {
+      err = errors.New("spdy: POST too large")
+      return
+    }
+    vs, e = url.ParseQuery(string(b))
+    if err == nil {
+      err = e
+    }
+  case ct == "multipart/form-data":
+    // handled by ParseMultipartForm (which is calling us, or should be)
+    // TODO(bradfitz): there are too many possible
+    // orders to call too many functions here.
+    // Clean this up and write more tests.
+    // request_test.go contains the start of this,
+    // in TestRequestMultipartCallOrder.
+  }
+  return
 }

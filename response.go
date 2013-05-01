@@ -1,5 +1,11 @@
 package spdy
 
+import (
+	"errors"
+	"io"
+	"net/url"
+)
+
 // Response represents the response from an HTTP request.
 //
 type Response struct {

@@ -2,7 +2,8 @@ package spdy
 
 import (
   "crypto/tls"
-  "net"
+	"log"
+	"net/http"
 	"runtime"
   "sync"
 	"time"
@@ -11,8 +12,8 @@ import (
 type connection struct {
 	sync.Mutex
   remoteAddr         string // network address of remote side
-	server             *Server
-  conn               tls.Conn
+	server             *http.Server
+  conn               *tls.Conn
   tlsState           *tls.ConnectionState
 	tlsConfig          *tls.Config
   streams            map[uint32]*stream
@@ -31,7 +32,7 @@ func (conn *connection) readRequests() {
 	if d := conn.server.WriteTimeout; d != 0 {
 		defer func() {
 			conn.conn.SetWriteDeadline(time.Now().Add(d))
-		}
+		}()
 	}
 	
 	
@@ -45,7 +46,7 @@ func (conn *connection) serve() {
 			buf = buf[:runtime.Stack(buf, false)]
 			log.Printf("spdy: panic serving %v: %v\n%s", conn.remoteAddr, err, buf)
 		}
-	}
+	}()
 	
 	conn.readRequests()
 }
@@ -55,7 +56,7 @@ func acceptSPDYVersion2(server *http.Server, tlsConn *tls.Conn, _ http.Handler) 
 	conn.remoteAddr = tlsConn.RemoteAddr().String()
 	conn.conn = tlsConn
 	conn.server = server
-	conn.tlsState = tlsConn.ConnectionState()
+	*conn.tlsState = tlsConn.ConnectionState()
 	conn.tlsConfig = server.TLSConfig
 	conn.streams = make(map[uint32]*stream)
 	conn.buffer = make([]Frame, 0, 10)
@@ -70,7 +71,7 @@ func acceptSPDYVersion3(server *http.Server, tlsConn *tls.Conn, _ http.Handler) 
 	conn.remoteAddr = tlsConn.RemoteAddr().String()
 	conn.conn = tlsConn
 	conn.server = server
-	conn.tlsState = tlsConn.ConnectionState()
+	*conn.tlsState = tlsConn.ConnectionState()
 	conn.tlsConfig = server.TLSConfig
 	conn.streams = make(map[uint32]*stream)
 	conn.buffer = make([]Frame, 0, 10)

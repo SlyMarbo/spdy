@@ -1,9 +1,9 @@
 package spdy
 
 import (
-  "crypto/tls"
-  "net"
-  "sync"
+  // "crypto/tls"
+//   "net"
+//   "sync"
 )
 
 type stream struct {

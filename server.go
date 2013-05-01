@@ -2,10 +2,12 @@ package spdy
 
 import (
   "crypto/tls"
+	"fmt"
   "net/http"
-	"net/url"
-	"path"
+  "net/url"
+  "path"
   "strings"
+  "sync"
 )
 
 func AddSPDY(server *http.Server) {
@@ -25,17 +27,17 @@ type ResponseWriter interface {
   // Changing the header after a call to WriteHeader (or Write) has
   // no effect.
   Header() Header
-  
+
   // Ping immediately returns a channel on which a single boolean will
   // sent when the ping completes, which can be used as some measure of
   // the network's current performance. The boolean will be false if
   // the ping failed for any reason, and true otherwise.
   Ping() <-chan bool
-  
+
   // Push returns a PushWriter which can be used immediately to send
   // server pushes.
   Push() (PushWriter, error)
-  
+
   // Write writes the data to the connection as part of an HTTP/SPDY
   // reply. If WriteHeader has not yet been called, Write calls
   // WriteHeader(http.StatusOK) before writing the data. If the Header
@@ -43,7 +45,7 @@ type ResponseWriter interface {
   // set to the result of passing the initial 512 bytes of written
   // data to DetectContentType.
   Write([]byte) (int, error)
-  
+
   // WriteHeader sends an HTTP/SPDY response header with status code.
   // If WriteHeader is not called explicitly, the first call to Write
   // will Trigger an implicit WriteHeader(http.StatusOK). Thus
@@ -55,13 +57,13 @@ type PushWriter interface {
   // Header returns the header map that will be sent with the push.
   // Changing the header after a call to Write has no effect.
   Header() Header
-  
+
   // Ping immediately returns a channel on which a single boolean will
   // sent when the ping completes, which can be used as some measure of
   // the network's current performance. The boolean will be false if
   // the ping failed for any reason, and true otherwise.
   Ping() <-chan bool
-  
+
   // Write writes the data to the connection as part of a SPDY server
   // push. If the Header does not contain a Content-Type line, Write
   // adds a Content-Type set to the result of passing the initial 512
@@ -121,79 +123,79 @@ func StripPrefix(prefix string, h Handler) Handler {
 // Redirect replies to the request with a redirect to url,
 // which may be a path relative to the request path.
 func Redirect(w ResponseWriter, r *Request, urlStr string, code int) {
-	if u, err := url.Parse(urlStr); err == nil {
-		// If url was relative, make absolute by
-		// combining with request path.
-		// The browser would probably do this for us,
-		// but doing it ourselves is more reliable.
+  if u, err := url.Parse(urlStr); err == nil {
+    // If url was relative, make absolute by
+    // combining with request path.
+    // The browser would probably do this for us,
+    // but doing it ourselves is more reliable.
 
-		// NOTE(rsc): RFC 2616 says that the Location
-		// line must be an absolute URI, like
-		// "http://www.google.com/redirect/",
-		// not a path like "/redirect/".
-		// Unfortunately, we don't know what to
-		// put in the host name section to get the
-		// client to connect to us again, so we can't
-		// know the right absolute URI to send back.
-		// Because of this problem, no one pays attention
-		// to the RFC; they all send back just a new path.
-		// So do we.
-		oldpath := r.URL.Path
-		if oldpath == "" { // should not happen, but avoid a crash if it does
-			oldpath = "/"
-		}
-		if u.Scheme == "" {
-			// no leading http://server
-			if urlStr == "" || urlStr[0] != '/' {
-				// make relative path absolute
-				olddir, _ := path.Split(oldpath)
-				urlStr = olddir + urlStr
-			}
+    // NOTE(rsc): RFC 2616 says that the Location
+    // line must be an absolute URI, like
+    // "http://www.google.com/redirect/",
+    // not a path like "/redirect/".
+    // Unfortunately, we don't know what to
+    // put in the host name section to get the
+    // client to connect to us again, so we can't
+    // know the right absolute URI to send back.
+    // Because of this problem, no one pays attention
+    // to the RFC; they all send back just a new path.
+    // So do we.
+    oldpath := r.URL.Path
+    if oldpath == "" { // should not happen, but avoid a crash if it does
+      oldpath = "/"
+    }
+    if u.Scheme == "" {
+      // no leading http://server
+      if urlStr == "" || urlStr[0] != '/' {
+        // make relative path absolute
+        olddir, _ := path.Split(oldpath)
+        urlStr = olddir + urlStr
+      }
 
-			var query string
-			if i := strings.Index(urlStr, "?"); i != -1 {
-				urlStr, query = urlStr[:i], urlStr[i:]
-			}
+      var query string
+      if i := strings.Index(urlStr, "?"); i != -1 {
+        urlStr, query = urlStr[:i], urlStr[i:]
+      }
 
-			// clean up but preserve trailing slash
-			trailing := strings.HasSuffix(urlStr, "/")
-			urlStr = path.Clean(urlStr)
-			if trailing && !strings.HasSuffix(urlStr, "/") {
-				urlStr += "/"
-			}
-			urlStr += query
-		}
-	}
+      // clean up but preserve trailing slash
+      trailing := strings.HasSuffix(urlStr, "/")
+      urlStr = path.Clean(urlStr)
+      if trailing && !strings.HasSuffix(urlStr, "/") {
+        urlStr += "/"
+      }
+      urlStr += query
+    }
+  }
 
-	w.Header().Set("Location", urlStr)
-	w.WriteHeader(code)
+  w.Header().Set("Location", urlStr)
+  w.WriteHeader(code)
 
-	// RFC2616 recommends that a short note "SHOULD" be included in the
-	// response because older user agents may not understand 301/307.
-	// Shouldn't send the response for POST or HEAD; that leaves GET.
-	if r.Method == "GET" {
-		note := "<a href=\"" + htmlEscape(urlStr) + "\">" + statusText[code] + "</a>.\n"
-		fmt.Fprintln(w, note)
-	}
+  // RFC2616 recommends that a short note "SHOULD" be included in the
+  // response because older user agents may not understand 301/307.
+  // Shouldn't send the response for POST or HEAD; that leaves GET.
+  if r.Method == "GET" {
+    note := "<a href=\"" + htmlEscape(urlStr) + "\">" + http.StatusText(code) + "</a>.\n"
+    fmt.Fprintln(w, note)
+  }
 }
 
 var htmlReplacer = strings.NewReplacer(
-	"&", "&amp;",
-	"<", "&lt;",
-	">", "&gt;",
-	// "&#34;" is shorter than "&quot;".
-	`"`, "&#34;",
-	// "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
-	"'", "&#39;",
+  "&", "&amp;",
+  "<", "&lt;",
+  ">", "&gt;",
+  // "&#34;" is shorter than "&quot;".
+  `"`, "&#34;",
+  // "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
+  "'", "&#39;",
 )
 
 func htmlEscape(s string) string {
-	return htmlReplacer.Replace(s)
+  return htmlReplacer.Replace(s)
 }
 
 // Redirect to a fixed URL.
 type redirectHandler struct {
-  url string
+  url  string
   code int
 }
 
@@ -243,7 +245,7 @@ type muxEntry struct {
 
 // NewServeMux allocates and returns a new ServeMux.
 func NewServeMux() *ServeMux {
-  return &ServeMux{m: make{map[string]muxEntry}}
+  return &ServeMux{m: make(map[string]muxEntry)}
 }
 
 // DefaultServeMux is the default ServeMux used by Serve and ServeFunc.
@@ -310,14 +312,14 @@ func (mux *ServeMux) match(path string) (h Handler, pattern string) {
 // If there is no registered handler that applies to the
 // request, Handler returns a ''page not found'' handler
 // and an empty pattern.
-func (mux *ServeMux) Handler(r *Request) (h handler, pattern string) {
+func (mux *ServeMux) Handler(r *Request) (h Handler, pattern string) {
   if r.Method != "CONNECT" {
     if p := cleanPath(r.URL.Path); p != r.URL.Path {
-      _, pattern = mux.Handler(r.Host, p)
+      _, pattern = mux.handler(r.Host, p)
       return RedirectHandler(p, http.StatusMovedPermanently), pattern
     }
   }
-  
+
   return mux.handler(r.Host, r.URL.Path)
 }
 
@@ -327,7 +329,7 @@ func (mux *ServeMux) Handler(r *Request) (h handler, pattern string) {
 func (mux *ServeMux) handler(host, path string) (h Handler, pattern string) {
   mux.RLock()
   defer mux.RUnlock()
-  
+
   // Host-specific pattern takes precedence over generic ones.
   if mux.hosts {
     h, pattern = mux.match(host + path)
@@ -358,7 +360,7 @@ func (mux *ServeMux) ServeSPDY(w ResponseWriter, r *Request) {
 func (mux *ServeMux) Handle(pattern string, handler Handler) {
   mux.Lock()
   defer mux.Unlock()
-  
+
   if pattern == "" {
     panic("spdy: invalid pattern " + pattern)
   }
@@ -368,17 +370,17 @@ func (mux *ServeMux) Handle(pattern string, handler Handler) {
   if mux.m[pattern].explicit {
     panic("spdy: multiple registrations for " + pattern)
   }
-  
+
   mux.m[pattern] = muxEntry{
     explicit: true,
-    h: handler,
-    pattern: pattern
+    h:        handler,
+    pattern:  pattern,
   }
-  
+
   if pattern[0] != '/' {
     mux.hosts = true
   }
-  
+
   // Helpful behaviour:
   // If attern is /tree/, insert an implicit permanent redirect
   // for /tree. It can be overriden by an explicit registration.
