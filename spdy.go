@@ -75,14 +75,14 @@ func (frame *SynStreamFrame) String() string {
     flags += "FLAG_UNIDIRECTIONAL "
   }
 
-  buf.WriteString("SYN_STREAM:\n\t")
+  buf.WriteString("SYN_STREAM {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
   buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
   buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
   buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
   buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
-  buf.WriteString(fmt.Sprintf("Headers:              %v\n", frame.Headers))
+  buf.WriteString(fmt.Sprintf("Headers:              %v\n}\n", frame.Headers))
 
   return buf.String()
 }
@@ -229,11 +229,11 @@ func (frame *SynReplyFrame) String() string {
     flags += "FLAG_FIN "
   }
 
-  buf.WriteString("SYN_REPLY:\n\t")
+  buf.WriteString("SYN_REPLY {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
   buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
-  buf.WriteString(fmt.Sprintf("Headers:              %v\n", frame.Headers))
+  buf.WriteString(fmt.Sprintf("Headers:              %v\n}\n", frame.Headers))
 
   return buf.String()
 }
@@ -358,10 +358,10 @@ type RstStreamFrame struct {
 func (frame *RstStreamFrame) String() string {
   buf := new(bytes.Buffer)
 
-  buf.WriteString("RST_STREAM:\n\t")
+  buf.WriteString("RST_STREAM {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
-  buf.WriteString(fmt.Sprintf("Status code:          %d\n", frame.StatusCode))
+  buf.WriteString(fmt.Sprintf("Status code:          %d\n}\n", frame.StatusCode))
 
   return buf.String()
 }
@@ -457,13 +457,14 @@ func (frame *SettingsFrame) String() string {
     flags += "FLAG_SETTINGS_CLEAR_SETTINGS "
   }
 
-  buf.WriteString("SETTINGS:\n\t")
+  buf.WriteString("SETTINGS {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
   buf.WriteString(fmt.Sprintf("Settings:"))
-	for _, setting := range frame.Settings {
-		buf.WriteString("\n\t\t" + setting.String())
-	}
+  for _, setting := range frame.Settings {
+    buf.WriteString("\n\t\t" + setting.String())
+  }
+  buf.WriteString(fmt.Sprintln("}"))
 
   return buf.String()
 }
@@ -585,10 +586,10 @@ type Setting struct {
 func (frame *Setting) String() string {
   buf := new(bytes.Buffer)
 
-  buf.WriteString("SETTING:\n\t\t\t")
+  buf.WriteString("SETTING {\n\t\t\t")
   buf.WriteString(fmt.Sprintf("Flags:         %d\n\t\t\t", frame.Flags))
   buf.WriteString(fmt.Sprintf("ID:            %d\n\t\t\t", frame.ID))
-  buf.WriteString(fmt.Sprintf("Value:         %d\n", frame.Value))
+  buf.WriteString(fmt.Sprintf("Value:         %d\n\t\t}\n", frame.Value))
 
   return buf.String()
 }
@@ -619,9 +620,9 @@ type PingFrame struct {
 func (frame *PingFrame) String() string {
   buf := new(bytes.Buffer)
 
-  buf.WriteString("PING:\n\t")
+  buf.WriteString("PING {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
-  buf.WriteString(fmt.Sprintf("Ping ID:              %d\n", frame.PingID))
+  buf.WriteString(fmt.Sprintf("Ping ID:              %d\n}\n", frame.PingID))
 
   return buf.String()
 }
@@ -707,10 +708,10 @@ type GoawayFrame struct {
 func (frame *GoawayFrame) String() string {
   buf := new(bytes.Buffer)
 
-  buf.WriteString("GOAWAY:\n\t")
+  buf.WriteString("GOAWAY {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Last good stream ID:  %d\n\t", frame.LastGoodStreamID))
-  buf.WriteString(fmt.Sprintf("Status code:          %d\n", frame.StatusCode))
+  buf.WriteString(fmt.Sprintf("Status code:          %d\n}\n", frame.StatusCode))
 
   return buf.String()
 }
@@ -812,11 +813,11 @@ func (frame *HeadersFrame) String() string {
     flags += "FLAG_FIN "
   }
 
-  buf.WriteString("HEADERS:\n\t")
+  buf.WriteString("HEADERS {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
   buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
-  buf.WriteString(fmt.Sprintf("Headers:              %v\n", frame.Headers))
+  buf.WriteString(fmt.Sprintf("Headers:              %v\n}\n", frame.Headers))
 
   return buf.String()
 }
@@ -939,10 +940,10 @@ type WindowUpdateFrame struct {
 func (frame *WindowUpdateFrame) String() string {
   buf := new(bytes.Buffer)
 
-  buf.WriteString("WINDOW_UPDATE:\n\t")
+  buf.WriteString("WINDOW_UPDATE {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
-  buf.WriteString(fmt.Sprintf("Delta window size:    %d\n", frame.DeltaWindowSize))
+  buf.WriteString(fmt.Sprintf("Delta window size:    %d\n}\n", frame.DeltaWindowSize))
 
   return buf.String()
 }
@@ -1034,11 +1035,11 @@ type CredentialFrame struct {
 func (frame *CredentialFrame) String() string {
   buf := new(bytes.Buffer)
 
-  buf.WriteString("CREDENTIAL:\n\t")
+  buf.WriteString("CREDENTIAL {\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
   buf.WriteString(fmt.Sprintf("Proof:                %v\n\t", frame.Proof))
-  buf.WriteString(fmt.Sprintf("Certificates:         %v\n", frame.Certificates))
+  buf.WriteString(fmt.Sprintf("Certificates:         %v\n}\n", frame.Certificates))
 
   return buf.String()
 }
@@ -1201,10 +1202,10 @@ func (frame *DataFrame) String() string {
     flags += "FLAG_FIN "
   }
 
-  buf.WriteString("DATA:\n\t")
+  buf.WriteString("DATA {\n\t")
   buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
   buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
-  buf.WriteString(fmt.Sprintf("Data:                 %v\n", frame.Data))
+  buf.WriteString(fmt.Sprintf("Data:                 %v\n}\n", frame.Data))
 
   return buf.String()
 }
