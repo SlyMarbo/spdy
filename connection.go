@@ -40,14 +40,15 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.priority = frame.Priority
   newStream.input = input
   newStream.output = output
-	newStream.handler = DefaultServeMux
+  newStream.handler = DefaultServeMux
   newStream.certificates = make([]Certificate, 1)
   newStream.headers = frame.Headers
   newStream.settings = make([]*Setting, 1)
   newStream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
   newStream.version = conn.version
 
-  rawUrl := frame.Headers.Get(":scheme") + frame.Headers.Get(":host") + frame.Headers.Get(":path")
+  rawUrl := frame.Headers.Get(":scheme") + "://" + frame.Headers.Get(":host") +
+    frame.Headers.Get(":path")
   url, err := url.Parse(rawUrl)
   if err != nil {
     panic(err)
