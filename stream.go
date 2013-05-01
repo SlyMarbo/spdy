@@ -19,6 +19,7 @@ type stream struct {
   headers        Header
   settings       []*Setting
   unidirectional bool
+	version        int
 }
 
 func (s *stream) run() {

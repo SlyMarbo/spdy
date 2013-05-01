@@ -43,6 +43,7 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.headers = frame.Headers
   newStream.settings = make([]*Setting, 1)
   newStream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
+	newStream.version = conn.version
 
   newStream.request = new(Request)
 
@@ -64,18 +65,20 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
 
   // Check version.
   if frame.Version != uint16(conn.version) {
-    log.Printf("Warning: Received frame with SPDY version %d on connection with version %d.\n",
+		
+		// This is currently strict; only one version allowed per connection.
+    log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
       frame.Version, conn.version)
     if frame.Version > SPDY_VERSION {
       log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
         frame.Version)
-      reply := new(RstStreamFrame)
-      reply.Version = SPDY_VERSION
-      reply.StreamID = frame.StreamID
-      reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
-      conn.WriteFrame(reply)
-      return
-    }
+		}
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+    conn.WriteFrame(reply)
+    return
   }
 
   // Check Stream ID is odd.
