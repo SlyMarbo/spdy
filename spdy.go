@@ -1,12 +1,14 @@
 package spdy
 
 import (
-  //"encoding/hex"
+  "bufio"
   "fmt"
   "io"
 )
 
 const (
+  CONTROL_FRAME = 0
+  DATA_FRAME    = -1
   SYN_STREAM    = 1
   SYN_REPLY     = 2
   RST_STREAM    = 3
@@ -17,6 +19,24 @@ const (
   WINDOW_UPDATE = 9
   CREDENTIAL    = 10
 )
+
+var frameNames = map[int]string{
+  SYN_STREAM:    "SYN_STREAM",
+  SYN_REPLY:     "SYN_REPLY",
+  RST_STREAM:    "RST_STREAM",
+  SETTINGS:      "SETTINGS",
+  PING:          "PING",
+  GOAWAY:        "GOAWAY",
+  HEADERS:       "HEADERS",
+  WINDOW_UPDATE: "WINDOW_UPDATE",
+  CREDENTIAL:    "CREDENTIAL",
+  CONTROL_FRAME: "CONTROL_FRAME",
+  DATA_FRAME:    "DATA_FRAME",
+}
+
+func FrameName(frameType int) string {
+  return frameNames[frameType]
+}
 
 func bytesToUint16(b []byte) uint16 {
   return (uint16(b[0]) << 8) + uint16(b[1])
@@ -35,6 +55,15 @@ func bytesToUint31(b []byte) uint32 {
 }
 
 /*** ERRORS ***/
+type IncorrectFrame struct {
+  got, expected int
+}
+
+func (i *IncorrectFrame) Error() string {
+  return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", FrameName(i.expected),
+    FrameName(i.got))
+}
+
 type IncorrectDataLength struct {
   got, expected int
 }
@@ -42,6 +71,12 @@ type IncorrectDataLength struct {
 func (i *IncorrectDataLength) Error() string {
   return fmt.Sprintf("Error: Incorrect amount of data for frame: got %d bytes, expected %d.", i.got,
     i.expected)
+}
+
+type FrameTooLarge struct{}
+
+func (_ FrameTooLarge) Error() string {
+  return "Error: Frame too large."
 }
 
 type InvalidField struct {
@@ -54,22 +89,14 @@ func (i *InvalidField) Error() string {
     i.expected)
 }
 
+/*** FRAMES ***/
 type Frame interface {
   Bytes() ([]byte, error)
-  Parse([]byte) error
+  Parse(bufio.Reader) error
   WriteTo(io.Writer) error
 }
 
-func Parse(data []byte) (Frame, error) {
-  if data[0]&0x80 != 0 {
-    // Control frame.
-
-    // TODO
-
-  } else {
-    // Data frame.
-
-  }
+func ReadFrame(reader bufio.Reader) (Frame, error) {
 
   panic("Unreachable")
 }
@@ -87,23 +114,34 @@ type SynStreamFrame struct {
   Headers       *Headers
 }
 
-func (frame *SynStreamFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length < 22 {
-    return &IncorrectDataLength{length, 22}
-  } else if length != 8+int(bytesToUint24(data[5:8])) {
-    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
+func (frame *SynStreamFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, SYN_STREAM}
   }
 
-  // Check type.
-  if data[2] != 0 || data[3] != 1 {
-    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 1}
+  // Check it's a SYN_STREAM.
+  if bytesToUint16(start[2:4]) != SYN_STREAM {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), SYN_STREAM}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length < 10 {
+    return &IncorrectDataLength{length, 10}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check unused space.
@@ -121,7 +159,7 @@ func (frame *SynStreamFrame) Parse(data []byte) error {
   frame.Slot = data[17]
 
   headers := new(Headers)
-  err := headers.Parse(data[18:])
+  err = headers.Parse(data[18:])
   if err != nil {
     return err
   }
@@ -210,21 +248,34 @@ type SynReplyFrame struct {
   Headers  *Headers
 }
 
-func (frame *SynReplyFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length < 12 {
-    return &IncorrectDataLength{length, 12}
+func (frame *SynReplyFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, SYN_REPLY}
   }
 
-  // Check type.
-  if data[2] != 0 || data[3] != 2 {
-    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 2}
+  // Check it's a SYN_REPLY.
+  if bytesToUint16(start[2:4]) != SYN_REPLY {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), SYN_REPLY}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length < 4 {
+    return &IncorrectDataLength{length, 4}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check unused space.
@@ -237,7 +288,7 @@ func (frame *SynReplyFrame) Parse(data []byte) error {
   frame.StreamID = bytesToUint31(data[8:12])
 
   headers := new(Headers)
-  err := headers.Parse(data[12:])
+  err = headers.Parse(data[12:])
   if err != nil {
     return err
   }
@@ -315,31 +366,39 @@ type RstStreamFrame struct {
   StatusCode uint32
 }
 
-func (frame *RstStreamFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
+func (frame *RstStreamFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
+  }
+
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, RST_STREAM}
+  }
+
+  // Check it's a RST_STREAM.
+  if bytesToUint16(start[2:4]) != RST_STREAM {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), RST_STREAM}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
   if length != 8 {
     return &IncorrectDataLength{length, 8}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
-  }
-
-  // Check type.
-  if data[2] != 0 || data[3] != 3 {
-    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 3}
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check unused space.
   if (data[8] >> 7) != 0 {
     return &InvalidField{"Unused", 1, 0}
-  }
-
-  // Check length.
-  if bytesToUint24(data[5:8]) != uint32(8) {
-    return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 8}
   }
 
   frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
@@ -391,16 +450,40 @@ type SettingsFrame struct {
   Settings []*Setting
 }
 
-func (frame *SettingsFrame) Parse(data []byte) error {
+func (frame *SettingsFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
+  }
+
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, SETTINGS}
+  }
+
+  // Check it's a SETTINGS.
+  if bytesToUint16(start[2:4]) != SETTINGS {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), SETTINGS}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length < 8 {
+    return &IncorrectDataLength{length, 8}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
+  }
+
   // Check size.
-  length := len(data)
   numSettings := int(bytesToUint32(data[8:12]))
-  if length < 12 {
-    return &IncorrectDataLength{length, 12}
-  } else if length != 8+int(bytesToUint24(data[5:8])) {
-    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
-  } else if length < 12+(8*numSettings) {
-    return &IncorrectDataLength{length, 12 + (8 * numSettings)}
+  if length < 4+(8*numSettings) {
+    return &IncorrectDataLength{length, 4 + (8 * numSettings)}
   }
 
   // Check control bit.
@@ -504,31 +587,39 @@ type PingFrame struct {
   PingID  uint32
 }
 
-func (frame *PingFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length != 12 {
-    return &IncorrectDataLength{length, 12}
+func (frame *PingFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, PING}
   }
 
-  // Check type.
-  if data[2] != 0 || data[3] != 6 {
-    return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 6}
+  // Check it's a PING.
+  if bytesToUint16(start[2:4]) != PING {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), PING}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length != 4 {
+    return &IncorrectDataLength{length, 4}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check flags.
   if (data[4]) != 0 {
     return &InvalidField{"Flags", int(data[4]), 0}
-  }
-
-  // Check length.
-  if bytesToUint24(data[5:8]) != uint32(4) {
-    return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 4}
   }
 
   frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
@@ -574,21 +665,34 @@ type GoawayFrame struct {
   StatusCode       uint32
 }
 
-func (frame *GoawayFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length != 16 {
-    return &IncorrectDataLength{length, 16}
+func (frame *GoawayFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, GOAWAY}
   }
 
-  // Check type.
-  if data[2] != 0 || data[3] != 7 {
-    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 7}
+  // Check it's a GOAWAY.
+  if bytesToUint16(start[2:4]) != GOAWAY {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), GOAWAY}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length != 8 {
+    return &IncorrectDataLength{length, 8}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check unused space.
@@ -599,11 +703,6 @@ func (frame *GoawayFrame) Parse(data []byte) error {
   // Check flags.
   if (data[4]) != 0 {
     return &InvalidField{"Flags", int(data[4]), 0}
-  }
-
-  // Check length.
-  if bytesToUint24(data[5:8]) != uint32(8) {
-    return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 8}
   }
 
   frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
@@ -655,23 +754,34 @@ type HeadersFrame struct {
   Headers  *Headers
 }
 
-func (frame *HeadersFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length < 12 {
-    return &IncorrectDataLength{length, 12}
-  } else if length != 8+int(bytesToUint24(data[5:8])) {
-    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
+func (frame *HeadersFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, HEADERS}
   }
 
-  // Check type.
-  if data[2] != 0 || data[3] != 8 {
-    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 8}
+  // Check it's a HEADERS.
+  if bytesToUint16(start[2:4]) != HEADERS {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), HEADERS}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length < 4 {
+    return &IncorrectDataLength{length, 4}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check unused space.
@@ -684,7 +794,7 @@ func (frame *HeadersFrame) Parse(data []byte) error {
   frame.StreamID = bytesToUint31(data[8:12])
 
   headers := new(Headers)
-  err := headers.Parse(data[12:])
+  err = headers.Parse(data[12:])
   if err != nil {
     return err
   }
@@ -776,31 +886,39 @@ type WindowUpdateFrame struct {
   DeltaWindowSize uint32
 }
 
-func (frame *WindowUpdateFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length < 12 {
-    return &IncorrectDataLength{length, 12}
+func (frame *WindowUpdateFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, WINDOW_UPDATE}
   }
 
-  // Check type.
-  if data[2] != 0 || data[3] != 9 {
-    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 9}
+  // Check it's a WINDOW_UPDATE.
+  if bytesToUint16(start[2:4]) != WINDOW_UPDATE {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), WINDOW_UPDATE}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length != 8 {
+    return &IncorrectDataLength{length, 8}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check unused space.
   if (data[8]>>7)|(data[12]>>7) != 0 {
     return &InvalidField{"Unused", 1, 0}
-  }
-
-  // Check length.
-  if bytesToUint24(data[5:8]) != uint32(8) {
-    return &InvalidField{"Length", int(bytesToUint24(data[5:8])), 8}
   }
 
   frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
@@ -852,23 +970,34 @@ type CredentialFrame struct {
   Certificates []Certificate
 }
 
-func (frame *CredentialFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length < 14 {
-    return &IncorrectDataLength{length, 14}
-  } else if length != 8+int(bytesToUint24(data[5:8])) {
-    return &IncorrectDataLength{length, 8 + int(bytesToUint24(data[5:8]))}
+func (frame *CredentialFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 0 {
-    return &InvalidField{"Control bit", 0, 1}
+  // Check it's a control frame.
+  if start[0]&0x80 == 0 {
+    return &IncorrectFrame{DATA_FRAME, CREDENTIAL}
   }
 
-  // Check type.
-  if data[2] != 0 || data[3] != 10 {
-    return &InvalidField{"Type", int(bytesToUint16(data[2:4])), 10}
+  // Check it's a CREDENTIAL.
+  if bytesToUint16(start[2:4]) != CREDENTIAL {
+    return &IncorrectFrame{int(bytesToUint16(start[2:4])), CREDENTIAL}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length < 6 {
+    return &IncorrectDataLength{length, 6}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   // Check flags.
@@ -991,18 +1120,29 @@ type DataFrame struct {
   Data     []byte
 }
 
-func (frame *DataFrame) Parse(data []byte) error {
-  // Check size.
-  length := len(data)
-  if length < 8 {
-    return &IncorrectDataLength{length, 8}
-  } else if length < 8+int(bytesToUint16(data[2:4])) {
-    return &IncorrectDataLength{length, 8 + int(bytesToUint16(data[2:4]))}
+func (frame *DataFrame) Parse(reader bufio.Reader) error {
+  start, err := reader.Peek(8)
+  if err != nil {
+    return err
   }
 
-  // Check control bit.
-  if data[0]&0x80 == 1 {
-    return &InvalidField{"Control bit", 1, 0}
+  // Check it's a data frame.
+  if start[0]&0x80 == 1 {
+    return &IncorrectFrame{CONTROL_FRAME, DATA_FRAME}
+  }
+
+  // Get and check length.
+  length := int(bytesToUint24(start[5:8]))
+  if length < 1 {
+    return &IncorrectDataLength{length, 1}
+  } else if length > MAX_FRAME_SIZE-8 {
+    return FrameTooLarge{}
+  }
+
+  // Read in data.
+  data := make([]byte, 8+length)
+  if _, err := reader.Read(data); err != nil {
+    return err
   }
 
   frame.StreamID = bytesToUint31(data[0:4])
