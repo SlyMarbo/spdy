@@ -1,12 +1,13 @@
 package spdy
 
 import (
-// "crypto/tls"
-//   "net"
-//   "sync"
+  // "crypto/tls"
+  //   "net"
+  "sync"
 )
 
 type stream struct {
+  sync.RWMutex
   conn           *connection
   streamID       uint32
   state          StreamState
