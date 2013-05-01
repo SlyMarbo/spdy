@@ -5,6 +5,7 @@ import (
   "net"
 	"runtime"
   "sync"
+	"time"
 )
 
 type connection struct {
@@ -23,31 +24,17 @@ type connection struct {
 	version            int
 }
 
-func acceptSPDYVersion2(server *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-	conn := new(connection)
-	conn.remoteAddr = tlsConn.RemoteAddr().String()
-	conn.server = server
-	conn.conn = tlsConn
-	conn.streams = make(map[uint32]*stream)
-	conn.buffer = make([]Frame, 0, 10)
-	conn.queue = make([]Frame, 0, 10)
-	conn.version = 2
+func (conn *connection) readRequests() {
+	if d := conn.server.ReadTimeout; d != 0 {
+		conn.conn.SetReadDeadline(time.Now().Add(d))
+	}
+	if d := conn.server.WriteTimeout; d != 0 {
+		defer func() {
+			conn.conn.SetWriteDeadline(time.Now().Add(d))
+		}
+	}
 	
-	conn.serve()
-}
-
-func acceptSPDYVersion3(server *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-	conn := new(connection)
-	conn.remoteAddr = tlsConn.RemoteAddr().String()
-	conn.server = server
-	conn.conn = tlsConn
-	conn.tlsConfig = server.TLSConfig
-	conn.streams = make(map[uint32]*stream)
-	conn.buffer = make([]Frame, 0, 10)
-	conn.queue = make([]Frame, 0, 10)
-	conn.version = 3
 	
-	conn.serve()
 }
 
 func (conn *connection) serve() {
@@ -60,5 +47,35 @@ func (conn *connection) serve() {
 		}
 	}
 	
+	conn.readRequests()
+}
+
+func acceptSPDYVersion2(server *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+	conn := new(connection)
+	conn.remoteAddr = tlsConn.RemoteAddr().String()
+	conn.conn = tlsConn
+	conn.server = server
+	conn.tlsState = tlsConn.ConnectionState()
+	conn.tlsConfig = server.TLSConfig
+	conn.streams = make(map[uint32]*stream)
+	conn.buffer = make([]Frame, 0, 10)
+	conn.queue = make([]Frame, 0, 10)
+	conn.version = 2
 	
+	conn.serve()
+}
+
+func acceptSPDYVersion3(server *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+	conn := new(connection)
+	conn.remoteAddr = tlsConn.RemoteAddr().String()
+	conn.conn = tlsConn
+	conn.server = server
+	conn.tlsState = tlsConn.ConnectionState()
+	conn.tlsConfig = server.TLSConfig
+	conn.streams = make(map[uint32]*stream)
+	conn.buffer = make([]Frame, 0, 10)
+	conn.queue = make([]Frame, 0, 10)
+	conn.version = 3
+	
+	conn.serve()
 }

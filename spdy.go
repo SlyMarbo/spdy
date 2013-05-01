@@ -18,9 +18,6 @@ const (
   CREDENTIAL    = 10
 )
 
-// Maximum frame size (2 ** 24 -1)
-const MAX_FRAME_SIZE = 0xffffff
-
 func bytesToUint16(b []byte) uint16 {
   return (uint16(b[0]) << 8) + uint16(b[1])
 }
