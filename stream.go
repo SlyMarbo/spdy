@@ -13,13 +13,14 @@ type stream struct {
   state          StreamState
   priority       uint8
   input          <-chan []byte
+	output         chan<- Frame
   request        *Request
   certificates   []Certificate
-  headers        *Headers
+  headers        Header
   settings       []*Setting
   unidirectional bool
 }
 
 func (s *stream) run() {
-
+	
 }
