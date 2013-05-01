@@ -16,6 +16,21 @@ func AddSPDY(server *http.Server) {
   }
   server.TLSNextProto["spdy/2"] = acceptSPDYVersion2
   server.TLSNextProto["spdy/3"] = acceptSPDYVersion3
+	
+	if server.TLSConfig == nil {
+		server.TLSConfig = new(tls.Config)
+	}
+	if server.TLSConfig.NextProtos == nil {
+		server.TLSConfig.NextProtos = []string{
+			"spdy/3",
+			"spdy/2",
+		}
+	} else {
+		server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, []string{
+			"spdy/3",
+			"spdy/2",
+		}...)
+	}
 }
 
 type Handler interface {
