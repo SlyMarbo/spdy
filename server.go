@@ -2,7 +2,8 @@ package spdy
 
 import (
   "crypto/tls"
-	"fmt"
+  "errors"
+  "fmt"
   "net/http"
   "net/url"
   "path"
@@ -19,21 +20,21 @@ func AddSPDY(server *http.Server) {
   }
   //server.TLSNextProto["spdy/2"] = acceptSPDYVersion2
   server.TLSNextProto["spdy/3"] = acceptSPDYVersion3
-	
-	if server.TLSConfig == nil {
-		server.TLSConfig = new(tls.Config)
-	}
-	if server.TLSConfig.NextProtos == nil {
-		server.TLSConfig.NextProtos = []string{
-			"spdy/3",
-			//"spdy/2",
-		}
-	} else {
-		server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, []string{
-			"spdy/3",
-			//"spdy/2",
-		}...)
-	}
+
+  if server.TLSConfig == nil {
+    server.TLSConfig = new(tls.Config)
+  }
+  if server.TLSConfig.NextProtos == nil {
+    server.TLSConfig.NextProtos = []string{
+      "spdy/3",
+      //"spdy/2",
+    }
+  } else {
+    server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, []string{
+      "spdy/3",
+      //"spdy/2",
+    }...)
+  }
 }
 
 type Handler interface {
@@ -431,3 +432,11 @@ func Handle(pattern string, handler Handler) {
 func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
   DefaultServeMux.HandleFunc(pattern, handler)
 }
+
+// Errors introduced by the HTTP server.
+var (
+  ErrWriteAfterFlush = errors.New("Conn.Write called after Flush")
+  ErrBodyNotAllowed  = errors.New("http: request method or response status code does not allow body")
+  ErrHijacked        = errors.New("Conn has been hijacked")
+  ErrContentLength   = errors.New("Conn.Write wrote more than the declared Content-Length")
+)
