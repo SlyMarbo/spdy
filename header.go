@@ -1,6 +1,8 @@
 package spdy
 
 import (
+	"bytes"
+	"fmt"
   "io"
   "net/textproto"
   "sort"
@@ -10,6 +12,25 @@ import (
 
 // A Header represents the key-value pairs in an HTTP header.
 type Header map[string][]string
+
+func (h Header) String() string {
+	buf := new(bytes.Buffer)
+	buf.WriteString(fmt.Sprintf("Headers {\n\t\t\t"))
+	for name, values := range h {
+		buf.WriteString(fmt.Sprintf("%-16s", name))
+		l := len(values) - 1
+		for i, value := range values {
+			buf.WriteString(fmt.Sprintf("%s\n\t\t\t", value))
+			if i < l {
+				for j := 0; j < 16; j++ {
+					buf.WriteString(" ")
+				}
+			}
+		}
+	}
+	buf.WriteString(fmt.Sprintf("\n\t\t}\n"))
+	return buf.String()
+}
 
 func (h Header) Parse(data []byte) error {
   header, err := new(decompressor).Decompress(3, data)
