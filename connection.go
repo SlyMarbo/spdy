@@ -40,6 +40,7 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.priority = frame.Priority
   newStream.input = input
   newStream.output = output
+	newStream.handler = DefaultServeMux
   newStream.certificates = make([]Certificate, 1)
   newStream.headers = frame.Headers
   newStream.settings = make([]*Setting, 1)
