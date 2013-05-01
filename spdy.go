@@ -7,25 +7,6 @@ import (
   "io"
 )
 
-const SPDY_VERSION = 3
-
-const (
-  CONTROL_FRAME = -1
-  DATA_FRAME    = -2
-)
-
-const (
-  SYN_STREAM    = 1
-  SYN_REPLY     = 2
-  RST_STREAM    = 3
-  SETTINGS      = 4
-  PING          = 6
-  GOAWAY        = 7
-  HEADERS       = 8
-  WINDOW_UPDATE = 9
-  CREDENTIAL    = 10
-)
-
 type Frame interface {
   Bytes() ([]byte, error)
   Parse(*bufio.Reader) error
