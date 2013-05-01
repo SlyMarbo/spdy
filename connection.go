@@ -30,6 +30,49 @@ type connection struct {
   numInvalidStreamIDs int
 }
 
+func (conn *connection) send() {
+  for {
+    frame := conn.selectFrameToSend()
+    err := frame.WriteTo(conn.conn)
+    if err != nil {
+      panic(err)
+    }
+  }
+}
+
+func (conn *connection) selectFrameToSend() (frame Frame) {
+  // Try in priority order first.
+  for i := 0; i < 8; i++ {
+    select {
+    case frame = <-conn.streamOutputs[i]:
+      return frame
+    default:
+    }
+  }
+
+  // Wait for any frame.
+  select {
+  case frame = <-conn.streamOutputs[0]:
+    return frame
+  case frame = <-conn.streamOutputs[1]:
+    return frame
+  case frame = <-conn.streamOutputs[2]:
+    return frame
+  case frame = <-conn.streamOutputs[3]:
+    return frame
+  case frame = <-conn.streamOutputs[4]:
+    return frame
+  case frame = <-conn.streamOutputs[5]:
+    return frame
+  case frame = <-conn.streamOutputs[6]:
+    return frame
+  case frame = <-conn.streamOutputs[7]:
+    return frame
+  }
+
+  panic("Unreachable")
+}
+
 func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   output chan<- Frame) *stream {
 
@@ -305,6 +348,7 @@ func (conn *connection) serve() {
     }
   }()
 
+  go func() { conn.send() }()
   conn.readFrames()
 }
 

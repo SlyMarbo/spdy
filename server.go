@@ -436,7 +436,8 @@ func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
 // Errors introduced by the HTTP server.
 var (
   ErrWriteAfterFlush = errors.New("Conn.Write called after Flush")
-  ErrBodyNotAllowed  = errors.New("http: request method or response status code does not allow body")
+  ErrBodyNotAllowed  = errors.New("spdy: request method or response status code does not allow body")
   ErrHijacked        = errors.New("Conn has been hijacked")
   ErrContentLength   = errors.New("Conn.Write wrote more than the declared Content-Length")
+  ErrCancelled       = errors.New("spdy: Stream has been cancelled.")
 )

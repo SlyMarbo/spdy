@@ -47,6 +47,11 @@ func (h Header) Parse(data []byte) error {
 }
 
 func (h Header) Bytes() []byte {
+	h.Del("Connection")
+	h.Del("Keep-Alive")
+	h.Del("Proxy-Connection")
+	h.Del("Transfer-Encoding")
+	
   length := 4
   num := len(h)
   lens := make(map[string]int, num)
@@ -73,7 +78,7 @@ func (h Header) Bytes() []byte {
     out[offset+2] = byte(nLen >> 8)
     out[offset+3] = byte(nLen)
 
-    for i, b := range []byte(name) {
+    for i, b := range []byte(strings.ToLower(name)) {
       out[offset+4+i] = b
     }
 
