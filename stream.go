@@ -11,6 +11,7 @@ type stream struct {
   streamID       uint32
   state          StreamState
   priority       uint8
+	request        *Request
   certificates   [][]byte
   headers        *Headers
   settings       []*Setting
