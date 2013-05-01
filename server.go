@@ -10,11 +10,14 @@ import (
   "sync"
 )
 
+// AddSPDY adjusts the given server too support SPDY/v3.
+//
+// TODO: Add spdy/2 support.
 func AddSPDY(server *http.Server) {
   if server.TLSNextProto == nil {
     server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
   }
-  server.TLSNextProto["spdy/2"] = acceptSPDYVersion2
+  //server.TLSNextProto["spdy/2"] = acceptSPDYVersion2
   server.TLSNextProto["spdy/3"] = acceptSPDYVersion3
 	
 	if server.TLSConfig == nil {
@@ -23,12 +26,12 @@ func AddSPDY(server *http.Server) {
 	if server.TLSConfig.NextProtos == nil {
 		server.TLSConfig.NextProtos = []string{
 			"spdy/3",
-			"spdy/2",
+			//"spdy/2",
 		}
 	} else {
 		server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, []string{
 			"spdy/3",
-			"spdy/2",
+			//"spdy/2",
 		}...)
 	}
 }
