@@ -12,65 +12,75 @@ import (
 type Header map[string][]string
 
 func (h Header) Parse(data []byte) error {
-	return nil
+  header, err := new(decompressor).Decompress(3, data)
+  if err != nil {
+    return err
+  }
+
+  for name, values := range header {
+    for _, value := range values {
+      h.Add(name, value)
+    }
+  }
+  return nil
 }
 
 func (h Header) Bytes() []byte {
-	length := 4
-	num := len(h)
-	lens := make(map[string]int, num)
-	for name, values := range h {
-		length += len(name) + 8
-		lens[name] = len(values) - 1
-		for _, value := range values {
-			length += len(value)
-			lens[name] += len(value)
-		}
-	}
-	
-	out := make([]byte, length)
-	out[0] = byte(num >> 24)
-	out[1] = byte(num >> 16)
-	out[2] = byte(num >> 8)
-	out[3] = byte(num)
-	
-	offset := 4
-	for name, values := range h {
-		nLen := len(name)
-		out[offset+0] = byte(nLen >> 24)
-		out[offset+1] = byte(nLen >> 16)
-		out[offset+2] = byte(nLen >> 8)
-		out[offset+3] = byte(nLen)
-		
-		for i, b := range []byte(name) {
-			out[offset+4+i] = b
-		}
-		
-		offset += 4 + nLen
-		
-		vLen := lens[name]
-		out[offset+0] = byte(vLen >> 24)
-		out[offset+1] = byte(vLen >> 16)
-		out[offset+2] = byte(vLen >> 8)
-		out[offset+3] = byte(vLen)
-		
-		for n, value := range values {
-			for i, b := range []byte(value) {
-				out[offset+4+i] = b
-			}
-			offset += len(value)
-			if n < len(values) - 1 {
-				out[offset+4+0] = '\x00'
-				offset += 1
-			}
-		}
-	}
-	
-	return out
+  length := 4
+  num := len(h)
+  lens := make(map[string]int, num)
+  for name, values := range h {
+    length += len(name) + 8
+    lens[name] = len(values) - 1
+    for _, value := range values {
+      length += len(value)
+      lens[name] += len(value)
+    }
+  }
+
+  out := make([]byte, length)
+  out[0] = byte(num >> 24)
+  out[1] = byte(num >> 16)
+  out[2] = byte(num >> 8)
+  out[3] = byte(num)
+
+  offset := 4
+  for name, values := range h {
+    nLen := len(name)
+    out[offset+0] = byte(nLen >> 24)
+    out[offset+1] = byte(nLen >> 16)
+    out[offset+2] = byte(nLen >> 8)
+    out[offset+3] = byte(nLen)
+
+    for i, b := range []byte(name) {
+      out[offset+4+i] = b
+    }
+
+    offset += 4 + nLen
+
+    vLen := lens[name]
+    out[offset+0] = byte(vLen >> 24)
+    out[offset+1] = byte(vLen >> 16)
+    out[offset+2] = byte(vLen >> 8)
+    out[offset+3] = byte(vLen)
+
+    for n, value := range values {
+      for i, b := range []byte(value) {
+        out[offset+4+i] = b
+      }
+      offset += len(value)
+      if n < len(values)-1 {
+        out[offset+4+0] = '\x00'
+        offset += 1
+      }
+    }
+  }
+
+  return out
 }
 
 func (h Header) Compressed() ([]byte, error) {
-	return new(compressor).Compress(3, h.Bytes())
+  return new(compressor).Compress(3, h.Bytes())
 }
 
 // Add adds the key, value pair to the header.
