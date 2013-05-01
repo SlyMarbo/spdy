@@ -11,7 +11,8 @@ type stream struct {
   streamID       uint32
   state          StreamState
   priority       uint8
-	request        *Request
+  input          <-chan []byte
+  request        *Request
   certificates   []Certificate
   headers        *Headers
   settings       []*Setting
@@ -19,5 +20,5 @@ type stream struct {
 }
 
 func (s *stream) run() {
-	
+
 }

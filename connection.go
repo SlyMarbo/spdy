@@ -12,7 +12,7 @@ import (
 )
 
 type connection struct {
-  sync.Mutex
+  sync.RWMutex
   remoteAddr         string // network address of remote side
   server             *http.Server
   conn               *tls.Conn
@@ -20,6 +20,7 @@ type connection struct {
   tlsState           *tls.ConnectionState
   tlsConfig          *tls.Config
   streams            map[uint32]*stream
+  streamInputs       map[uint32]chan<- []byte
   buffer             []Frame
   queue              []Frame
   nextServerStreamID uint32 // even
@@ -28,12 +29,13 @@ type connection struct {
   version            int
 }
 
-func (conn *connection) newStream(frame *SynStreamFrame) *stream {
+func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte) *stream {
   newStream := new(stream)
   newStream.conn = conn
   newStream.streamID = frame.StreamID
   newStream.state = STATE_OPEN
   newStream.priority = frame.Priority
+  newStream.input = input
   newStream.request = new(Request)
   newStream.certificates = make([]Certificate, 1)
   newStream.headers = frame.Headers
@@ -45,6 +47,84 @@ func (conn *connection) newStream(frame *SynStreamFrame) *stream {
 
 func (conn *connection) WriteFrame(frame Frame) error {
   return nil
+}
+
+func (conn *connection) handleSynStream(frame *SynStreamFrame) {
+  // Check stream creation is allowed.
+  conn.RLock()
+  defer conn.RUnlock()
+
+  if conn.goaway {
+    return
+  }
+
+  // Check version.
+  if frame.Version != uint16(conn.version) {
+    log.Printf("Warning: Received frame with SPDY version %d on connection with version %d.\n",
+      frame.Version, conn.version)
+    if frame.Version > SPDY_VERSION {
+      log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
+        frame.Version)
+      reply := new(RstStreamFrame)
+      reply.Version = SPDY_VERSION
+      reply.StreamID = frame.StreamID
+      reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+      conn.WriteFrame(reply)
+      return
+    }
+  }
+
+  // Check Stream ID is odd.
+  if frame.StreamID&1 == 0 {
+    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n",
+      frame.StreamID)
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+    return
+  }
+
+  // Check Stream ID is the right number.
+  if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
+    conn.nextClientStreamID != 0 {
+    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
+      frame.StreamID, conn.nextClientStreamID+2)
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+    return
+  }
+
+  // Check Stream ID is not too large.
+  if frame.StreamID > MAX_STREAM_ID {
+    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which is too large.\n",
+      frame.StreamID)
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+    return
+  }
+
+  // Stream ID is fine.
+
+  // Create and start new stream.
+  conn.RUnlock()
+  conn.Lock()
+  input := make(chan []byte)
+  conn.streamInputs[frame.StreamID] = input
+  conn.streams[frame.StreamID] = conn.newStream(frame, input)
+  conn.Unlock()
+  conn.RLock()
+
+  go conn.streams[frame.StreamID].run()
+
+  return
 }
 
 func (conn *connection) readFrames() {
@@ -73,70 +153,7 @@ func (conn *connection) readFrames() {
      *** SYN_STREAM ***
      ******************/
     case *SynStreamFrame:
-
-      // Check stream creation is allowed.
-      if conn.goaway {
-        break FrameHandling
-      }
-
-      // Check version.
-      if frame.Version != uint16(conn.version) {
-        log.Printf("Warning: Received frame with SPDY version %d on connection with version %d.\n",
-          frame.Version, conn.version)
-        if frame.Version > SPDY_VERSION {
-          log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
-            frame.Version)
-          reply := new(RstStreamFrame)
-          reply.Version = SPDY_VERSION
-          reply.StreamID = frame.StreamID
-          reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
-          conn.WriteFrame(reply)
-          break FrameHandling
-        }
-      }
-
-      // Check Stream ID is odd.
-      if frame.StreamID&1 == 0 {
-        log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n",
-          frame.StreamID)
-        reply := new(RstStreamFrame)
-        reply.Version = SPDY_VERSION
-        reply.StreamID = frame.StreamID
-        reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-        conn.WriteFrame(reply)
-        break FrameHandling
-      }
-
-      // Check Stream ID is the right number.
-      if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
-        conn.nextClientStreamID != 0 {
-        log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
-          frame.StreamID, conn.nextClientStreamID+2)
-        reply := new(RstStreamFrame)
-        reply.Version = SPDY_VERSION
-        reply.StreamID = frame.StreamID
-        reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-        conn.WriteFrame(reply)
-        break FrameHandling
-      }
-
-      // Check Stream ID is not too large.
-      if frame.StreamID > MAX_STREAM_ID {
-        log.Printf("Error: Received SYN_STREAM with Stream ID %d, which is too large.\n",
-          frame.StreamID)
-        reply := new(RstStreamFrame)
-        reply.Version = SPDY_VERSION
-        reply.StreamID = frame.StreamID
-        reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-        conn.WriteFrame(reply)
-        break FrameHandling
-      }
-
-      // Stream ID is fine.
-
-      // Create and start new stream.
-      conn.streams[frame.StreamID] = conn.newStream(frame)
-      go conn.streams[frame.StreamID].run()
+      conn.handleSynStream(frame)
 
     case *SynReplyFrame:
       //
@@ -151,7 +168,24 @@ func (conn *connection) readFrames() {
       //
 
     case *GoawayFrame:
-      //
+      // Check version.
+      if frame.Version != uint16(conn.version) {
+        log.Printf("Warning: Received frame with SPDY version %d on connection with version %d.\n",
+          frame.Version, conn.version)
+        if frame.Version > SPDY_VERSION {
+          log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
+            frame.Version)
+          reply := new(RstStreamFrame)
+          reply.Version = SPDY_VERSION
+          reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+          conn.WriteFrame(reply)
+          break FrameHandling
+        }
+      }
+
+      conn.Lock()
+      conn.goaway = true
+      conn.Unlock()
 
     case *HeadersFrame:
       //
@@ -206,6 +240,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.buf = bufio.NewReader(tlsConn)
   *conn.tlsState = tlsConn.ConnectionState()
   conn.streams = make(map[uint32]*stream)
+  conn.streamInputs = make(map[uint32]chan<- []byte)
   conn.buffer = make([]Frame, 0, 10)
   conn.queue = make([]Frame, 0, 10)
 
