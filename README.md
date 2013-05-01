@@ -32,7 +32,7 @@ func main() {
 	//		server := &http.Server{Handler: http.DefaultServeMux}
 	//
 	server := new(http.Server)
-	server.Addr = "localhost:80"
+	server.Addr = "localhost:443"
 	
 	server.HandleFunc("/", ServeHTTP)
 	spdy.HandleFunc("/", ServeSPDY)
