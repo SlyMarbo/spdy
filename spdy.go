@@ -7,9 +7,14 @@ import (
   "io"
 )
 
+const SPDY_VERSION = 3
+
 const (
-  CONTROL_FRAME = 0
-  DATA_FRAME    = -1
+  CONTROL_FRAME = -1
+  DATA_FRAME    = -2
+)
+
+const (
   SYN_STREAM    = 1
   SYN_REPLY     = 2
   RST_STREAM    = 3
@@ -324,7 +329,6 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
  ******************/
 type RstStreamFrame struct {
   Version    uint16
-  Flags      byte
   StreamID   uint32
   StatusCode uint32
 }
@@ -365,7 +369,6 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
   }
 
   frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-  frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
   frame.StatusCode = bytesToUint32(data[12:16])
 
@@ -379,7 +382,7 @@ func (frame *RstStreamFrame) Bytes() ([]byte, error) {
   out[1] = byte(frame.Version)             // Version
   out[2] = 0                               // Type
   out[3] = 3                               // Type
-  out[4] = frame.Flags                     // Flag
+  out[4] = 0                               // Flag
   out[5] = 0                               // Length
   out[6] = 0                               // Length
   out[7] = 8                               // Length
