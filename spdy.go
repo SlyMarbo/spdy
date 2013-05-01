@@ -2,6 +2,7 @@ package spdy
 
 import (
   "bufio"
+  "bytes"
   "errors"
   "fmt"
   "io"
@@ -61,6 +62,29 @@ type SynStreamFrame struct {
   Priority      byte
   Slot          byte
   Headers       *Headers
+}
+
+func (frame *SynStreamFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  flags := ""
+  if frame.Flags&FLAG_FIN != 0 {
+    flags += "FLAG_FIN "
+  }
+  if frame.Flags&FLAG_UNIDIRECTIONAL != 0 {
+    flags += "FLAG_UNIDIRECTIONAL "
+  }
+
+  buf.WriteString("SYN_STREAM:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+  buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
+  buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
+  buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
+  buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
+  buf.WriteString(fmt.Sprintf("Headers:              %v\n", frame.Headers))
+
+  return buf.String()
 }
 
 func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
@@ -197,6 +221,23 @@ type SynReplyFrame struct {
   Headers  *Headers
 }
 
+func (frame *SynReplyFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  flags := ""
+  if frame.Flags&FLAG_FIN != 0 {
+    flags += "FLAG_FIN "
+  }
+
+  buf.WriteString("SYN_REPLY:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+  buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
+  buf.WriteString(fmt.Sprintf("Headers:              %v\n", frame.Headers))
+
+  return buf.String()
+}
+
 func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
@@ -314,6 +355,17 @@ type RstStreamFrame struct {
   StatusCode uint32
 }
 
+func (frame *RstStreamFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  buf.WriteString("RST_STREAM:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
+  buf.WriteString(fmt.Sprintf("Status code:          %d\n", frame.StatusCode))
+
+  return buf.String()
+}
+
 func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
@@ -395,6 +447,22 @@ type SettingsFrame struct {
   Version  uint16
   Flags    byte
   Settings []*Setting
+}
+
+func (frame *SettingsFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  flags := ""
+  if frame.Flags&FLAG_SETTINGS_CLEAR_SETTINGS != 0 {
+    flags += "FLAG_SETTINGS_CLEAR_SETTINGS "
+  }
+
+  buf.WriteString("SETTINGS:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+  buf.WriteString(fmt.Sprintf("Settings:             %v\n", frame.Settings))
+
+  return buf.String()
 }
 
 func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
@@ -534,6 +602,16 @@ type PingFrame struct {
   PingID  uint32
 }
 
+func (frame *PingFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  buf.WriteString("PING:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Ping ID:              %d\n", frame.PingID))
+
+  return buf.String()
+}
+
 func (frame *PingFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
@@ -610,6 +688,17 @@ type GoawayFrame struct {
   Version          uint16
   LastGoodStreamID uint32
   StatusCode       uint32
+}
+
+func (frame *GoawayFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  buf.WriteString("GOAWAY:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Last good stream ID:  %d\n\t", frame.LastGoodStreamID))
+  buf.WriteString(fmt.Sprintf("Status code:          %d\n", frame.StatusCode))
+
+  return buf.String()
 }
 
 func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
@@ -699,6 +788,23 @@ type HeadersFrame struct {
   Flags    byte
   StreamID uint32
   Headers  *Headers
+}
+
+func (frame *HeadersFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  flags := ""
+  if frame.Flags&FLAG_FIN != 0 {
+    flags += "FLAG_FIN "
+  }
+
+  buf.WriteString("HEADERS:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+  buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
+  buf.WriteString(fmt.Sprintf("Headers:              %v\n", frame.Headers))
+
+  return buf.String()
 }
 
 func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
@@ -833,6 +939,17 @@ type WindowUpdateFrame struct {
   DeltaWindowSize uint32
 }
 
+func (frame *WindowUpdateFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  buf.WriteString("WINDOW_UPDATE:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
+  buf.WriteString(fmt.Sprintf("Delta window size:    %d\n", frame.DeltaWindowSize))
+
+  return buf.String()
+}
+
 func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
   start, err := reader.Peek(8)
   if err != nil {
@@ -915,6 +1032,18 @@ type CredentialFrame struct {
   Slot         uint16
   Proof        []byte
   Certificates []Certificate
+}
+
+func (frame *CredentialFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  buf.WriteString("CREDENTIAL:\n\t")
+  buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+  buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
+  buf.WriteString(fmt.Sprintf("Proof:                %v\n\t", frame.Proof))
+  buf.WriteString(fmt.Sprintf("Certificates:         %v\n", frame.Certificates))
+
+  return buf.String()
 }
 
 func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
@@ -1065,6 +1194,22 @@ type DataFrame struct {
   StreamID uint32
   Flags    byte
   Data     []byte
+}
+
+func (frame *DataFrame) String() string {
+  buf := new(bytes.Buffer)
+
+  flags := ""
+  if frame.Flags&FLAG_FIN != 0 {
+    flags += "FLAG_FIN "
+  }
+
+  buf.WriteString("DATA:\n\t")
+  buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
+  buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+  buf.WriteString(fmt.Sprintf("Data:                 %v\n", frame.Data))
+
+  return buf.String()
 }
 
 func (frame *DataFrame) Parse(reader *bufio.Reader) error {
