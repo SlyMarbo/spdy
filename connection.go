@@ -21,8 +21,7 @@ type connection struct {
   tlsConfig           *tls.Config
   streams             map[uint32]*stream
   streamInputs        map[uint32]chan<- []byte
-  buffer              []Frame
-  queue               []Frame
+  streamOutputs       [8]chan Frame
   nextServerStreamID  uint32 // even
   nextClientStreamID  uint32 // odd
   goaway              bool
@@ -30,18 +29,22 @@ type connection struct {
   numInvalidStreamIDs int
 }
 
-func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte) *stream {
+func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
+  output chan<- Frame) *stream {
+
   newStream := new(stream)
   newStream.conn = conn
   newStream.streamID = frame.StreamID
   newStream.state = STATE_OPEN
   newStream.priority = frame.Priority
   newStream.input = input
-  newStream.request = new(Request)
+  newStream.output = output
   newStream.certificates = make([]Certificate, 1)
   newStream.headers = frame.Headers
   newStream.settings = make([]*Setting, 1)
   newStream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
+
+  newStream.request = new(Request)
 
   return newStream
 }
@@ -52,7 +55,7 @@ func (conn *connection) WriteFrame(frame Frame) error {
 
 func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   conn.RLock()
-  defer conn.RUnlock()
+  defer func() { conn.RUnlock() }()
 
   // Check stream creation is allowed.
   if conn.goaway {
@@ -119,18 +122,18 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   conn.Lock()
   input := make(chan []byte)
   conn.streamInputs[frame.StreamID] = input
-  conn.streams[frame.StreamID] = conn.newStream(frame, input)
+  conn.streams[frame.StreamID] = conn.newStream(frame, input, conn.streamOutputs[frame.Priority])
   conn.Unlock()
   conn.RLock()
 
-  go conn.streams[frame.StreamID].run()
+  go func() { conn.streams[frame.StreamID].run() }()
 
   return
 }
 
 func (conn *connection) handleDataFrame(frame *DataFrame) {
   conn.RLock()
-  defer conn.RUnlock()
+  defer func() { conn.RUnlock() }()
 
   // Check Stream ID is odd.
   if frame.StreamID&1 == 0 {
@@ -189,6 +192,11 @@ func (conn *connection) readFrames() {
       // TODO: handle error
       panic(err)
     }
+		
+		if DebugMode {
+			fmt.Println("Received Frame:")
+			fmt.Println(frame)
+		}
 
   FrameHandling:
     switch frame := frame.(type) {
@@ -302,8 +310,15 @@ func newConn(tlsConn *tls.Conn) *connection {
   *conn.tlsState = tlsConn.ConnectionState()
   conn.streams = make(map[uint32]*stream)
   conn.streamInputs = make(map[uint32]chan<- []byte)
-  conn.buffer = make([]Frame, 0, 10)
-  conn.queue = make([]Frame, 0, 10)
+  conn.streamOutputs = [8]chan Frame{}
+  conn.streamOutputs[0] = make(chan Frame)
+  conn.streamOutputs[1] = make(chan Frame)
+  conn.streamOutputs[2] = make(chan Frame)
+  conn.streamOutputs[3] = make(chan Frame)
+  conn.streamOutputs[4] = make(chan Frame)
+  conn.streamOutputs[5] = make(chan Frame)
+  conn.streamOutputs[6] = make(chan Frame)
+  conn.streamOutputs[7] = make(chan Frame)
 
   return conn
 }
