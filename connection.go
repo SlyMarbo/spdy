@@ -6,6 +6,7 @@ import (
   "fmt"
   "log"
   "net/http"
+  "net/url"
   "runtime"
   "sync"
   "time"
@@ -43,9 +44,28 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.headers = frame.Headers
   newStream.settings = make([]*Setting, 1)
   newStream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
-	newStream.version = conn.version
+  newStream.version = conn.version
 
-  newStream.request = new(Request)
+  rawUrl := frame.Headers.Get(":scheme") + frame.Headers.Get(":host") + frame.Headers.Get(":path")
+  url, err := url.Parse(rawUrl)
+  if err != nil {
+    panic(err)
+  }
+  major, minor, ok := http.ParseHTTPVersion(frame.Headers.Get(":version"))
+  if !ok {
+    panic("Invalid HTTP version: " + frame.Headers.Get(":version"))
+  }
+  newStream.request = &Request{
+    Method:     frame.Headers.Get(":method"),
+    URL:        url,
+    Proto:      frame.Headers.Get(":version"),
+    ProtoMajor: major,
+    ProtoMinor: minor,
+    Header:     frame.Headers,
+    Host:       url.Host,
+    RequestURI: url.Path,
+    TLS:        conn.tlsState,
+  }
 
   return newStream
 }
@@ -65,14 +85,14 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
 
   // Check version.
   if frame.Version != uint16(conn.version) {
-		
-		// This is currently strict; only one version allowed per connection.
+
+    // This is currently strict; only one version allowed per connection.
     log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
       frame.Version, conn.version)
     if frame.Version > SPDY_VERSION {
       log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
         frame.Version)
-		}
+    }
     reply := new(RstStreamFrame)
     reply.Version = SPDY_VERSION
     reply.StreamID = frame.StreamID
@@ -195,11 +215,11 @@ func (conn *connection) readFrames() {
       // TODO: handle error
       panic(err)
     }
-		
-		if DebugMode {
-			fmt.Println("Received Frame:")
-			fmt.Println(frame)
-		}
+
+    if DebugMode {
+      fmt.Println("Received Frame:")
+      fmt.Println(frame)
+    }
 
   FrameHandling:
     switch frame := frame.(type) {
