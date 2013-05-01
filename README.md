@@ -25,16 +25,10 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 
 func main() {
 	// SPDY requires an explicit http.Server.
-	// If you have an existing server which uses http.Handle
-	// or http.HandleFunc, you can simply add the following
-	// line:
-	//
-	//		server := &http.Server{Handler: http.DefaultServeMux}
-	//
 	server := new(http.Server)
 	server.Addr = "localhost:443"
 	
-	server.HandleFunc("/", ServeHTTP)
+	http.HandleFunc("/", ServeHTTP)
 	spdy.HandleFunc("/", ServeSPDY)
 	
 	// Add SPDY handling to the server.
