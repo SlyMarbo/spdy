@@ -18,14 +18,3 @@ type stream struct {
   credentials    []Certificate
   unidirectional bool
 }
-
-type StreamState uint8
-
-const (
-  CLOSED StreamState = iota
-  HALF_CLOSED_HERE
-  HALF_CLOSED_THERE
-  OPEN
-)
-
-const MAX_PRIORITY = 7

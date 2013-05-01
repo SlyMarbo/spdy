@@ -57,6 +57,21 @@ const (
   SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE = 8
 )
 
+// Stream state
+type StreamState uint8
+const (
+  CLOSED StreamState = iota
+  HALF_CLOSED_HERE
+  HALF_CLOSED_THERE
+  OPEN
+)
+
+// Stream priority values.
+const (
+	MAX_PRIORITY = 0
+	MIN_PRIORITY = 7
+)
+
 // HTTP time format.
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 
