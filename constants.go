@@ -60,10 +60,10 @@ const (
 // Stream state
 type StreamState uint8
 const (
-  CLOSED StreamState = iota
-  HALF_CLOSED_HERE
-  HALF_CLOSED_THERE
-  OPEN
+  STATE_CLOSED StreamState = iota
+  STATE_HALF_CLOSED_HERE
+  STATE_HALF_CLOSED_THERE
+  STATE_OPEN
 )
 
 // Stream priority values.
