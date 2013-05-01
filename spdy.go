@@ -460,7 +460,10 @@ func (frame *SettingsFrame) String() string {
   buf.WriteString("SETTINGS:\n\t")
   buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
   buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
-  buf.WriteString(fmt.Sprintf("Settings:             %v\n", frame.Settings))
+  buf.WriteString(fmt.Sprintf("Settings:"))
+	for _, setting := range frame.Settings {
+		buf.WriteString("\n\t\t" + setting.String())
+	}
 
   return buf.String()
 }
@@ -577,6 +580,17 @@ type Setting struct {
   Flags byte
   ID    uint32
   Value uint32
+}
+
+func (frame *Setting) String() string {
+  buf := new(bytes.Buffer)
+
+  buf.WriteString("SETTING:\n\t\t\t")
+  buf.WriteString(fmt.Sprintf("Flags:         %d\n\t\t\t", frame.Flags))
+  buf.WriteString(fmt.Sprintf("ID:            %d\n\t\t\t", frame.ID))
+  buf.WriteString(fmt.Sprintf("Value:         %d\n", frame.Value))
+
+  return buf.String()
 }
 
 func (s *Setting) Bytes() []byte {
