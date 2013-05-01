@@ -2,6 +2,7 @@ package spdy
 
 import (
   "bufio"
+  "errors"
   "fmt"
   "io"
 )
@@ -20,85 +21,47 @@ const (
   CREDENTIAL    = 10
 )
 
-var frameNames = map[int]string{
-  SYN_STREAM:    "SYN_STREAM",
-  SYN_REPLY:     "SYN_REPLY",
-  RST_STREAM:    "RST_STREAM",
-  SETTINGS:      "SETTINGS",
-  PING:          "PING",
-  GOAWAY:        "GOAWAY",
-  HEADERS:       "HEADERS",
-  WINDOW_UPDATE: "WINDOW_UPDATE",
-  CREDENTIAL:    "CREDENTIAL",
-  CONTROL_FRAME: "CONTROL_FRAME",
-  DATA_FRAME:    "DATA_FRAME",
-}
-
-func FrameName(frameType int) string {
-  return frameNames[frameType]
-}
-
-func bytesToUint16(b []byte) uint16 {
-  return (uint16(b[0]) << 8) + uint16(b[1])
-}
-
-func bytesToUint24(b []byte) uint32 {
-  return (uint32(b[0]) << 16) + (uint32(b[1]) << 8) + uint32(b[2])
-}
-
-func bytesToUint32(b []byte) uint32 {
-  return (uint32(b[0]) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
-}
-
-func bytesToUint31(b []byte) uint32 {
-  return (uint32(b[0]&0x7f) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
-}
-
-/*** ERRORS ***/
-type IncorrectFrame struct {
-  got, expected int
-}
-
-func (i *IncorrectFrame) Error() string {
-  return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", FrameName(i.expected),
-    FrameName(i.got))
-}
-
-type IncorrectDataLength struct {
-  got, expected int
-}
-
-func (i *IncorrectDataLength) Error() string {
-  return fmt.Sprintf("Error: Incorrect amount of data for frame: got %d bytes, expected %d.", i.got,
-    i.expected)
-}
-
-type FrameTooLarge struct{}
-
-func (_ FrameTooLarge) Error() string {
-  return "Error: Frame too large."
-}
-
-type InvalidField struct {
-  field         string
-  got, expected int
-}
-
-func (i *InvalidField) Error() string {
-  return fmt.Sprintf("Error: Field %q recieved invalid data %d, expecting %d.", i.field, i.got,
-    i.expected)
-}
-
-/*** FRAMES ***/
 type Frame interface {
   Bytes() ([]byte, error)
   Parse(bufio.Reader) error
   WriteTo(io.Writer) error
 }
 
-func ReadFrame(reader bufio.Reader) (Frame, error) {
+func ReadFrame(reader bufio.Reader) (frame Frame, err error) {
+  start, err := reader.Peek(4)
 
-  panic("Unreachable")
+  if start[0]&0x80 == 0 {
+    frame = new(DataFrame)
+    err = frame.Parse(reader)
+    return
+  }
+
+  switch bytesToUint16(start[2:4]) {
+  case SYN_STREAM:
+    frame = new(SynStreamFrame)
+  case SYN_REPLY:
+    frame = new(SynReplyFrame)
+  case RST_STREAM:
+    frame = new(RstStreamFrame)
+  case SETTINGS:
+    frame = new(SettingsFrame)
+  case PING:
+    frame = new(PingFrame)
+  case GOAWAY:
+    frame = new(GoawayFrame)
+  case HEADERS:
+    frame = new(HeadersFrame)
+  case WINDOW_UPDATE:
+    frame = new(WindowUpdateFrame)
+  case CREDENTIAL:
+    frame = new(CredentialFrame)
+
+  default:
+    return nil, errors.New("Error Failed to parse frame type.")
+  }
+
+  err = frame.Parse(reader)
+  return
 }
 
 /******************
@@ -1153,7 +1116,7 @@ func (frame *DataFrame) Parse(reader bufio.Reader) error {
   return nil
 }
 
-func (frame *DataFrame) Bytes() []byte {
+func (frame *DataFrame) Bytes() ([]byte, error) {
   length := len(frame.Data)
   out := make([]byte, 8, 8+length)
 
@@ -1167,7 +1130,7 @@ func (frame *DataFrame) Bytes() []byte {
   out[7] = byte(length)                    // Length
   out = append(out, frame.Data...)         // Data
 
-  return out
+  return out, nil
 }
 
 func (frame *DataFrame) WriteTo(writer io.Writer) error {
@@ -1190,4 +1153,75 @@ func (frame *DataFrame) WriteTo(writer io.Writer) error {
 
   _, err = writer.Write(frame.Data)
   return err
+}
+
+/*** HELPER FUNCTIONS ***/
+
+var frameNames = map[int]string{
+  SYN_STREAM:    "SYN_STREAM",
+  SYN_REPLY:     "SYN_REPLY",
+  RST_STREAM:    "RST_STREAM",
+  SETTINGS:      "SETTINGS",
+  PING:          "PING",
+  GOAWAY:        "GOAWAY",
+  HEADERS:       "HEADERS",
+  WINDOW_UPDATE: "WINDOW_UPDATE",
+  CREDENTIAL:    "CREDENTIAL",
+  CONTROL_FRAME: "CONTROL_FRAME",
+  DATA_FRAME:    "DATA_FRAME",
+}
+
+func FrameName(frameType int) string {
+  return frameNames[frameType]
+}
+
+func bytesToUint16(b []byte) uint16 {
+  return (uint16(b[0]) << 8) + uint16(b[1])
+}
+
+func bytesToUint24(b []byte) uint32 {
+  return (uint32(b[0]) << 16) + (uint32(b[1]) << 8) + uint32(b[2])
+}
+
+func bytesToUint32(b []byte) uint32 {
+  return (uint32(b[0]) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
+}
+
+func bytesToUint31(b []byte) uint32 {
+  return (uint32(b[0]&0x7f) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
+}
+
+/*** ERRORS ***/
+type IncorrectFrame struct {
+  got, expected int
+}
+
+func (i *IncorrectFrame) Error() string {
+  return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", FrameName(i.expected),
+    FrameName(i.got))
+}
+
+type IncorrectDataLength struct {
+  got, expected int
+}
+
+func (i *IncorrectDataLength) Error() string {
+  return fmt.Sprintf("Error: Incorrect amount of data for frame: got %d bytes, expected %d.", i.got,
+    i.expected)
+}
+
+type FrameTooLarge struct{}
+
+func (_ FrameTooLarge) Error() string {
+  return "Error: Frame too large."
+}
+
+type InvalidField struct {
+  field         string
+  got, expected int
+}
+
+func (i *InvalidField) Error() string {
+  return fmt.Sprintf("Error: Field %q recieved invalid data %d, expecting %d.", i.field, i.got,
+    i.expected)
 }
