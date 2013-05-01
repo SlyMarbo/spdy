@@ -61,7 +61,7 @@ type SynStreamFrame struct {
   AssocStreamID uint32
   Priority      byte
   Slot          byte
-  Headers       *Headers
+  Headers       Header
 }
 
 func (frame *SynStreamFrame) String() string {
@@ -131,7 +131,7 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
   frame.Priority = data[16] >> 5
   frame.Slot = data[17]
 
-  headers := new(Headers)
+  headers := make(Header)
   err = headers.Parse(data[18:])
   if err != nil {
     return err
@@ -218,7 +218,7 @@ type SynReplyFrame struct {
   Version  uint16
   Flags    byte
   StreamID uint32
-  Headers  *Headers
+  Headers  Header
 }
 
 func (frame *SynReplyFrame) String() string {
@@ -277,7 +277,7 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
   frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
 
-  headers := new(Headers)
+  headers := make(Header)
   err = headers.Parse(data[12:])
   if err != nil {
     return err
@@ -801,7 +801,7 @@ type HeadersFrame struct {
   Version  uint16
   Flags    byte
   StreamID uint32
-  Headers  *Headers
+  Headers  Header
 }
 
 func (frame *HeadersFrame) String() string {
@@ -860,7 +860,7 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
   frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
 
-  headers := new(Headers)
+  headers := make(Header)
   err = headers.Parse(data[12:])
   if err != nil {
     return err
@@ -925,23 +925,6 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
 
   _, err = writer.Write(headers)
   return err
-}
-
-type header struct {
-  name, value string
-}
-
-type Headers struct {
-  headers []*header
-}
-
-func (h *Headers) Parse(data []byte) error {
-  return nil
-}
-
-func (h *Headers) Compressed() ([]byte, error) {
-  // TODO: implement (needs compression)
-  return nil, nil
 }
 
 /*********************
