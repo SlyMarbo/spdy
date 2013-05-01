@@ -13,20 +13,21 @@ import (
 
 type connection struct {
   sync.RWMutex
-  remoteAddr         string // network address of remote side
-  server             *http.Server
-  conn               *tls.Conn
-  buf                *bufio.Reader
-  tlsState           *tls.ConnectionState
-  tlsConfig          *tls.Config
-  streams            map[uint32]*stream
-  streamInputs       map[uint32]chan<- []byte
-  buffer             []Frame
-  queue              []Frame
-  nextServerStreamID uint32 // even
-  nextClientStreamID uint32 // odd
-  goaway             bool
-  version            int
+  remoteAddr          string // network address of remote side
+  server              *http.Server
+  conn                *tls.Conn
+  buf                 *bufio.Reader
+  tlsState            *tls.ConnectionState
+  tlsConfig           *tls.Config
+  streams             map[uint32]*stream
+  streamInputs        map[uint32]chan<- []byte
+  buffer              []Frame
+  queue               []Frame
+  nextServerStreamID  uint32 // even
+  nextClientStreamID  uint32 // odd
+  goaway              bool
+  version             int
+  numInvalidStreamIDs int
 }
 
 func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte) *stream {
@@ -50,10 +51,10 @@ func (conn *connection) WriteFrame(frame Frame) error {
 }
 
 func (conn *connection) handleSynStream(frame *SynStreamFrame) {
-  // Check stream creation is allowed.
   conn.RLock()
   defer conn.RUnlock()
 
+  // Check stream creation is allowed.
   if conn.goaway {
     return
   }
@@ -127,6 +128,51 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   return
 }
 
+func (conn *connection) handleDataFrame(frame *DataFrame) {
+  conn.RLock()
+  defer conn.RUnlock()
+
+  // Check Stream ID is odd.
+  if frame.StreamID&1 == 0 {
+    log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n",
+      frame.StreamID)
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+    return
+  }
+
+  // Check stream is open.
+  if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
+    conn.nextClientStreamID != 0 {
+    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
+      frame.StreamID, conn.nextClientStreamID+2)
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+    return
+  }
+
+  // Stream ID is fine.
+
+  // Handle flags.
+  if frame.Flags&FLAG_FIN != 0 {
+    stream := conn.streams[frame.StreamID]
+    stream.Lock()
+    stream.state = STATE_HALF_CLOSED_THERE
+    stream.Unlock()
+  }
+
+  // Send data to stream.
+  conn.streamInputs[frame.StreamID] <- frame.Data
+
+  return
+}
+
 func (conn *connection) readFrames() {
   if d := conn.server.ReadTimeout; d != 0 {
     conn.conn.SetReadDeadline(time.Now().Add(d))
@@ -149,23 +195,33 @@ func (conn *connection) readFrames() {
     default:
       panic(fmt.Sprintf("unexpected frame type %T", frame))
 
-    /******************
-     *** SYN_STREAM ***
-     ******************/
+    /*** COMPLETE! ***/
     case *SynStreamFrame:
       conn.handleSynStream(frame)
 
     case *SynReplyFrame:
-      //
+      log.Println("Got SYN_REPLY")
 
     case *RstStreamFrame:
-      //
+      log.Printf("Received RST_STREAM on stream %d with status %q.\n", frame.StreamID,
+        StatusCodeText(int(frame.StatusCode)))
 
     case *SettingsFrame:
-      //
+      log.Println("Received SETTINGS. Ignoring...")
 
+      /*** COMPLETE! ***/
     case *PingFrame:
-      //
+      // Check Ping ID is odd.
+      if frame.PingID&1 == 0 {
+        log.Printf("Error: Received PING with Stream ID %d, which should be odd.\n", frame.PingID)
+        reply := new(RstStreamFrame)
+        reply.Version = SPDY_VERSION
+        reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+        conn.WriteFrame(reply)
+        break FrameHandling
+      }
+      log.Println("Received PING. Replying...")
+      conn.WriteFrame(frame)
 
     case *GoawayFrame:
       // Check version.
@@ -183,21 +239,25 @@ func (conn *connection) readFrames() {
         }
       }
 
+      // TODO: inform push streams that they haven't been processed if
+      // the last good stream ID is less than their ID.
+
       conn.Lock()
       conn.goaway = true
       conn.Unlock()
 
     case *HeadersFrame:
-      //
+      log.Println("Got HEADERS")
 
     case *WindowUpdateFrame:
-      //
+      log.Println("Got WINDOW_UPDATE")
 
     case *CredentialFrame:
-      //
+      log.Println("Got CREDENTIAL")
 
+      /*** COMPLETE! ***/
     case *DataFrame:
-      //
+      conn.handleDataFrame(frame)
     }
   }
 }
@@ -238,6 +298,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.remoteAddr = tlsConn.RemoteAddr().String()
   conn.conn = tlsConn
   conn.buf = bufio.NewReader(tlsConn)
+  conn.tlsState = new(tls.ConnectionState)
   *conn.tlsState = tlsConn.ConnectionState()
   conn.streams = make(map[uint32]*stream)
   conn.streamInputs = make(map[uint32]chan<- []byte)
