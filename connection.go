@@ -23,6 +23,8 @@ type connection struct {
   streams             map[uint32]*stream
   streamInputs        map[uint32]chan<- []byte
   streamOutputs       [8]chan Frame
+  compress            *compressor
+  decompress          *decompressor
   nextServerStreamID  uint32 // even
   nextClientStreamID  uint32 // odd
   goaway              bool
@@ -85,28 +87,33 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.output = output
   newStream.handler = DefaultServeMux
   newStream.certificates = make([]Certificate, 1)
-  newStream.headers = frame.Headers
+  newStream.headers = make(Header)
   newStream.settings = make([]*Setting, 1)
   newStream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
   newStream.version = conn.version
 
-  rawUrl := frame.Headers.Get(":scheme") + "://" + frame.Headers.Get(":host") +
-    frame.Headers.Get(":path")
+  err := frame.readHeaders(conn.decompress)
+  if err != nil {
+    panic(err)
+  }
+
+  headers := frame.Headers
+  rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
   url, err := url.Parse(rawUrl)
   if err != nil {
     panic(err)
   }
-  major, minor, ok := http.ParseHTTPVersion(frame.Headers.Get(":version"))
+  major, minor, ok := http.ParseHTTPVersion(headers.Get(":version"))
   if !ok {
-    panic("Invalid HTTP version: " + frame.Headers.Get(":version"))
+    panic("Invalid HTTP version: " + headers.Get(":version"))
   }
   newStream.request = &Request{
-    Method:     frame.Headers.Get(":method"),
+    Method:     headers.Get(":method"),
     URL:        url,
-    Proto:      frame.Headers.Get(":version"),
+    Proto:      headers.Get(":version"),
     ProtoMajor: major,
     ProtoMinor: minor,
-    Header:     frame.Headers,
+    Header:     headers,
     Host:       url.Host,
     RequestURI: url.Path,
     TLS:        conn.tlsState,
@@ -377,6 +384,8 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.buf = bufio.NewReader(tlsConn)
   conn.tlsState = new(tls.ConnectionState)
   *conn.tlsState = tlsConn.ConnectionState()
+  conn.compress = new(compressor)
+  conn.decompress = new(decompressor)
   conn.streams = make(map[uint32]*stream)
   conn.streamInputs = make(map[uint32]chan<- []byte)
   conn.streamOutputs = [8]chan Frame{}

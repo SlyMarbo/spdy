@@ -1,7 +1,6 @@
 package spdy
 
 import (
-  // "crypto/tls"
   "fmt"
   "log"
   "net/http"
@@ -61,7 +60,12 @@ func (s *stream) Write(data []byte) (int, error) {
     return 0, ErrContentLength
   }
 
-  log.Printf("Wrote data: %q\n", string(data))
+  dataFrame := new(DataFrame)
+  dataFrame.StreamID = s.streamID
+  dataFrame.Data = data
+
+  s.output <- dataFrame
+
   return len(data), nil
 }
 
@@ -81,10 +85,32 @@ func (s *stream) WriteHeader(code int) {
   synReply.Version = uint16(s.version)
   synReply.StreamID = s.streamID
   synReply.Headers = s.headers
+  synReply.writeHeaders(s.conn.compress)
 
   s.output <- synReply
 }
 
 func (s *stream) run() {
   s.handler.ServeSPDY(s, s.request)
+
+  if !s.wroteHeader {
+    s.headers.Set(":status", "200")
+    s.headers.Set(":version", "HTTP/1.1")
+
+    synReply := new(SynReplyFrame)
+    synReply.Version = uint16(s.version)
+    synReply.Flags = FLAG_FIN
+    synReply.StreamID = s.streamID
+    synReply.Headers = s.headers
+    synReply.writeHeaders(s.conn.compress)
+
+    s.output <- synReply
+  } else {
+    data := new(DataFrame)
+    data.StreamID = s.streamID
+    data.Flags = FLAG_FIN
+    data.Data = []byte{}
+
+    s.output <- data
+  }
 }
