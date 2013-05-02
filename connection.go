@@ -23,8 +23,8 @@ type connection struct {
   streams             map[uint32]*stream
   streamInputs        map[uint32]chan<- []byte
   streamOutputs       [8]chan Frame
-  compress            *compressor
-  decompress          *decompressor
+  compressor          *Compressor
+  decompressor        *Decompressor
   nextServerStreamID  uint32 // even
   nextClientStreamID  uint32 // odd
   goaway              bool
@@ -35,7 +35,11 @@ type connection struct {
 func (conn *connection) send() {
   for {
     frame := conn.selectFrameToSend()
-    err := frame.WriteTo(conn.conn)
+    err := frame.WriteHeaders(conn.compressor)
+    if err != nil {
+      panic(err)
+    }
+    err = frame.WriteTo(conn.conn)
     if err != nil {
       panic(err)
     }
@@ -91,8 +95,9 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.settings = make([]*Setting, 1)
   newStream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
   newStream.version = conn.version
+  newStream.contentLength = -1
 
-  err := frame.readHeaders(conn.decompress)
+  err := frame.ReadHeaders(conn.decompressor)
   if err != nil {
     panic(err)
   }
@@ -237,16 +242,17 @@ func (conn *connection) handleDataFrame(frame *DataFrame) {
 
   // Stream ID is fine.
 
+  // Send data to stream.
+  conn.streamInputs[frame.StreamID] <- frame.Data
+
   // Handle flags.
   if frame.Flags&FLAG_FIN != 0 {
     stream := conn.streams[frame.StreamID]
     stream.Lock()
     stream.state = STATE_HALF_CLOSED_THERE
+    close(conn.streamInputs[frame.StreamID])
     stream.Unlock()
   }
-
-  // Send data to stream.
-  conn.streamInputs[frame.StreamID] <- frame.Data
 
   return
 }
@@ -265,6 +271,10 @@ func (conn *connection) readFrames() {
     frame, err := ReadFrame(conn.buf)
     if err != nil {
       // TODO: handle error
+      panic(err)
+    }
+    err = frame.ReadHeaders(conn.decompressor)
+    if err != nil {
       panic(err)
     }
 
@@ -384,8 +394,8 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.buf = bufio.NewReader(tlsConn)
   conn.tlsState = new(tls.ConnectionState)
   *conn.tlsState = tlsConn.ConnectionState()
-  conn.compress = new(compressor)
-  conn.decompress = new(decompressor)
+  conn.compressor = new(Compressor)
+  conn.decompressor = new(Decompressor)
   conn.streams = make(map[uint32]*stream)
   conn.streamInputs = make(map[uint32]chan<- []byte)
   conn.streamOutputs = [8]chan Frame{}

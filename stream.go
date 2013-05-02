@@ -65,6 +65,9 @@ func (s *stream) Write(data []byte) (int, error) {
   dataFrame.Data = data
 
   s.output <- dataFrame
+  if DebugMode {
+    fmt.Printf("Debug: Wrote %d bytes of data from stream %d.\n", len(data), s.streamID)
+  }
 
   return len(data), nil
 }
@@ -85,7 +88,6 @@ func (s *stream) WriteHeader(code int) {
   synReply.Version = uint16(s.version)
   synReply.StreamID = s.streamID
   synReply.Headers = s.headers
-  synReply.writeHeaders(s.conn.compress)
 
   s.output <- synReply
 }
@@ -102,7 +104,6 @@ func (s *stream) run() {
     synReply.Flags = FLAG_FIN
     synReply.StreamID = s.streamID
     synReply.Headers = s.headers
-    synReply.writeHeaders(s.conn.compress)
 
     s.output <- synReply
   } else {

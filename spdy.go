@@ -11,14 +11,16 @@ import (
 type Frame interface {
   Bytes() ([]byte, error)
   Parse(*bufio.Reader) error
+  ReadHeaders(*Decompressor) error
+  WriteHeaders(*Compressor) error
   WriteTo(io.Writer) error
 }
 
 func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
   start, err := reader.Peek(4)
-	if err != nil {
-		return nil, err
-	}
+  if err != nil {
+    return nil, err
+  }
 
   if start[0]&0x80 == 0 {
     frame = new(DataFrame)
@@ -141,7 +143,7 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
   return nil
 }
 
-func (frame *SynStreamFrame) readHeaders(decom *decompressor) error {
+func (frame *SynStreamFrame) ReadHeaders(decom *Decompressor) error {
   headers := make(Header)
   err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
@@ -151,7 +153,7 @@ func (frame *SynStreamFrame) readHeaders(decom *decompressor) error {
   return nil
 }
 
-func (frame *SynStreamFrame) writeHeaders(com *compressor) error {
+func (frame *SynStreamFrame) WriteHeaders(com *Compressor) error {
   headers, err := frame.Headers.Compressed(com)
   if err != nil {
     return err
@@ -303,7 +305,7 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
   return nil
 }
 
-func (frame *SynReplyFrame) readHeaders(decom *decompressor) error {
+func (frame *SynReplyFrame) ReadHeaders(decom *Decompressor) error {
   headers := make(Header)
   err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
@@ -313,7 +315,7 @@ func (frame *SynReplyFrame) readHeaders(decom *decompressor) error {
   return nil
 }
 
-func (frame *SynReplyFrame) writeHeaders(com *compressor) error {
+func (frame *SynReplyFrame) WriteHeaders(com *Compressor) error {
   headers, err := frame.Headers.Compressed(com)
   if err != nil {
     return err
@@ -442,6 +444,14 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
   return nil
 }
 
+func (_ *RstStreamFrame) ReadHeaders(_ *Decompressor) error {
+  return nil
+}
+
+func (_ *RstStreamFrame) WriteHeaders(_ *Compressor) error {
+  return nil
+}
+
 func (frame *RstStreamFrame) Bytes() ([]byte, error) {
   out := make([]byte, 8)
 
@@ -563,6 +573,14 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
     offset += 8
   }
 
+  return nil
+}
+
+func (_ *SettingsFrame) ReadHeaders(_ *Decompressor) error {
+  return nil
+}
+
+func (_ *SettingsFrame) WriteHeaders(_ *Compressor) error {
   return nil
 }
 
@@ -702,6 +720,14 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
   return nil
 }
 
+func (_ *PingFrame) ReadHeaders(_ *Decompressor) error {
+  return nil
+}
+
+func (_ *PingFrame) WriteHeaders(_ *Compressor) error {
+  return nil
+}
+
 func (frame *PingFrame) Bytes() ([]byte, error) {
   out := make([]byte, 12)
 
@@ -794,6 +820,14 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
   frame.LastGoodStreamID = bytesToUint31(data[8:12])
   frame.StatusCode = bytesToUint32(data[12:16])
 
+  return nil
+}
+
+func (_ *GoawayFrame) ReadHeaders(_ *Decompressor) error {
+  return nil
+}
+
+func (_ *GoawayFrame) WriteHeaders(_ *Compressor) error {
   return nil
 }
 
@@ -902,7 +936,7 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
   return nil
 }
 
-func (frame *HeadersFrame) readHeaders(decom *decompressor) error {
+func (frame *HeadersFrame) ReadHeaders(decom *Decompressor) error {
   headers := make(Header)
   err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
@@ -912,7 +946,7 @@ func (frame *HeadersFrame) readHeaders(decom *decompressor) error {
   return nil
 }
 
-func (frame *HeadersFrame) writeHeaders(com *compressor) error {
+func (frame *HeadersFrame) WriteHeaders(com *Compressor) error {
   headers, err := frame.Headers.Compressed(com)
   if err != nil {
     return err
@@ -1041,6 +1075,14 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
   return nil
 }
 
+func (_ *WindowUpdateFrame) ReadHeaders(_ *Decompressor) error {
+  return nil
+}
+
+func (_ *WindowUpdateFrame) WriteHeaders(_ *Compressor) error {
+  return nil
+}
+
 func (frame *WindowUpdateFrame) Bytes() ([]byte, error) {
   out := make([]byte, 12)
 
@@ -1153,6 +1195,14 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
     offset += length + 4
   }
 
+  return nil
+}
+
+func (_ *CredentialFrame) ReadHeaders(_ *Decompressor) error {
+  return nil
+}
+
+func (_ *CredentialFrame) WriteHeaders(_ *Compressor) error {
   return nil
 }
 
@@ -1291,6 +1341,14 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
   length = int(bytesToUint16(data[2:4]))
   frame.Data = data[8 : 8+length]
 
+  return nil
+}
+
+func (_ *DataFrame) ReadHeaders(_ *Decompressor) error {
+  return nil
+}
+
+func (_ *DataFrame) WriteHeaders(_ *Compressor) error {
   return nil
 }
 

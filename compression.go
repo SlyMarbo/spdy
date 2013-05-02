@@ -9,12 +9,12 @@ import (
 
 var versionError = errors.New("spdy: Version not supported.")
 
-type decompressor struct {
+type Decompressor struct {
   in  *bytes.Buffer
   out io.ReadCloser
 }
 
-func (d *decompressor) Decompress(version int, data []byte) (headers Header, err error) {
+func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err error) {
   if d.in == nil {
     d.in = bytes.NewBuffer(data)
   } else {
@@ -102,12 +102,12 @@ func (d *decompressor) Decompress(version int, data []byte) (headers Header, err
   return headers, nil
 }
 
-type compressor struct {
+type Compressor struct {
   buf *bytes.Buffer
   w   *zlib.Writer
 }
 
-func (c *compressor) Compress(version int, data []byte) ([]byte, error) {
+func (c *Compressor) Compress(version int, data []byte) ([]byte, error) {
   var err error
   if c.buf == nil {
     c.buf = new(bytes.Buffer)

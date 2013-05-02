@@ -32,7 +32,7 @@ func (h Header) String() string {
   return buf.String()
 }
 
-func (h Header) Parse(data []byte, dec *decompressor) error {
+func (h Header) Parse(data []byte, dec *Decompressor) error {
   header, err := dec.Decompress(3, data)
   if err != nil {
     return err
@@ -89,8 +89,8 @@ func (h Header) Bytes() []byte {
     out[offset+1] = byte(vLen >> 16)
     out[offset+2] = byte(vLen >> 8)
     out[offset+3] = byte(vLen)
-		
-		offset += 4
+
+    offset += 4
 
     for n, value := range values {
       for i, b := range []byte(value) {
@@ -107,7 +107,7 @@ func (h Header) Bytes() []byte {
   return out
 }
 
-func (h Header) Compressed(com *compressor) ([]byte, error) {
+func (h Header) Compressed(com *Compressor) ([]byte, error) {
   return com.Compress(3, h.Bytes())
 }
 
