@@ -97,11 +97,6 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.version = conn.version
   newStream.contentLength = -1
 
-  err := frame.ReadHeaders(conn.decompressor)
-  if err != nil {
-    panic(err)
-  }
-
   headers := frame.Headers
   rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
   url, err := url.Parse(rawUrl)

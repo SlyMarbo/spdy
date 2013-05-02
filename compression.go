@@ -4,17 +4,23 @@ import (
   "bytes"
   "compress/zlib"
   "errors"
+  "fmt"
   "io"
+  "sync"
 )
 
 var versionError = errors.New("spdy: Version not supported.")
 
 type Decompressor struct {
+  m   sync.Mutex
   in  *bytes.Buffer
   out io.ReadCloser
 }
 
 func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err error) {
+  d.m.Lock()
+  defer d.m.Unlock()
+
   if d.in == nil {
     d.in = bytes.NewBuffer(data)
   } else {
@@ -62,6 +68,7 @@ func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err
   numKeys := dechunk(chunk)
 
   headers = make(Header)
+  length := 0
   for i := 0; i < numKeys; i++ {
     var keyLen, valLen int
 
@@ -93,21 +100,33 @@ func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err
       return nil, err
     }
 
+    // Count name and ': '.
+    length += keyLen + 2
+
     // Split the value on null boundaries.
     for _, val := range bytes.Split(value, []byte{'\x00'}) {
       headers.Add(string(key), string(val))
+      length += len(val) + 2 // count value and ', ' or '\n\r'.
     }
+  }
+
+  if DebugMode {
+    fmt.Printf("Headers decompressed from %d bytes to %d.\n", len(data), length)
   }
 
   return headers, nil
 }
 
 type Compressor struct {
+  m   sync.Mutex
   buf *bytes.Buffer
   w   *zlib.Writer
 }
 
 func (c *Compressor) Compress(version int, data []byte) ([]byte, error) {
+  c.m.Lock()
+  defer c.m.Unlock()
+
   var err error
   if c.buf == nil {
     c.buf = new(bytes.Buffer)
