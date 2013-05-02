@@ -32,8 +32,8 @@ func (h Header) String() string {
   return buf.String()
 }
 
-func (h Header) Parse(data []byte) error {
-  header, err := new(decompressor).Decompress(3, data)
+func (h Header) Parse(data []byte, dec *decompressor) error {
+  header, err := dec.Decompress(3, data)
   if err != nil {
     return err
   }
@@ -47,14 +47,14 @@ func (h Header) Parse(data []byte) error {
 }
 
 func (h Header) Bytes() []byte {
-	h.Del("Connection")
-	h.Del("Keep-Alive")
-	h.Del("Proxy-Connection")
-	h.Del("Transfer-Encoding")
-	
+  h.Del("Connection")
+  h.Del("Keep-Alive")
+  h.Del("Proxy-Connection")
+  h.Del("Transfer-Encoding")
+
   length := 4
   num := len(h)
-  lens := make(map[string]int, num)
+  lens := make(map[string]int)
   for name, values := range h {
     length += len(name) + 8
     lens[name] = len(values) - 1
@@ -82,21 +82,23 @@ func (h Header) Bytes() []byte {
       out[offset+4+i] = b
     }
 
-    offset += 4 + nLen
+    offset += (4 + nLen)
 
     vLen := lens[name]
     out[offset+0] = byte(vLen >> 24)
     out[offset+1] = byte(vLen >> 16)
     out[offset+2] = byte(vLen >> 8)
     out[offset+3] = byte(vLen)
+		
+		offset += 4
 
     for n, value := range values {
       for i, b := range []byte(value) {
-        out[offset+4+i] = b
+        out[offset+i] = b
       }
       offset += len(value)
       if n < len(values)-1 {
-        out[offset+4+0] = '\x00'
+        out[offset] = '\x00'
         offset += 1
       }
     }
@@ -105,8 +107,8 @@ func (h Header) Bytes() []byte {
   return out
 }
 
-func (h Header) Compressed() ([]byte, error) {
-  return new(compressor).Compress(3, h.Bytes())
+func (h Header) Compressed(com *compressor) ([]byte, error) {
+  return com.Compress(3, h.Bytes())
 }
 
 // Add adds the key, value pair to the header.
