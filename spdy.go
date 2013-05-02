@@ -16,6 +16,9 @@ type Frame interface {
 
 func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
   start, err := reader.Peek(4)
+	if err != nil {
+		return nil, err
+	}
 
   if start[0]&0x80 == 0 {
     frame = new(DataFrame)
@@ -55,13 +58,15 @@ func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
  *** SYN_STREAM ***
  ******************/
 type SynStreamFrame struct {
-  Version       uint16
-  Flags         byte
-  StreamID      uint32
-  AssocStreamID uint32
-  Priority      byte
-  Slot          byte
-  Headers       Header
+  Version        uint16
+  Flags          byte
+  StreamID       uint32
+  AssocStreamID  uint32
+  Priority       byte
+  Slot           byte
+  Headers        Header
+  rawHeaders     []byte
+  headersWritten bool
 }
 
 func (frame *SynStreamFrame) String() string {
@@ -131,23 +136,37 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
   frame.Priority = data[16] >> 5
   frame.Slot = data[17]
 
-  headers := make(Header)
-  err = headers.Parse(data[18:])
-  if err != nil {
-    return err
-  }
-  frame.Headers = headers
+  frame.rawHeaders = data[18:]
 
   return nil
 }
 
-func (frame *SynStreamFrame) Bytes() ([]byte, error) {
-
-  headers, err := frame.Headers.Compressed()
+func (frame *SynStreamFrame) readHeaders(decom *decompressor) error {
+  headers := make(Header)
+  err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
-    return nil, err
+    return err
+  }
+  frame.Headers = headers
+  return nil
+}
+
+func (frame *SynStreamFrame) writeHeaders(com *compressor) error {
+  headers, err := frame.Headers.Compressed(com)
+  if err != nil {
+    return err
+  }
+  frame.rawHeaders = headers
+  frame.headersWritten = true
+  return nil
+}
+
+func (frame *SynStreamFrame) Bytes() ([]byte, error) {
+  if !frame.headersWritten {
+    return nil, errors.New("spdy: Error: Headers not written.")
   }
 
+  headers := frame.rawHeaders
   length := 10 + len(headers)
   out := make([]byte, 18, 8+length)
 
@@ -175,11 +194,11 @@ func (frame *SynStreamFrame) Bytes() ([]byte, error) {
 }
 
 func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
-  headers, err := frame.Headers.Compressed()
-  if err != nil {
-    return err
+  if !frame.headersWritten {
+    return errors.New("spdy: Error: Headers not written.")
   }
 
+  headers := frame.rawHeaders
   length := 10 + len(headers)
   out := make([]byte, 18)
 
@@ -202,7 +221,7 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
   out[16] = ((frame.Priority & 0x7) << 5)        // Priority and unused
   out[17] = frame.Slot                           // Slot
 
-  _, err = writer.Write(out)
+  _, err := writer.Write(out)
   if err != nil {
     return err
   }
@@ -215,10 +234,12 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
  *** SYN_REPLY ***
  *****************/
 type SynReplyFrame struct {
-  Version  uint16
-  Flags    byte
-  StreamID uint32
-  Headers  Header
+  Version        uint16
+  Flags          byte
+  StreamID       uint32
+  Headers        Header
+  rawHeaders     []byte
+  headersWritten bool
 }
 
 func (frame *SynReplyFrame) String() string {
@@ -277,23 +298,37 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
   frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
 
-  headers := make(Header)
-  err = headers.Parse(data[12:])
-  if err != nil {
-    return err
-  }
-  frame.Headers = headers
+  frame.rawHeaders = data[12:]
 
   return nil
 }
 
-func (frame *SynReplyFrame) Bytes() ([]byte, error) {
-
-  headers, err := frame.Headers.Compressed()
+func (frame *SynReplyFrame) readHeaders(decom *decompressor) error {
+  headers := make(Header)
+  err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
-    return nil, err
+    return err
+  }
+  frame.Headers = headers
+  return nil
+}
+
+func (frame *SynReplyFrame) writeHeaders(com *compressor) error {
+  headers, err := frame.Headers.Compressed(com)
+  if err != nil {
+    return err
+  }
+  frame.rawHeaders = headers
+  frame.headersWritten = true
+  return nil
+}
+
+func (frame *SynReplyFrame) Bytes() ([]byte, error) {
+  if !frame.headersWritten {
+    return nil, errors.New("spdy: Error: Headers not written.")
   }
 
+  headers := frame.rawHeaders
   length := 4 + len(headers)
   out := make([]byte, 12, 8+length)
 
@@ -315,12 +350,11 @@ func (frame *SynReplyFrame) Bytes() ([]byte, error) {
 }
 
 func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
-
-  headers, err := frame.Headers.Compressed()
-  if err != nil {
-    return err
+  if !frame.headersWritten {
+    return errors.New("spdy: Error: Headers not written.")
   }
 
+  headers := frame.rawHeaders
   length := 4 + len(headers)
   out := make([]byte, 12)
 
@@ -337,7 +371,7 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
   out[10] = byte(frame.StreamID >> 8)      // Stream ID
   out[11] = byte(frame.StreamID)           // Stream ID
 
-  _, err = writer.Write(out)
+  _, err := writer.Write(out)
   if err != nil {
     return err
   }
@@ -799,10 +833,12 @@ func (frame *GoawayFrame) WriteTo(writer io.Writer) error {
  *** HEADERS ***
  ***************/
 type HeadersFrame struct {
-  Version  uint16
-  Flags    byte
-  StreamID uint32
-  Headers  Header
+  Version        uint16
+  Flags          byte
+  StreamID       uint32
+  Headers        Header
+  rawHeaders     []byte
+  headersWritten bool
 }
 
 func (frame *HeadersFrame) String() string {
@@ -861,22 +897,37 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
   frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
 
-  headers := make(Header)
-  err = headers.Parse(data[12:])
-  if err != nil {
-    return err
-  }
-  frame.Headers = headers
+  frame.rawHeaders = data[12:]
 
   return nil
 }
 
-func (frame *HeadersFrame) Bytes() ([]byte, error) {
-  headers, err := frame.Headers.Compressed()
+func (frame *HeadersFrame) readHeaders(decom *decompressor) error {
+  headers := make(Header)
+  err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
-    return nil, err
+    return err
+  }
+  frame.Headers = headers
+  return nil
+}
+
+func (frame *HeadersFrame) writeHeaders(com *compressor) error {
+  headers, err := frame.Headers.Compressed(com)
+  if err != nil {
+    return err
+  }
+  frame.rawHeaders = headers
+  frame.headersWritten = true
+  return nil
+}
+
+func (frame *HeadersFrame) Bytes() ([]byte, error) {
+  if !frame.headersWritten {
+    return nil, errors.New("spdy: Error: Headers not written.")
   }
 
+  headers := frame.rawHeaders
   length := 4 + len(headers)
   out := make([]byte, 12, 8+length)
 
@@ -898,11 +949,11 @@ func (frame *HeadersFrame) Bytes() ([]byte, error) {
 }
 
 func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
-  headers, err := frame.Headers.Compressed()
-  if err != nil {
-    return err
+  if !frame.headersWritten {
+    return errors.New("spdy: Error: Headers not written.")
   }
 
+  headers := frame.rawHeaders
   length := 4 + len(headers)
   out := make([]byte, 12)
 
@@ -919,7 +970,7 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
   out[10] = byte(frame.StreamID >> 8)      // Stream ID
   out[11] = byte(frame.StreamID)           // Stream ID
 
-  _, err = writer.Write(out)
+  _, err := writer.Write(out)
   if err != nil {
     return err
   }
