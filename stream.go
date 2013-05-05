@@ -25,8 +25,6 @@ type stream struct {
   responseSent   bool
   responseCode   int
   wroteHeader    bool
-  contentLength  int64
-  written        int64
   version        int
   stop           bool
 }
@@ -58,11 +56,6 @@ func (s *stream) Write(data []byte) (int, error) {
 
   if len(data) == 0 {
     return 0, nil
-  }
-
-  s.written += int64(len(data)) // ignoring errors, for errorKludge
-  if s.contentLength != -1 && s.written > s.contentLength {
-    return 0, ErrContentLength
   }
 
   dataFrame := new(DataFrame)
@@ -148,12 +141,12 @@ func (s *stream) run() {
 
     s.output <- synReply
   } else {
-    data := new(DataFrame)
-    data.StreamID = s.streamID
-    data.Flags = FLAG_FIN
-    data.Data = []byte{}
+    cancel := new(RstStreamFrame)
+		cancel.Version = s.version
+		cancel.StreamID = s.streamID
+		cancel.StatusCode = RST_STREAM_CANCEL
 
-    s.output <- data
+    s.output <- cancel
   }
 
   s.conn.done.Done()
