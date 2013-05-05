@@ -45,6 +45,11 @@ type ResponseWriter interface {
   // will Trigger an implicit WriteHeader(http.StatusOK). Thus
   // explicit calls to WriteHeader are mainly used to send error codes.
   WriteHeader(int)
+
+  // WriteSettings sends the provided settings to the client. Note that
+  // any settings to be sent unconditionally to all clients can be set
+  // in Server.GlobalSettings.
+  WriteSettings(...*Setting)
 }
 
 type PushWriter interface {
@@ -63,6 +68,11 @@ type PushWriter interface {
   // adds a Content-Type set to the result of passing the initial 512
   // bytes of written data to DetectContentType.
   Write([]byte) (int, error)
+
+  // WriteSettings sends the provided settings to the client. Note that
+  // any settings to be sent unconditionally to all clients can be set
+  // in Server.GlobalSettings.
+  WriteSettings(...*Setting)
 }
 
 // The HandlerFunc type is an adapter to allow the use of ordinary

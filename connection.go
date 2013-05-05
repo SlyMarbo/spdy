@@ -366,6 +366,12 @@ func (conn *connection) serve() {
   }()
 
   go func() { conn.send() }()
+  if conn.server.GlobalSettings != nil {
+    settings := new(SettingsFrame)
+    settings.Version = uint16(conn.version)
+    settings.Settings = conn.server.GlobalSettings
+    conn.streamOutputs[3] <- settings
+  }
   conn.readFrames()
 }
 

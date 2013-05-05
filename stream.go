@@ -93,6 +93,10 @@ func (s *stream) WriteHeader(code int) {
   s.output <- synReply
 }
 
+func (s *stream) WriteSettings(settings ...*Setting) {
+	// TODO
+}
+
 type readCloserBuffer struct {
   *bytes.Buffer
 }
@@ -102,13 +106,12 @@ func (_ *readCloserBuffer) Close() error {
 }
 
 func (s *stream) run() {
-  body := new(bytes.Buffer)
 
   // Make sure Request is prepared.
+  body := new(bytes.Buffer)
   for data := range s.input {
     body.Write(data)
   }
-
   s.request.Body = &readCloserBuffer{body}
 
   s.handler.ServeSPDY(s, s.request)
