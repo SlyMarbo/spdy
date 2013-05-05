@@ -131,8 +131,9 @@ func (conn *connection) readFrames() {
     case *HeadersFrame:
       conn.handleHeadersFrame(frame)
 
+    /*** COMPLETE! ***/
     case *WindowUpdateFrame:
-      log.Println("Got WINDOW_UPDATE")
+      conn.handleWindowUpdateFrame(frame)
 
     case *CredentialFrame:
       log.Println("Got CREDENTIAL")
@@ -424,6 +425,58 @@ func (conn *connection) handleHeadersFrame(frame *HeadersFrame) {
     close(conn.streamInputs[frame.StreamID])
     stream.Unlock()
   }
+}
+
+func (conn *connection) handleWindowUpdateFrame(frame *WindowUpdateFrame) {
+  conn.RLock()
+  defer func() { conn.RUnlock() }()
+
+  if conn.checkFrameVersion(frame) {
+    reply := new(RstStreamFrame)
+    reply.version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+    conn.WriteFrame(reply)
+    return
+  }
+
+  protocolError := func() {
+    reply := new(RstStreamFrame)
+    reply.version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+  }
+
+  // Check Stream ID is odd.
+  if frame.StreamID&1 == 0 {
+    log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be odd.\n",
+      frame.StreamID)
+    protocolError()
+    return
+  }
+
+  // Check stream is open.
+  if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
+    conn.nextClientStreamID != 0 {
+    log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be %d.\n",
+      frame.StreamID, conn.nextClientStreamID+2)
+    protocolError()
+    return
+  }
+
+  // Stream ID is fine.
+
+  // Check delta window size is valid.
+  if frame.DeltaWindowSize > MAX_DELTA_WINDOW_SIZE || frame.DeltaWindowSize < 1 {
+    log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n",
+      frame.DeltaWindowSize)
+    protocolError()
+    return
+  }
+
+  // Send data to stream.
+  conn.streamInputs[frame.StreamID] <- frame
 }
 
 func (conn *connection) serve() {

@@ -178,6 +178,11 @@ func (s *stream) run() {
    ***************/
   s.handler.ServeSPDY(s, s.request)
 
+  // Make sure any queued data has been sent.
+  for !s.queuedData.Empty() {
+    s.wait()
+  }
+
   if !s.wroteHeader {
     s.headers.Set(":status", "200")
     s.headers.Set(":version", "HTTP/1.1")
