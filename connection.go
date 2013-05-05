@@ -34,6 +34,119 @@ type connection struct {
   done                *sync.WaitGroup
 }
 
+func (conn *connection) readFrames() {
+  if d := conn.server.ReadTimeout; d != 0 {
+    conn.conn.SetReadDeadline(time.Now().Add(d))
+  }
+  if d := conn.server.WriteTimeout; d != 0 {
+    defer func() {
+      conn.conn.SetWriteDeadline(time.Now().Add(d))
+    }()
+  }
+
+  for {
+    frame, err := ReadFrame(conn.buf)
+    if err != nil {
+      // TODO: handle error
+      panic(err)
+    }
+    err = frame.ReadHeaders(conn.decompressor)
+    if err != nil {
+      panic(err)
+    }
+
+    if DebugMode {
+      fmt.Println("Received Frame:")
+      fmt.Println(frame)
+    }
+
+  FrameHandling:
+    switch frame := frame.(type) {
+
+    /*** COMPLETE! ***/
+    case *SynStreamFrame:
+      conn.handleSynStream(frame)
+
+    case *SynReplyFrame:
+      log.Println("Got SYN_REPLY")
+
+    case *RstStreamFrame:
+      code := StatusCodeText(int(frame.StatusCode))
+      log.Printf("Received RST_STREAM on stream %d with status %q.\n", frame.StreamID, code)
+
+    /*** COMPLETE! ***/
+    case *SettingsFrame:
+      if conn.receivedSettings == nil {
+        conn.receivedSettings = frame.Settings
+      } else {
+        for _, new := range frame.Settings {
+          for i, old := range conn.receivedSettings {
+            if new.ID == old.ID {
+              conn.receivedSettings[i] = new
+            }
+          }
+          conn.receivedSettings = append(conn.receivedSettings, new)
+        }
+      }
+      // TODO: Perhaps add some handling by the server here?
+
+    /*** COMPLETE! ***/
+    case *PingFrame:
+      // Check Ping ID is odd.
+      if frame.PingID&1 == 0 {
+        log.Printf("Error: Received PING with Stream ID %d, which should be odd.\n", frame.PingID)
+        reply := new(RstStreamFrame)
+        reply.Version = SPDY_VERSION
+        reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+        conn.WriteFrame(reply)
+        break FrameHandling
+      }
+      log.Println("Received PING. Replying...")
+      conn.WriteFrame(frame)
+
+    case *GoawayFrame:
+      // Check version.
+      if frame.Version != uint16(conn.version) {
+        log.Printf("Warning: Received frame with SPDY version %d on connection with version %d.\n",
+          frame.Version, conn.version)
+        if frame.Version > SPDY_VERSION {
+          log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
+            frame.Version)
+          reply := new(RstStreamFrame)
+          reply.Version = SPDY_VERSION
+          reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+          conn.WriteFrame(reply)
+          break FrameHandling
+        }
+      }
+
+      // TODO: inform push streams that they haven't been processed if
+      // the last good stream ID is less than their ID.
+
+      conn.Lock()
+      conn.goaway = true
+      conn.Unlock()
+
+    /*** COMPLETE! ***/
+    case *HeadersFrame:
+      conn.handleHeadersFrame(frame)
+
+    case *WindowUpdateFrame:
+      log.Println("Got WINDOW_UPDATE")
+
+    case *CredentialFrame:
+      log.Println("Got CREDENTIAL")
+
+    /*** COMPLETE! ***/
+    case *DataFrame:
+      conn.handleDataFrame(frame)
+
+    default:
+      panic(fmt.Sprintf("unexpected frame type %T", frame))
+    }
+  }
+}
+
 func (conn *connection) send() {
   for {
     frame := conn.selectFrameToSend()
@@ -295,119 +408,6 @@ func (conn *connection) handleHeadersFrame(frame *HeadersFrame) {
     stream.state = STATE_HALF_CLOSED_THERE
     close(conn.streamInputs[frame.StreamID])
     stream.Unlock()
-  }
-}
-
-func (conn *connection) readFrames() {
-  if d := conn.server.ReadTimeout; d != 0 {
-    conn.conn.SetReadDeadline(time.Now().Add(d))
-  }
-  if d := conn.server.WriteTimeout; d != 0 {
-    defer func() {
-      conn.conn.SetWriteDeadline(time.Now().Add(d))
-    }()
-  }
-
-  for {
-    frame, err := ReadFrame(conn.buf)
-    if err != nil {
-      // TODO: handle error
-      panic(err)
-    }
-    err = frame.ReadHeaders(conn.decompressor)
-    if err != nil {
-      panic(err)
-    }
-
-    if DebugMode {
-      fmt.Println("Received Frame:")
-      fmt.Println(frame)
-    }
-
-  FrameHandling:
-    switch frame := frame.(type) {
-
-    /*** COMPLETE! ***/
-    case *SynStreamFrame:
-      conn.handleSynStream(frame)
-
-    case *SynReplyFrame:
-      log.Println("Got SYN_REPLY")
-
-    case *RstStreamFrame:
-      code := StatusCodeText(int(frame.StatusCode))
-      log.Printf("Received RST_STREAM on stream %d with status %q.\n", frame.StreamID, code)
-
-    /*** COMPLETE! ***/
-    case *SettingsFrame:
-      if conn.receivedSettings == nil {
-        conn.receivedSettings = frame.Settings
-      } else {
-        for _, new := range frame.Settings {
-          for i, old := range conn.receivedSettings {
-            if new.ID == old.ID {
-              conn.receivedSettings[i] = new
-            }
-          }
-          conn.receivedSettings = append(conn.receivedSettings, new)
-        }
-      }
-      // TODO: Perhaps add some handling by the server here?
-
-    /*** COMPLETE! ***/
-    case *PingFrame:
-      // Check Ping ID is odd.
-      if frame.PingID&1 == 0 {
-        log.Printf("Error: Received PING with Stream ID %d, which should be odd.\n", frame.PingID)
-        reply := new(RstStreamFrame)
-        reply.Version = SPDY_VERSION
-        reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-        conn.WriteFrame(reply)
-        break FrameHandling
-      }
-      log.Println("Received PING. Replying...")
-      conn.WriteFrame(frame)
-
-    case *GoawayFrame:
-      // Check version.
-      if frame.Version != uint16(conn.version) {
-        log.Printf("Warning: Received frame with SPDY version %d on connection with version %d.\n",
-          frame.Version, conn.version)
-        if frame.Version > SPDY_VERSION {
-          log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
-            frame.Version)
-          reply := new(RstStreamFrame)
-          reply.Version = SPDY_VERSION
-          reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
-          conn.WriteFrame(reply)
-          break FrameHandling
-        }
-      }
-
-      // TODO: inform push streams that they haven't been processed if
-      // the last good stream ID is less than their ID.
-
-      conn.Lock()
-      conn.goaway = true
-      conn.Unlock()
-
-    /*** COMPLETE! ***/
-    case *HeadersFrame:
-      conn.handleHeadersFrame(frame)
-
-    case *WindowUpdateFrame:
-      log.Println("Got WINDOW_UPDATE")
-
-    case *CredentialFrame:
-      log.Println("Got CREDENTIAL")
-
-    /*** COMPLETE! ***/
-    case *DataFrame:
-      conn.handleDataFrame(frame)
-
-    default:
-      panic(fmt.Sprintf("unexpected frame type %T", frame))
-    }
   }
 }
 
