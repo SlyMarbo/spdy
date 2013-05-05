@@ -294,10 +294,10 @@ func (conn *connection) readFrames() {
       log.Println("Got SYN_REPLY")
 
     case *RstStreamFrame:
-      log.Printf("Received RST_STREAM on stream %d with status %q.\n", frame.StreamID,
-        StatusCodeText(int(frame.StatusCode)))
+      code := StatusCodeText(int(frame.StatusCode))
+      log.Printf("Received RST_STREAM on stream %d with status %q.\n", frame.StreamID, code)
 
-      /*** COMPLETE! ***/
+    /*** COMPLETE! ***/
     case *SettingsFrame:
       if conn.receivedSettings == nil {
         conn.receivedSettings = frame.Settings
