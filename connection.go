@@ -31,6 +31,7 @@ type connection struct {
   goaway              bool
   version             int
   numInvalidStreamIDs int
+  done                *sync.WaitGroup
 }
 
 func (conn *connection) send() {
@@ -205,6 +206,7 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   conn.RLock()
 
   go func() { conn.streams[frame.StreamID].run() }()
+  conn.done.Add(1)
 
   return
 }
@@ -436,6 +438,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.streamOutputs[5] = make(chan Frame)
   conn.streamOutputs[6] = make(chan Frame)
   conn.streamOutputs[7] = make(chan Frame)
+  conn.done = new(sync.WaitGroup)
 
   return conn
 }

@@ -146,4 +146,6 @@ func (s *stream) run() {
 
     s.output <- data
   }
+
+  s.conn.done.Done()
 }
