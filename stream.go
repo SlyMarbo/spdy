@@ -59,11 +59,17 @@ func (s *stream) Write(data []byte) (int, error) {
   if len(data) == 0 {
     return 0, nil
   }
+	
+	originalLen := len(data)
 
   if int64(len(data)) > s.transferWindow {
     s.queuedData.Push(data[s.transferWindow:])
     data = data[:s.transferWindow]
   }
+	
+	if len(data) == 0 {
+		return originalLen, nil
+	}
 
   dataFrame := new(DataFrame)
   dataFrame.StreamID = s.streamID
@@ -76,7 +82,7 @@ func (s *stream) Write(data []byte) (int, error) {
     fmt.Printf("Debug: Wrote %d bytes of data from stream %d.\n", len(data), s.streamID)
   }
 
-  return len(data), nil
+  return originalLen, nil
 }
 
 func (s *stream) WriteHeader(code int) {
@@ -148,12 +154,13 @@ func (s *stream) receiveFrame(frame Frame) {
   }
 }
 
-func (s *stream) wait() {
+func (s *stream) wait() bool {
   frame, ok := <-s.input
   if !ok {
-    return
+    return false
   }
   s.receiveFrame(frame)
+	return true
 }
 
 func (s *stream) processInput() {
@@ -193,7 +200,9 @@ func (s *stream) run() {
 
   // Make sure any queued data has been sent.
   for !s.queuedData.Empty() {
-    s.wait()
+    if !s.wait() {
+    	break
+    }
   }
 
   if !s.wroteHeader {
