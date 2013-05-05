@@ -23,6 +23,8 @@ type connection struct {
   streams             map[uint32]*stream
   streamInputs        map[uint32]chan<- Frame
   streamOutputs       [8]chan Frame
+  pings               map[uint32]chan<- bool
+  pingID              uint32
   compressor          *Compressor
   decompressor        *Decompressor
   receivedSettings    []*Setting
@@ -94,15 +96,18 @@ func (conn *connection) readFrames() {
     case *PingFrame:
       // Check Ping ID is odd.
       if frame.PingID&1 == 0 {
-        log.Printf("Error: Received PING with Stream ID %d, which should be odd.\n", frame.PingID)
-        reply := new(RstStreamFrame)
-        reply.version = SPDY_VERSION
-        reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-        conn.WriteFrame(reply)
-        break FrameHandling
+        if conn.pings[frame.PingID] == nil {
+          log.Printf("Warning: Ignored PING with Ping ID %d, which hasn't been requested.\n",
+            frame.PingID)
+          break FrameHandling
+        }
+        conn.pings[frame.PingID] <- true
+        close(conn.pings[frame.PingID])
+        delete(conn.pings, frame.PingID)
+      } else {
+        log.Println("Received PING. Replying...")
+        conn.WriteFrame(frame)
       }
-      log.Println("Received PING. Replying...")
-      conn.WriteFrame(frame)
 
     case *GoawayFrame:
       // Check version.
@@ -242,6 +247,20 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
 
 func (conn *connection) WriteFrame(frame Frame) error {
   return nil
+}
+
+func (conn *connection) Ping() <-chan bool {
+  conn.Lock()
+  defer conn.Unlock()
+
+  conn.pingID += 2
+  ping := new(PingFrame)
+  ping.version = uint16(conn.version)
+  ping.PingID = conn.pingID
+  conn.streamOutputs[0] <- ping
+  c := make(chan bool, 1)
+  conn.pings[conn.pingID] = c
+  return c
 }
 
 func (conn *connection) checkFrameVersion(frame Frame) bool {
@@ -549,6 +568,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.streamOutputs[5] = make(chan Frame)
   conn.streamOutputs[6] = make(chan Frame)
   conn.streamOutputs[7] = make(chan Frame)
+  conn.pings = make(map[uint32]chan<- bool)
   conn.done = new(sync.WaitGroup)
 
   return conn

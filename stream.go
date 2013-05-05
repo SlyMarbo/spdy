@@ -36,7 +36,7 @@ func (s *stream) Header() Header {
 }
 
 func (s *stream) Ping() <-chan bool {
-  return make(chan bool)
+  return s.conn.Ping()
 }
 
 func (s *stream) Push() (PushWriter, error) {
