@@ -474,7 +474,7 @@ func (_ *RstStreamFrame) WriteHeaders(_ *Compressor) error {
 }
 
 func (frame *RstStreamFrame) Bytes() ([]byte, error) {
-  out := make([]byte, 8)
+  out := make([]byte, 16)
 
   out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
   out[1] = byte(frame.version)             // Version
