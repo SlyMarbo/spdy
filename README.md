@@ -24,18 +24,13 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 }
 
 func main() {
-	// SPDY requires an explicit http.Server.
-	server := new(http.Server)
-	server.Addr = "localhost:443"
 	
+	// Register handlers.
 	http.HandleFunc("/", ServeHTTP)
 	spdy.HandleFunc("/", ServeSPDY)
-	
-	// Add SPDY handling to the server.
-	spdy.AddSPDY(server)
 
 	// SPDY connections require TLS.
-	err := server.ListenAndServeTLS("cert.pem", "key.pem")
+	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem")
 	if err != nil {
 		// handle error.
 	}
