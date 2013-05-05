@@ -111,6 +111,10 @@ func (s *stream) WriteSettings(settings ...*Setting) {
 }
 
 func (s *stream) receiveFrame(frame Frame) {
+  if frame == nil {
+    panic("Nil frame stream.go:115")
+  }
+
   switch frame := frame.(type) {
   case *DataFrame:
     s.requestBody.Write(frame.Data)
@@ -145,18 +149,27 @@ func (s *stream) receiveFrame(frame Frame) {
 }
 
 func (s *stream) wait() {
-  s.receiveFrame(<-s.input)
+  frame, ok := <-s.input
+  if !ok {
+    return
+  }
+  s.receiveFrame(frame)
 }
 
 func (s *stream) processInput() {
   var frame Frame
+  var ok bool
 
   for {
     select {
-    case frame = <-s.input:
+    case frame, ok = <-s.input:
+      if !ok {
+        return
+      }
       s.receiveFrame(frame)
 
     default:
+      fmt.Println("Got nil.")
       return
     }
   }
@@ -195,12 +208,12 @@ func (s *stream) run() {
 
     s.output <- synReply
   } else {
-    cancel := new(RstStreamFrame)
-    cancel.version = uint16(s.version)
-    cancel.StreamID = s.streamID
-    cancel.StatusCode = RST_STREAM_CANCEL
+    data := new(DataFrame)
+    data.StreamID = s.streamID
+    data.Flags = FLAG_FIN
+    data.Data = []byte{}
 
-    s.output <- cancel
+    s.output <- data
   }
 
   s.conn.done.Done()
@@ -231,6 +244,9 @@ func (q *queue) Pop(n int) []byte {
 }
 
 func (q *queue) Empty() bool {
+  if q.data == nil {
+    return true
+  }
   return len(q.data) == 0
 }
 
