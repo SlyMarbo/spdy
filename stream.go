@@ -25,6 +25,8 @@ type stream struct {
   responseSent   bool
   responseCode   int
   stop           bool
+  transferWindow int64
+  queuedData     *queue
   wroteHeader    bool
   version        int
 }
@@ -58,9 +60,16 @@ func (s *stream) Write(data []byte) (int, error) {
     return 0, nil
   }
 
+  if int64(len(data)) > s.transferWindow {
+    s.queuedData.Push(data[s.transferWindow:])
+    data = data[:s.transferWindow]
+  }
+
   dataFrame := new(DataFrame)
   dataFrame.StreamID = s.streamID
   dataFrame.Data = data
+
+  s.transferWindow -= int64(len(data))
 
   s.output <- dataFrame
   if DebugMode {
@@ -109,6 +118,27 @@ func (s *stream) receiveFrame(frame Frame) {
   case *HeadersFrame:
     s.headers.Update(frame.Headers)
 
+  case *WindowUpdateFrame:
+    if int64(frame.DeltaWindowSize)+s.transferWindow > 0x80000000 {
+      reply := new(RstStreamFrame)
+      reply.Version = uint16(s.version)
+      reply.StreamID = s.streamID
+      reply.StatusCode = RST_STREAM_FLOW_CONTROL_ERROR
+      s.output <- reply
+      return
+    }
+
+    // Grow window and flush queue.
+    s.transferWindow += int64(frame.DeltaWindowSize)
+    data := s.queuedData.Pop(int(s.transferWindow))
+    if data != nil && len(data) > 0 {
+      _, err := s.Write(data)
+      if err != nil {
+        panic(err)
+      }
+    }
+    return
+
   default:
     panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
   }
@@ -138,6 +168,10 @@ func (s *stream) run() {
   s.requestBody = new(bytes.Buffer)
   s.processInput()
   s.request.Body = &readCloserBuffer{s.requestBody}
+
+  // Prime the transfer window to the default 64 kB.
+  s.transferWindow = 65536
+  s.queuedData = new(queue)
 
   /***************
    *** HANDLER ***
