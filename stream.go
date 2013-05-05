@@ -101,6 +101,24 @@ func (s *stream) WriteSettings(settings ...*Setting) {
   s.output <- frame
 }
 
+func (s *stream) wait() {
+  var frame Frame
+
+  select {
+  case frame = <-s.input:
+    switch frame := frame.(type) {
+    case *DataFrame:
+      s.requestBody.Write(frame.Data)
+
+    case *HeadersFrame:
+      s.headers.Update(frame.Headers)
+
+    default:
+      panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
+    }
+  }
+}
+
 func (s *stream) processInput() {
   var frame Frame
 
