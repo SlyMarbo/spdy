@@ -86,6 +86,9 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   newStream.conn = conn
   newStream.streamID = frame.StreamID
   newStream.state = STATE_OPEN
+  if frame.Flags&FLAG_FIN != 0 {
+    newStream.state = STATE_HALF_CLOSED_THERE
+  }
   newStream.priority = frame.Priority
   newStream.input = input
   newStream.output = output
@@ -152,16 +155,20 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
     conn.WriteFrame(reply)
     return
   }
-
-  // Check Stream ID is odd.
-  if frame.StreamID&1 == 0 {
-    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n",
-      frame.StreamID)
+	
+	protocolError := func() {
     reply := new(RstStreamFrame)
     reply.Version = SPDY_VERSION
     reply.StreamID = frame.StreamID
     reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
     conn.WriteFrame(reply)
+	}
+
+  // Check Stream ID is odd.
+  if frame.StreamID&1 == 0 {
+    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n",
+      frame.StreamID)
+    protocolError()
     return
   }
 
@@ -170,11 +177,7 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
     conn.nextClientStreamID != 0 {
     log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
       frame.StreamID, conn.nextClientStreamID+2)
-    reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
-    reply.StreamID = frame.StreamID
-    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-    conn.WriteFrame(reply)
+    protocolError()
     return
   }
 
@@ -182,11 +185,7 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   if frame.StreamID > MAX_STREAM_ID {
     log.Printf("Error: Received SYN_STREAM with Stream ID %d, which is too large.\n",
       frame.StreamID)
-    reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
-    reply.StreamID = frame.StreamID
-    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-    conn.WriteFrame(reply)
+    protocolError()
     return
   }
 
@@ -197,6 +196,9 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   conn.Lock()
   input := make(chan []byte)
   conn.streamInputs[frame.StreamID] = input
+  if frame.Flags&FLAG_FIN != 0 {
+    close(input)
+  }
   conn.streams[frame.StreamID] = conn.newStream(frame, input, conn.streamOutputs[frame.Priority])
   conn.Unlock()
   conn.RLock()

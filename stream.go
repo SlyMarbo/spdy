@@ -1,6 +1,7 @@
 package spdy
 
 import (
+	"bytes"
   "fmt"
   "log"
   "net/http"
@@ -92,7 +93,24 @@ func (s *stream) WriteHeader(code int) {
   s.output <- synReply
 }
 
+type readCloserBuffer struct {
+  *bytes.Buffer
+}
+
+func (_ *readCloserBuffer) Close() error {
+  return nil
+}
+
 func (s *stream) run() {
+  body := new(bytes.Buffer)
+
+  // Make sure Request is prepared.
+  for data := range s.input {
+    body.Write(data)
+  }
+
+  s.request.Body = &readCloserBuffer{body}
+
   s.handler.ServeSPDY(s, s.request)
 
   if !s.wroteHeader {
