@@ -433,6 +433,24 @@ func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
   DefaultServeMux.HandleFunc(pattern, handler)
 }
 
+func ListenAndServeTLS(addr string, certFile string, keyFile string) error {
+  server := &http.Server{
+    Addr: addr,
+    TLSConfig: &tls.Config{
+      NextProtos: []string{
+        "spdy/3",
+        //"spdy/2",
+      },
+    },
+    TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
+      //"spdy/2": acceptSPDYVersion2,
+      "spdy/3": acceptSPDYVersion3,
+    },
+  }
+
+  return server.ListenAndServeTLS(certFile, keyFile)
+}
+
 // Errors introduced by the HTTP server.
 var (
   ErrWriteAfterFlush = errors.New("Conn.Write called after Flush")
