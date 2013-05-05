@@ -9,33 +9,8 @@ import (
   "path"
   "strings"
   "sync"
+  "time"
 )
-
-// AddSPDY adjusts the given server too support SPDY/v3.
-//
-// TODO: Add spdy/2 support.
-func AddSPDY(server *http.Server) {
-  if server.TLSNextProto == nil {
-    server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
-  }
-  //server.TLSNextProto["spdy/2"] = acceptSPDYVersion2
-  server.TLSNextProto["spdy/3"] = acceptSPDYVersion3
-
-  if server.TLSConfig == nil {
-    server.TLSConfig = new(tls.Config)
-  }
-  if server.TLSConfig.NextProtos == nil {
-    server.TLSConfig.NextProtos = []string{
-      "spdy/3",
-      //"spdy/2",
-    }
-  } else {
-    server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, []string{
-      "spdy/3",
-      //"spdy/2",
-    }...)
-  }
-}
 
 type Handler interface {
   ServeSPDY(ResponseWriter, *Request)
@@ -433,6 +408,37 @@ func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
   DefaultServeMux.HandleFunc(pattern, handler)
 }
 
+type Server struct {
+  Addr           string        // TCP address to listen on, ":http" if empty
+  Handler        Handler       // handler to invoke, spdy.DefaultServeMux if nil
+  ReadTimeout    time.Duration // maximum duration before timing out read of the request
+  WriteTimeout   time.Duration // maximum duration before timing out write of the response
+  TLSConfig      *tls.Config   // optional TLS config, used by ListenAndServeTLS
+  GlobalSettings []*Setting    // SPDY settings to be sent to all clients automatically.
+}
+
+func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
+  server := &http.Server{
+    Addr: srv.Addr,
+    TLSConfig: &tls.Config{
+      NextProtos: []string{
+        "spdy/3",
+        //"spdy/2",
+      },
+    },
+    TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
+      //"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+      //	acceptSPDYv2(srv, tlsConn, nil)
+      //},
+      "spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+        acceptSPDYv3(srv, tlsConn, nil)
+      },
+    },
+  }
+
+  return server.ListenAndServeTLS(certFile, keyFile)
+}
+
 func ListenAndServeTLS(addr string, certFile string, keyFile string) error {
   server := &http.Server{
     Addr: addr,
@@ -443,8 +449,8 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string) error {
       },
     },
     TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-      //"spdy/2": acceptSPDYVersion2,
-      "spdy/3": acceptSPDYVersion3,
+      //"spdy/2": acceptDefaultSPDYv2,
+      "spdy/3": acceptDefaultSPDYv3,
     },
   }
 

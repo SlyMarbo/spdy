@@ -15,7 +15,7 @@ import (
 type connection struct {
   sync.RWMutex
   remoteAddr          string // network address of remote side
-  server              *http.Server
+  server              *Server
   conn                *tls.Conn
   buf                 *bufio.Reader
   tlsState            *tls.ConnectionState
@@ -155,14 +155,14 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
     conn.WriteFrame(reply)
     return
   }
-	
-	protocolError := func() {
+
+  protocolError := func() {
     reply := new(RstStreamFrame)
     reply.Version = SPDY_VERSION
     reply.StreamID = frame.StreamID
     reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
     conn.WriteFrame(reply)
-	}
+  }
 
   // Check Stream ID is odd.
   if frame.StreamID&1 == 0 {
@@ -366,7 +366,13 @@ func (conn *connection) serve() {
   conn.readFrames()
 }
 
-func acceptSPDYVersion2(server *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+func acceptDefaultSPDYv2(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+  server := new(Server)
+  server.TLSConfig = srv.TLSConfig
+  acceptSPDYv2(server, tlsConn, nil)
+}
+
+func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
   conn := newConn(tlsConn)
   conn.server = server
   conn.tlsConfig = server.TLSConfig
@@ -375,7 +381,13 @@ func acceptSPDYVersion2(server *http.Server, tlsConn *tls.Conn, _ http.Handler) 
   conn.serve()
 }
 
-func acceptSPDYVersion3(server *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+func acceptDefaultSPDYv3(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+  server := new(Server)
+  server.TLSConfig = srv.TLSConfig
+  acceptSPDYv3(server, tlsConn, nil)
+}
+
+func acceptSPDYv3(server *Server, tlsConn *tls.Conn, _ http.Handler) {
   conn := newConn(tlsConn)
   conn.server = server
   conn.tlsConfig = server.TLSConfig
