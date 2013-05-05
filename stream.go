@@ -10,25 +10,26 @@ import (
 
 type stream struct {
   sync.RWMutex
-  conn           *connection
-  streamID       uint32
-  requestBody    *bytes.Buffer
-  state          StreamState
-  input          <-chan Frame
-  output         chan<- Frame
-  request        *Request
-  handler        *ServeMux
-  certificates   []Certificate
-  headers        Header
-  settings       []*Setting
-  unidirectional bool
-  responseSent   bool
-  responseCode   int
-  stop           bool
-  transferWindow int64
-  queuedData     *queue
-  wroteHeader    bool
-  version        int
+  conn              *connection
+  streamID          uint32
+  requestBody       *bytes.Buffer
+  state             StreamState
+  input             <-chan Frame
+  output            chan<- Frame
+  request           *Request
+  handler           *ServeMux
+  certificates      []Certificate
+  headers           Header
+  settings          []*Setting
+  unidirectional    bool
+  responseSent      bool
+  responseCode      int
+  stop              bool
+  initialWindowSize uint32
+  transferWindow    int64
+  queuedData        *queue
+  wroteHeader       bool
+  version           int
 }
 
 func (s *stream) Header() Header {
@@ -48,6 +49,7 @@ func (s *stream) Settings() []*Setting {
 }
 
 func (s *stream) Write(data []byte) (int, error) {
+  s.processInput()
   if s.stop {
     return 0, ErrCancelled
   }
@@ -59,17 +61,23 @@ func (s *stream) Write(data []byte) (int, error) {
   if len(data) == 0 {
     return 0, nil
   }
-	
-	originalLen := len(data)
+
+  originalLen := len(data)
+
+  if !s.queuedData.Empty() {
+    s.queuedData.Push(data)
+    s.processTransferWindow()
+    return originalLen, nil
+  }
 
   if int64(len(data)) > s.transferWindow {
     s.queuedData.Push(data[s.transferWindow:])
     data = data[:s.transferWindow]
   }
-	
-	if len(data) == 0 {
-		return originalLen, nil
-	}
+
+  if len(data) == 0 {
+    return originalLen, nil
+  }
 
   dataFrame := new(DataFrame)
   dataFrame.StreamID = s.streamID
@@ -116,6 +124,27 @@ func (s *stream) WriteSettings(settings ...*Setting) {
   s.output <- frame
 }
 
+func (s *stream) processTransferWindow() {
+  if s.initialWindowSize != s.conn.initialWindowSize {
+    if s.initialWindowSize > s.conn.initialWindowSize {
+      sent := int64(s.initialWindowSize) - s.transferWindow
+      s.transferWindow = int64(s.conn.initialWindowSize) - sent
+    }
+    s.initialWindowSize = s.conn.initialWindowSize
+  }
+
+  for !s.queuedData.Empty() && s.transferWindow == 0 {
+    data := s.queuedData.Pop(int(s.transferWindow))
+    if data != nil && len(data) > 0 {
+      dataFrame := new(DataFrame)
+      dataFrame.StreamID = s.streamID
+      dataFrame.Data = data
+      s.transferWindow -= int64(len(data))
+      s.output <- dataFrame
+    }
+  }
+}
+
 func (s *stream) receiveFrame(frame Frame) {
   if frame == nil {
     panic("Nil frame stream.go:115")
@@ -130,6 +159,7 @@ func (s *stream) receiveFrame(frame Frame) {
 
   case *WindowUpdateFrame:
     if int64(frame.DeltaWindowSize)+s.transferWindow > MAX_TRANSFER_WINDOW_SIZE {
+      log.Println("Error: WINDOW_UPDATE delta window size overflows transfer window size.")
       reply := new(RstStreamFrame)
       reply.version = uint16(s.version)
       reply.StreamID = s.streamID
@@ -140,13 +170,7 @@ func (s *stream) receiveFrame(frame Frame) {
 
     // Grow window and flush queue.
     s.transferWindow += int64(frame.DeltaWindowSize)
-    data := s.queuedData.Pop(int(s.transferWindow))
-    if data != nil && len(data) > 0 {
-      _, err := s.Write(data)
-      if err != nil {
-        panic(err)
-      }
-    }
+    s.processTransferWindow()
     return
 
   default:
@@ -160,7 +184,7 @@ func (s *stream) wait() bool {
     return false
   }
   s.receiveFrame(frame)
-	return true
+  return true
 }
 
 func (s *stream) processInput() {
@@ -190,7 +214,7 @@ func (s *stream) run() {
   s.request.Body = &readCloserBuffer{s.requestBody}
 
   // Prime the transfer window to the default 64 kB.
-  s.transferWindow = 65536
+  s.transferWindow = int64(s.conn.initialWindowSize)
   s.queuedData = new(queue)
 
   /***************
@@ -201,7 +225,7 @@ func (s *stream) run() {
   // Make sure any queued data has been sent.
   for !s.queuedData.Empty() {
     if !s.wait() {
-    	break
+      break
     }
   }
 
@@ -241,6 +265,10 @@ func (q *queue) Push(data []byte) {
 }
 
 func (q *queue) Pop(n int) []byte {
+  if n < 0 {
+    return nil
+  }
+
   if n < len(q.data) {
     out := q.data[:n]
     q.data = q.data[n:]

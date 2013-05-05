@@ -105,6 +105,8 @@ const MAX_STREAM_ID = 0x7fffffff
 // Maximum number of bytes in the transfer window.
 const MAX_TRANSFER_WINDOW_SIZE = 0x80000000
 
+const DEFAULT_INITIAL_WINDOW_SIZE = 65536
+
 // Maximum delta window size field for WINDOW_UPDATE.
 const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 

@@ -30,6 +30,7 @@ type connection struct {
   receivedSettings    []*Setting
   nextServerStreamID  uint32 // even
   nextClientStreamID  uint32 // odd
+	initialWindowSize   uint32
   goaway              bool
   version             int
   numInvalidStreamIDs int
@@ -90,7 +91,12 @@ func (conn *connection) readFrames() {
           conn.receivedSettings = append(conn.receivedSettings, new)
         }
       }
-      // TODO: Perhaps add some handling by the server here?
+      for _, setting := range frame.Settings {
+      	if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE {
+					fmt.Printf("Changing initial window size to %d.\n", setting.Value)
+      		conn.initialWindowSize = setting.Value
+      	}
+      }
 
     /*** COMPLETE! ***/
     case *PingFrame:
@@ -557,6 +563,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   *conn.tlsState = tlsConn.ConnectionState()
   conn.compressor = new(Compressor)
   conn.decompressor = new(Decompressor)
+	conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
   conn.streams = make(map[uint32]*stream)
   conn.streamInputs = make(map[uint32]chan<- Frame)
   conn.streamOutputs = [8]chan Frame{}
