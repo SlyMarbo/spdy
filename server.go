@@ -32,6 +32,11 @@ type ResponseWriter interface {
   // server pushes.
   Push() (PushWriter, error)
 
+  // Settings returns any settings presented by the client. Note that
+  // the client can send settings at any time, so successive calls to
+  // Settings may give different output.
+  Settings() []*Setting
+
   // Write writes the data to the connection as part of an HTTP/SPDY
   // reply. If WriteHeader has not yet been called, Write calls
   // WriteHeader(http.StatusOK) before writing the data. If the Header

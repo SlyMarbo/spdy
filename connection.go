@@ -25,6 +25,7 @@ type connection struct {
   streamOutputs       [8]chan Frame
   compressor          *Compressor
   decompressor        *Decompressor
+  receivedSettings    []*Setting
   nextServerStreamID  uint32 // even
   nextClientStreamID  uint32 // odd
   goaway              bool
@@ -96,9 +97,6 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   stream.certificates = make([]Certificate, 1)
   stream.headers = make(Header)
   stream.settings = make([]*Setting, 1)
-  if conn.server.GlobalSettings != nil {
-    stream.settings = conn.server.GlobalSettings
-  }
   stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
   stream.version = conn.version
   stream.contentLength = -1
@@ -299,10 +297,17 @@ func (conn *connection) readFrames() {
       log.Printf("Received RST_STREAM on stream %d with status %q.\n", frame.StreamID,
         StatusCodeText(int(frame.StatusCode)))
 
-    case *SettingsFrame:
-      log.Println("Received SETTINGS. Ignoring...")
-
       /*** COMPLETE! ***/
+    case *SettingsFrame:
+      if conn.receivedSettings == nil {
+        conn.receivedSettings = frame.Settings
+      } else {
+        conn.receivedSettings = append(conn.receivedSettings, frame.Settings...)
+      }
+      // TODO: Sort out duplication and updating.
+      // TODO: Perhaps add some handling by the server here?
+
+    /*** COMPLETE! ***/
     case *PingFrame:
       // Check Ping ID is odd.
       if frame.PingID&1 == 0 {

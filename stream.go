@@ -1,7 +1,7 @@
 package spdy
 
 import (
-	"bytes"
+  "bytes"
   "fmt"
   "log"
   "net/http"
@@ -41,6 +41,10 @@ func (s *stream) Ping() <-chan bool {
 
 func (s *stream) Push() (PushWriter, error) {
   return nil, nil
+}
+
+func (s *stream) Settings() []*Setting {
+  return s.conn.receivedSettings
 }
 
 func (s *stream) Write(data []byte) (int, error) {
@@ -94,14 +98,14 @@ func (s *stream) WriteHeader(code int) {
 }
 
 func (s *stream) WriteSettings(settings ...*Setting) {
-	if settings == nil {
-		return
-	}
-	
+  if settings == nil {
+    return
+  }
+
   frame := new(SettingsFrame)
   frame.Version = uint16(s.version)
   frame.Settings = settings
-	s.output <- frame
+  s.output <- frame
 }
 
 type readCloserBuffer struct {
