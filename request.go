@@ -10,6 +10,7 @@ import (
   "io/ioutil"
   "mime"
   "mime/multipart"
+  "net/http"
   "net/url"
   "strings"
 )
@@ -143,6 +144,24 @@ type Request struct {
   // The HTTP server in this package sets the field for
   // TLS-enabled connections before invoking a handler.
   TLS *tls.ConnectionState
+}
+
+func spdyRequestToHttpRequest(req *Request) *http.Request {
+  out := new(http.Request)
+  out.Method = req.Method
+  out.URL = req.URL
+  out.Proto = req.Proto
+  out.ProtoMajor = req.ProtoMajor
+  out.ProtoMinor = req.ProtoMinor
+  out.Header = http.Header(req.Header)
+  out.Body = req.Body
+  out.ContentLength = -1
+  out.TransferEncoding = []string{}
+  out.Host = req.Host
+  out.RemoteAddr = req.RemoteAddr
+  out.RequestURI = req.RequestURI
+  out.TLS = req.TLS
+  return out
 }
 
 // ProtoAtLeast returns whether the HTTP protocol used
