@@ -10,17 +10,16 @@ Example use:
 package main
 
 import (
-	"fmt"
 	"github.com/SlyMarbo/spdy"
 	"net/http"
 )
 
 func ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, %s over HTTP!", r.RequestURI)
+	w.Write([]byte("Hello, HTTP!"))
 }
 
 func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
-	fmt.Fprintf(w, "Hello, %s over SPDY!", r.RequestURI)
+	w.Write([]byte("Hello, SPDY!"))
 }
 
 func main() {
