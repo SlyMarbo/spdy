@@ -132,6 +132,15 @@ func (h Header) Get(key string) string {
   return textproto.MIMEHeader(h).Get(key)
 }
 
+// Update used a second set of headers to update the previous.
+// New headers are added, and old headers are replaced. Headers
+// in the old set but not the new are left unmodified.
+func (h1 Header) Update(h2 Header) {
+	for name, value := range h2 {
+		h1.Set(name, value)
+	}
+}
+
 // get is like Get, but key must already be in CanonicalHeaderKey form.
 func (h Header) get(key string) string {
   if v := h[key]; len(v) > 0 {
