@@ -82,23 +82,26 @@ func (conn *connection) selectFrameToSend() (frame Frame) {
 func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   output chan<- Frame) *stream {
 
-  newStream := new(stream)
-  newStream.conn = conn
-  newStream.streamID = frame.StreamID
-  newStream.state = STATE_OPEN
+  stream := new(stream)
+  stream.conn = conn
+  stream.streamID = frame.StreamID
+  stream.state = STATE_OPEN
   if frame.Flags&FLAG_FIN != 0 {
-    newStream.state = STATE_HALF_CLOSED_THERE
+    stream.state = STATE_HALF_CLOSED_THERE
   }
-  newStream.priority = frame.Priority
-  newStream.input = input
-  newStream.output = output
-  newStream.handler = DefaultServeMux
-  newStream.certificates = make([]Certificate, 1)
-  newStream.headers = make(Header)
-  newStream.settings = make([]*Setting, 1)
-  newStream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
-  newStream.version = conn.version
-  newStream.contentLength = -1
+  stream.priority = frame.Priority
+  stream.input = input
+  stream.output = output
+  stream.handler = DefaultServeMux
+  stream.certificates = make([]Certificate, 1)
+  stream.headers = make(Header)
+  stream.settings = make([]*Setting, 1)
+  if conn.server.GlobalSettings != nil {
+    stream.settings = conn.server.GlobalSettings
+  }
+  stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
+  stream.version = conn.version
+  stream.contentLength = -1
 
   headers := frame.Headers
   rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
@@ -110,7 +113,7 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
   if !ok {
     panic("Invalid HTTP version: " + headers.Get(":version"))
   }
-  newStream.request = &Request{
+  stream.request = &Request{
     Method:     headers.Get(":method"),
     URL:        url,
     Proto:      headers.Get(":version"),
@@ -122,7 +125,7 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
     TLS:        conn.tlsState,
   }
 
-  return newStream
+  return stream
 }
 
 func (conn *connection) WriteFrame(frame Frame) error {
