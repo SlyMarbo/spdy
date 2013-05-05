@@ -21,7 +21,7 @@ type connection struct {
   tlsState            *tls.ConnectionState
   tlsConfig           *tls.Config
   streams             map[uint32]*stream
-  streamInputs        map[uint32]chan<- []byte
+  streamInputs        map[uint32]chan<- Frame
   streamOutputs       [8]chan Frame
   compressor          *Compressor
   decompressor        *Decompressor
@@ -81,7 +81,7 @@ func (conn *connection) selectFrameToSend() (frame Frame) {
   panic("Unreachable")
 }
 
-func (conn *connection) newStream(frame *SynStreamFrame, input <-chan []byte,
+func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
   output chan<- Frame) *stream {
 
   stream := new(stream)
@@ -196,7 +196,7 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   // Create and start new stream.
   conn.RUnlock()
   conn.Lock()
-  input := make(chan []byte)
+  input := make(chan Frame)
   conn.streamInputs[frame.StreamID] = input
   if frame.Flags&FLAG_FIN != 0 {
     close(input)
@@ -243,7 +243,7 @@ func (conn *connection) handleDataFrame(frame *DataFrame) {
   // Stream ID is fine.
 
   // Send data to stream.
-  conn.streamInputs[frame.StreamID] <- frame.Data
+  conn.streamInputs[frame.StreamID] <- frame
 
   // Handle flags.
   if frame.Flags&FLAG_FIN != 0 {
@@ -253,8 +253,50 @@ func (conn *connection) handleDataFrame(frame *DataFrame) {
     close(conn.streamInputs[frame.StreamID])
     stream.Unlock()
   }
+}
 
-  return
+func (conn *connection) handleHeadersFrame(frame *HeadersFrame) {
+  conn.RLock()
+  defer func() { conn.RUnlock() }()
+
+  // Check Stream ID is odd.
+  if frame.StreamID&1 == 0 {
+    log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n",
+      frame.StreamID)
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+    return
+  }
+
+  // Check stream is open.
+  if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
+    conn.nextClientStreamID != 0 {
+    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
+      frame.StreamID, conn.nextClientStreamID+2)
+    reply := new(RstStreamFrame)
+    reply.Version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+    return
+  }
+
+  // Stream ID is fine.
+
+  // Send data to stream.
+  conn.streamInputs[frame.StreamID] <- frame
+
+  // Handle flags.
+  if frame.Flags&FLAG_FIN != 0 {
+    stream := conn.streams[frame.StreamID]
+    stream.Lock()
+    stream.state = STATE_HALF_CLOSED_THERE
+    close(conn.streamInputs[frame.StreamID])
+    stream.Unlock()
+  }
 }
 
 func (conn *connection) readFrames() {
@@ -285,8 +327,6 @@ func (conn *connection) readFrames() {
 
   FrameHandling:
     switch frame := frame.(type) {
-    default:
-      panic(fmt.Sprintf("unexpected frame type %T", frame))
 
     /*** COMPLETE! ***/
     case *SynStreamFrame:
@@ -352,8 +392,9 @@ func (conn *connection) readFrames() {
       conn.goaway = true
       conn.Unlock()
 
+    /*** COMPLETE! ***/
     case *HeadersFrame:
-      log.Println("Got HEADERS")
+      conn.handleDataFrame(frame)
 
     case *WindowUpdateFrame:
       log.Println("Got WINDOW_UPDATE")
@@ -361,9 +402,12 @@ func (conn *connection) readFrames() {
     case *CredentialFrame:
       log.Println("Got CREDENTIAL")
 
-      /*** COMPLETE! ***/
+    /*** COMPLETE! ***/
     case *DataFrame:
       conn.handleDataFrame(frame)
+
+    default:
+      panic(fmt.Sprintf("unexpected frame type %T", frame))
     }
   }
 }
@@ -428,7 +472,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.compressor = new(Compressor)
   conn.decompressor = new(Decompressor)
   conn.streams = make(map[uint32]*stream)
-  conn.streamInputs = make(map[uint32]chan<- []byte)
+  conn.streamInputs = make(map[uint32]chan<- Frame)
   conn.streamOutputs = [8]chan Frame{}
   conn.streamOutputs[0] = make(chan Frame)
   conn.streamOutputs[1] = make(chan Frame)

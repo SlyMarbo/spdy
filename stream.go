@@ -14,7 +14,7 @@ type stream struct {
   streamID       uint32
   state          StreamState
   priority       uint8
-  input          <-chan []byte
+  input          <-chan Frame
   output         chan<- Frame
   request        *Request
   handler        *ServeMux
@@ -120,8 +120,17 @@ func (s *stream) run() {
 
   // Make sure Request is prepared.
   body := new(bytes.Buffer)
-  for data := range s.input {
-    body.Write(data)
+  for frame := range s.input {
+		switch frame := frame.(type) {
+		case *DataContentFrame:
+			body.Write(frame.Data)
+			
+		case *HeadersFrame:
+			s.headers.Update(frame.Headers)
+			
+		default:
+			panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
+		}
   }
   s.request.Body = &readCloserBuffer{body}
 
