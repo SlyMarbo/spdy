@@ -92,7 +92,7 @@ func (s *stream) WriteHeader(code int) {
   s.headers.Set(":version", "HTTP/1.1")
 
   synReply := new(SynReplyFrame)
-  synReply.Version = uint16(s.version)
+  synReply.version = uint16(s.version)
   synReply.StreamID = s.streamID
   synReply.Headers = s.headers
 
@@ -105,7 +105,7 @@ func (s *stream) WriteSettings(settings ...*Setting) {
   }
 
   frame := new(SettingsFrame)
-  frame.Version = uint16(s.version)
+  frame.version = uint16(s.version)
   frame.Settings = settings
   s.output <- frame
 }
@@ -119,9 +119,9 @@ func (s *stream) receiveFrame(frame Frame) {
     s.headers.Update(frame.Headers)
 
   case *WindowUpdateFrame:
-    if int64(frame.DeltaWindowSize)+s.transferWindow > 0x80000000 {
+    if int64(frame.DeltaWindowSize)+s.transferWindow > MAX_TRANSFER_WINDOW_SIZE {
       reply := new(RstStreamFrame)
-      reply.Version = uint16(s.version)
+      reply.version = uint16(s.version)
       reply.StreamID = s.streamID
       reply.StatusCode = RST_STREAM_FLOW_CONTROL_ERROR
       s.output <- reply
@@ -183,7 +183,7 @@ func (s *stream) run() {
     s.headers.Set(":version", "HTTP/1.1")
 
     synReply := new(SynReplyFrame)
-    synReply.Version = uint16(s.version)
+    synReply.version = uint16(s.version)
     synReply.Flags = FLAG_FIN
     synReply.StreamID = s.streamID
     synReply.Headers = s.headers
@@ -191,7 +191,7 @@ func (s *stream) run() {
     s.output <- synReply
   } else {
     cancel := new(RstStreamFrame)
-    cancel.Version = uint16(s.version)
+    cancel.version = uint16(s.version)
     cancel.StreamID = s.streamID
     cancel.StatusCode = RST_STREAM_CANCEL
 

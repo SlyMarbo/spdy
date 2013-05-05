@@ -14,6 +14,7 @@ type Frame interface {
   ReadHeaders(*Decompressor) error
   WriteHeaders(*Compressor) error
   WriteTo(io.Writer) error
+  Version() uint16
 }
 
 func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
@@ -60,7 +61,7 @@ func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
  *** SYN_STREAM ***
  ******************/
 type SynStreamFrame struct {
-  Version        uint16
+  version        uint16
   Flags          byte
   StreamID       uint32
   AssocStreamID  uint32
@@ -132,7 +133,7 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Unused", int(data[16] & 0x1f), 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
   frame.AssocStreamID = bytesToUint31(data[12:16])
@@ -178,8 +179,8 @@ func (frame *SynStreamFrame) Bytes() ([]byte, error) {
   length := 10 + len(headers)
   out := make([]byte, 18, 8+length)
 
-  out[0] = 0x80 | byte(frame.Version>>8)         // Control bit and Version
-  out[1] = byte(frame.Version)                   // Version
+  out[0] = 0x80 | byte(frame.version>>8)         // Control bit and Version
+  out[1] = byte(frame.version)                   // Version
   out[2] = 0                                     // Type
   out[3] = 1                                     // Type
   out[4] = frame.Flags                           // Flags
@@ -210,8 +211,8 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
   length := 10 + len(headers)
   out := make([]byte, 18)
 
-  out[0] = 0x80 | byte(frame.Version>>8)         // Control bit and Version
-  out[1] = byte(frame.Version)                   // Version
+  out[0] = 0x80 | byte(frame.version>>8)         // Control bit and Version
+  out[1] = byte(frame.version)                   // Version
   out[2] = 0                                     // Type
   out[3] = 1                                     // Type
   out[4] = frame.Flags                           // Flags
@@ -238,11 +239,15 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
   return err
 }
 
+func (frame *SynStreamFrame) Version() uint16 {
+  return frame.version
+}
+
 /*****************
  *** SYN_REPLY ***
  *****************/
 type SynReplyFrame struct {
-  Version        uint16
+  version        uint16
   Flags          byte
   StreamID       uint32
   Headers        Header
@@ -303,7 +308,7 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Unused", 1, 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
 
@@ -346,8 +351,8 @@ func (frame *SynReplyFrame) Bytes() ([]byte, error) {
   length := 4 + len(headers)
   out := make([]byte, 12, 8+length)
 
-  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
-  out[1] = byte(frame.Version)             // Version
+  out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
+  out[1] = byte(frame.version)             // Version
   out[2] = 0                               // Type
   out[3] = 2                               // Type
   out[4] = frame.Flags                     // Flags
@@ -372,8 +377,8 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
   length := 4 + len(headers)
   out := make([]byte, 12)
 
-  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
-  out[1] = byte(frame.Version)             // Version
+  out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
+  out[1] = byte(frame.version)             // Version
   out[2] = 0                               // Type
   out[3] = 2                               // Type
   out[4] = frame.Flags                     // Flags
@@ -394,11 +399,15 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
   return err
 }
 
+func (frame *SynReplyFrame) Version() uint16 {
+  return frame.version
+}
+
 /******************
  *** RST_STREAM ***
  ******************/
 type RstStreamFrame struct {
-  Version    uint16
+  version    uint16
   StreamID   uint32
   StatusCode uint32
 }
@@ -449,7 +458,7 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Unused", 1, 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.StreamID = bytesToUint31(data[8:12])
   frame.StatusCode = bytesToUint32(data[12:16])
 
@@ -467,8 +476,8 @@ func (_ *RstStreamFrame) WriteHeaders(_ *Compressor) error {
 func (frame *RstStreamFrame) Bytes() ([]byte, error) {
   out := make([]byte, 8)
 
-  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
-  out[1] = byte(frame.Version)             // Version
+  out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
+  out[1] = byte(frame.version)             // Version
   out[2] = 0                               // Type
   out[3] = 3                               // Type
   out[4] = 0                               // Flag
@@ -496,11 +505,15 @@ func (frame *RstStreamFrame) WriteTo(writer io.Writer) error {
   return err
 }
 
+func (frame *RstStreamFrame) Version() uint16 {
+  return frame.version
+}
+
 /****************
  *** SETTINGS ***
  ****************/
 type SettingsFrame struct {
-  Version  uint16
+  version  uint16
   Flags    byte
   Settings []*Setting
 }
@@ -571,7 +584,7 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 4}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.Flags = data[4]
   frame.Settings = make([]*Setting, numSettings)
   offset := 12
@@ -601,8 +614,8 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
   length := 4 + (8 * numSettings)
   out := make([]byte, 12, 8+length)
 
-  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
-  out[1] = byte(frame.Version)           // Version
+  out[0] = 0x80 | byte(frame.version>>8) // Control bit and Version
+  out[1] = byte(frame.version)           // Version
   out[2] = 0                             // Type
   out[3] = 4                             // Type
   out[4] = frame.Flags                   // Flags
@@ -641,6 +654,10 @@ func (frame *SettingsFrame) Add(flags byte, id, value uint32) error {
   return nil
 }
 
+func (frame *SettingsFrame) Version() uint16 {
+  return frame.version
+}
+
 type Setting struct {
   Flags byte
   ID    uint32
@@ -677,7 +694,7 @@ func (s *Setting) Bytes() []byte {
  *** PING ***
  ************/
 type PingFrame struct {
-  Version uint16
+  version uint16
   PingID  uint32
 }
 
@@ -726,7 +743,7 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Flags", int(data[4]), 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.PingID = bytesToUint32(data[8:12])
 
   return nil
@@ -743,8 +760,8 @@ func (_ *PingFrame) WriteHeaders(_ *Compressor) error {
 func (frame *PingFrame) Bytes() ([]byte, error) {
   out := make([]byte, 12)
 
-  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
-  out[1] = byte(frame.Version)           // Version
+  out[0] = 0x80 | byte(frame.version>>8) // Control bit and Version
+  out[1] = byte(frame.version)           // Version
   out[2] = 0                             // Type
   out[3] = 6                             // Type
   out[4] = 0                             // Flags
@@ -768,11 +785,15 @@ func (frame *PingFrame) WriteTo(writer io.Writer) error {
   return err
 }
 
+func (frame *PingFrame) Version() uint16 {
+  return frame.version
+}
+
 /**************
  *** GOAWAY ***
  **************/
 type GoawayFrame struct {
-  Version          uint16
+  version          uint16
   LastGoodStreamID uint32
   StatusCode       uint32
 }
@@ -828,7 +849,7 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Flags", int(data[4]), 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.LastGoodStreamID = bytesToUint31(data[8:12])
   frame.StatusCode = bytesToUint32(data[12:16])
 
@@ -846,8 +867,8 @@ func (_ *GoawayFrame) WriteHeaders(_ *Compressor) error {
 func (frame *GoawayFrame) Bytes() ([]byte, error) {
   out := make([]byte, 16)
 
-  out[0] = 0x80 | byte(frame.Version>>8)           // Control bit and Version
-  out[1] = byte(frame.Version)                     // Version
+  out[0] = 0x80 | byte(frame.version>>8)           // Control bit and Version
+  out[1] = byte(frame.version)                     // Version
   out[2] = 0                                       // Type
   out[3] = 7                                       // Type
   out[4] = 0                                       // Flags
@@ -875,11 +896,15 @@ func (frame *GoawayFrame) WriteTo(writer io.Writer) error {
   return err
 }
 
+func (frame *GoawayFrame) Version() uint16 {
+  return frame.version
+}
+
 /***************
  *** HEADERS ***
  ***************/
 type HeadersFrame struct {
-  Version        uint16
+  version        uint16
   Flags          byte
   StreamID       uint32
   Headers        Header
@@ -940,7 +965,7 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Unused", 1, 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.Flags = data[4]
   frame.StreamID = bytesToUint31(data[8:12])
 
@@ -983,8 +1008,8 @@ func (frame *HeadersFrame) Bytes() ([]byte, error) {
   length := 4 + len(headers)
   out := make([]byte, 12, 8+length)
 
-  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
-  out[1] = byte(frame.Version)             // Version
+  out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
+  out[1] = byte(frame.version)             // Version
   out[2] = 0                               // Type
   out[3] = 8                               // Type
   out[4] = frame.Flags                     // Flags
@@ -1009,8 +1034,8 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
   length := 4 + len(headers)
   out := make([]byte, 12)
 
-  out[0] = 0x80 | byte(frame.Version>>8)   // Control bit and Version
-  out[1] = byte(frame.Version)             // Version
+  out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
+  out[1] = byte(frame.version)             // Version
   out[2] = 0                               // Type
   out[3] = 1                               // Type
   out[4] = frame.Flags                     // Flags
@@ -1031,11 +1056,15 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
   return err
 }
 
+func (frame *HeadersFrame) Version() uint16 {
+  return frame.version
+}
+
 /*********************
  *** WINDOW_UPDATE ***
  *********************/
 type WindowUpdateFrame struct {
-  Version         uint16
+  version         uint16
   StreamID        uint32
   DeltaWindowSize uint32
 }
@@ -1086,7 +1115,7 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Unused", 1, 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.StreamID = bytesToUint31(data[8:12])
   frame.DeltaWindowSize = bytesToUint32(data[12:16]) & 0x7f
 
@@ -1104,8 +1133,8 @@ func (_ *WindowUpdateFrame) WriteHeaders(_ *Compressor) error {
 func (frame *WindowUpdateFrame) Bytes() ([]byte, error) {
   out := make([]byte, 12)
 
-  out[0] = 0x80 | byte(frame.Version>>8)           // Control bit and Version
-  out[1] = byte(frame.Version)                     // Version
+  out[0] = 0x80 | byte(frame.version>>8)           // Control bit and Version
+  out[1] = byte(frame.version)                     // Version
   out[2] = 0                                       // Type
   out[3] = 8                                       // Type
   out[4] = 0                                       // Flags
@@ -1133,11 +1162,15 @@ func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
   return err
 }
 
+func (frame *WindowUpdateFrame) Version() uint16 {
+  return frame.version
+}
+
 /******************
  *** CREDENTIAL ***
  ******************/
 type CredentialFrame struct {
-  Version      uint16
+  version      uint16
   Slot         uint16
   Proof        []byte
   Certificates []Certificate
@@ -1190,7 +1223,7 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
     return &InvalidField{"Flags", int(data[4]), 0}
   }
 
-  frame.Version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+  frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
   frame.Slot = bytesToUint16(data[8:10])
 
   proofLen := int(bytesToUint32(data[10:14]))
@@ -1235,8 +1268,8 @@ func (frame *CredentialFrame) Bytes() ([]byte, error) {
   length := 6 + proofLength + certsLength
   out := make([]byte, 14, 8+length)
 
-  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
-  out[1] = byte(frame.Version)           // Version
+  out[0] = 0x80 | byte(frame.version>>8) // Control bit and Version
+  out[1] = byte(frame.version)           // Version
   out[2] = 0                             // Type
   out[3] = 10                            // Type
   out[4] = 0                             // Flags
@@ -1267,8 +1300,8 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
   length := 6 + proofLength + certsLength
   out := make([]byte, 14, 8+length)
 
-  out[0] = 0x80 | byte(frame.Version>>8) // Control bit and Version
-  out[1] = byte(frame.Version)           // Version
+  out[0] = 0x80 | byte(frame.version>>8) // Control bit and Version
+  out[1] = byte(frame.version)           // Version
   out[2] = 0                             // Type
   out[3] = 10                            // Type
   out[4] = 0                             // Flags
@@ -1300,6 +1333,10 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
   }
 
   return nil
+}
+
+func (frame *CredentialFrame) Version() uint16 {
+  return frame.version
 }
 
 type Certificate []byte
@@ -1407,6 +1444,10 @@ func (frame *DataFrame) WriteTo(writer io.Writer) error {
 
   _, err = writer.Write(frame.Data)
   return err
+}
+
+func (frame *DataFrame) Version() uint16 {
+  return 0
 }
 
 /*** HELPER FUNCTIONS ***/
