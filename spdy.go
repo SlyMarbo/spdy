@@ -603,7 +603,7 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
   out[11] = byte(numSettings)            // Number of Entries
 
   offset := 12
-  for _, setting := range frame.Settings {
+  for _, setting := range frame.Settings { // TODO: add checks to enforce duplicate settings rules.
     bytes := setting.Bytes()
     for i, b := range bytes {
       out[offset+i] = b

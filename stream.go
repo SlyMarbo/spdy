@@ -94,7 +94,14 @@ func (s *stream) WriteHeader(code int) {
 }
 
 func (s *stream) WriteSettings(settings ...*Setting) {
-	// TODO
+	if settings == nil {
+		return
+	}
+	
+  frame := new(SettingsFrame)
+  frame.Version = uint16(s.version)
+  frame.Settings = settings
+	s.output <- frame
 }
 
 type readCloserBuffer struct {
