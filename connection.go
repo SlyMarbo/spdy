@@ -302,9 +302,15 @@ func (conn *connection) readFrames() {
       if conn.receivedSettings == nil {
         conn.receivedSettings = frame.Settings
       } else {
-        conn.receivedSettings = append(conn.receivedSettings, frame.Settings...)
+        for _, new := range frame.Settings {
+          for i, old := range conn.receivedSettings {
+            if new.ID == old.ID {
+              conn.receivedSettings[i] = new
+            }
+          }
+          conn.receivedSettings = append(conn.receivedSettings, new)
+        }
       }
-      // TODO: Sort out duplication and updating.
       // TODO: Perhaps add some handling by the server here?
 
     /*** COMPLETE! ***/
