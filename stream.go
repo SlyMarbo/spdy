@@ -13,7 +13,6 @@ type stream struct {
   conn           *connection
   streamID       uint32
   state          StreamState
-  priority       uint8
   input          <-chan Frame
   output         chan<- Frame
   request        *Request
@@ -114,16 +113,16 @@ func (s *stream) run() {
   // Make sure Request is prepared.
   body := new(bytes.Buffer)
   for frame := range s.input {
-		switch frame := frame.(type) {
-		case *DataContentFrame:
-			body.Write(frame.Data)
-			
-		case *HeadersFrame:
-			s.headers.Update(frame.Headers)
-			
-		default:
-			panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
-		}
+    switch frame := frame.(type) {
+    case *DataFrame:
+      body.Write(frame.Data)
+
+    case *HeadersFrame:
+      s.headers.Update(frame.Headers)
+
+    default:
+      panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
+    }
   }
   s.request.Body = &readCloserBuffer{body}
 
@@ -142,9 +141,9 @@ func (s *stream) run() {
     s.output <- synReply
   } else {
     cancel := new(RstStreamFrame)
-		cancel.Version = s.version
-		cancel.StreamID = s.streamID
-		cancel.StatusCode = RST_STREAM_CANCEL
+    cancel.Version = uint16(s.version)
+    cancel.StreamID = s.streamID
+    cancel.StatusCode = RST_STREAM_CANCEL
 
     s.output <- cancel
   }

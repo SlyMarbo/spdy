@@ -57,6 +57,9 @@ type Request struct {
   ProtoMajor int    // 1
   ProtoMinor int    // 0
 
+  // The priority of the request, as set by the sender.
+  Priority int
+
   // A header maps request lines to their values.
   // If the header says
   //

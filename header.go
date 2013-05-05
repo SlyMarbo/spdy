@@ -136,9 +136,15 @@ func (h Header) Get(key string) string {
 // New headers are added, and old headers are replaced. Headers
 // in the old set but not the new are left unmodified.
 func (h1 Header) Update(h2 Header) {
-	for name, value := range h2 {
-		h1.Set(name, value)
-	}
+  for name, values := range h2 {
+    for i, value := range values {
+      if i == 0 {
+        h1.Set(name, value)
+      } else {
+        h1.Add(name, value)
+      }
+    }
+  }
 }
 
 // get is like Get, but key must already be in CanonicalHeaderKey form.

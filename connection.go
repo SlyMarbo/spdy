@@ -91,7 +91,6 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
   if frame.Flags&FLAG_FIN != 0 {
     stream.state = STATE_HALF_CLOSED_THERE
   }
-  stream.priority = frame.Priority
   stream.input = input
   stream.output = output
   stream.handler = DefaultServeMux
@@ -100,7 +99,6 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
   stream.settings = make([]*Setting, 1)
   stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
   stream.version = conn.version
-  stream.contentLength = -1
 
   headers := frame.Headers
   rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
@@ -118,6 +116,7 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
     Proto:      headers.Get(":version"),
     ProtoMajor: major,
     ProtoMinor: minor,
+    Priority:   int(frame.Priority),
     Header:     headers,
     Host:       url.Host,
     RequestURI: url.Path,
@@ -394,7 +393,7 @@ func (conn *connection) readFrames() {
 
     /*** COMPLETE! ***/
     case *HeadersFrame:
-      conn.handleDataFrame(frame)
+      conn.handleHeadersFrame(frame)
 
     case *WindowUpdateFrame:
       log.Println("Got WINDOW_UPDATE")
