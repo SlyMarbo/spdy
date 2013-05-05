@@ -11,6 +11,9 @@ import (
 
 var versionError = errors.New("spdy: Version not supported.")
 
+// Decompressor is used to decompress name/value header blocks.
+// Decompressors retain their state, so a single Decompressor
+// should be used for each direction of a particular connection.
 type Decompressor struct {
   m   sync.Mutex
   in  *bytes.Buffer
@@ -28,6 +31,8 @@ func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err
     d.in.Write(data)
   }
 
+  // Initialise the decompressor with the appropriate
+  // dictionary, depending on SPDY version.
   if d.out == nil {
     switch version {
     case 2:
@@ -46,6 +51,7 @@ func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err
   var chunk []byte
   var dechunk func([]byte) int
 
+  // SPDY/2 uses 16-bit fixed fields, where SPDY/3 uses 32-bit fields.
   switch version {
   case 2:
     chunk = make([]byte, 2)
@@ -61,27 +67,28 @@ func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err
     return nil, versionError
   }
 
+  // Read in the number of name/value pairs.
   if _, err = d.out.Read(chunk); err != nil {
     panic(err)
     return nil, err
   }
-  numKeys := dechunk(chunk)
+  numNameValuePairs := dechunk(chunk)
 
   headers = make(Header)
   length := 0
-  for i := 0; i < numKeys; i++ {
-    var keyLen, valLen int
+  for i := 0; i < numNameValuePairs; i++ {
+    var nameLength, valueLength int
 
-    // Get the key.
+    // Get the name.
     if _, err = d.out.Read(chunk); err != nil {
       return nil, err
     }
-    keyLen = dechunk(chunk)
+    nameLength = dechunk(chunk)
 
-    // TODO: bounds check the key length.
+    // TODO: bounds check the name length.
 
-    key := make([]byte, keyLen)
-    if _, err = d.out.Read(key); err != nil {
+    name := make([]byte, nameLength)
+    if _, err = d.out.Read(name); err != nil {
       panic(err)
       return nil, err
     }
@@ -91,22 +98,22 @@ func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err
       panic(err)
       return nil, err
     }
-    valLen = dechunk(chunk)
+    valueLength = dechunk(chunk)
 
     // TODO: bounds check the value length.
 
-    value := make([]byte, valLen)
-    if _, err = d.out.Read(value); err != nil {
+    values := make([]byte, valueLength)
+    if _, err = d.out.Read(values); err != nil {
       return nil, err
     }
 
     // Count name and ': '.
-    length += keyLen + 2
+    length += nameLength + 2
 
     // Split the value on null boundaries.
-    for _, val := range bytes.Split(value, []byte{'\x00'}) {
-      headers.Add(string(key), string(val))
-      length += len(val) + 2 // count value and ', ' or '\n\r'.
+    for _, value := range bytes.Split(values, []byte{'\x00'}) {
+      headers.Add(string(name), string(value))
+      length += len(value) + 2 // count value and ', ' or '\n\r'.
     }
   }
 
