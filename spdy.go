@@ -69,6 +69,7 @@ type SynStreamFrame struct {
   Headers        Header
   rawHeaders     []byte
   headersWritten bool
+  headersDecoded bool
 }
 
 func (frame *SynStreamFrame) String() string {
@@ -144,12 +145,17 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 }
 
 func (frame *SynStreamFrame) ReadHeaders(decom *Decompressor) error {
+  if frame.headersDecoded {
+    return nil
+  }
+
   headers := make(Header)
   err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
     return err
   }
   frame.Headers = headers
+  frame.headersDecoded = true
   return nil
 }
 
@@ -242,6 +248,7 @@ type SynReplyFrame struct {
   Headers        Header
   rawHeaders     []byte
   headersWritten bool
+  headersDecoded bool
 }
 
 func (frame *SynReplyFrame) String() string {
@@ -306,12 +313,17 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 }
 
 func (frame *SynReplyFrame) ReadHeaders(decom *Decompressor) error {
+  if frame.headersDecoded {
+    return nil
+  }
+
   headers := make(Header)
   err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
     return err
   }
   frame.Headers = headers
+  frame.headersDecoded = true
   return nil
 }
 
@@ -873,6 +885,7 @@ type HeadersFrame struct {
   Headers        Header
   rawHeaders     []byte
   headersWritten bool
+  headersDecoded bool
 }
 
 func (frame *HeadersFrame) String() string {
@@ -937,12 +950,17 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 }
 
 func (frame *HeadersFrame) ReadHeaders(decom *Decompressor) error {
+  if frame.headersDecoded {
+    return nil
+  }
+
   headers := make(Header)
   err := headers.Parse(frame.rawHeaders, decom)
   if err != nil {
     return err
   }
   frame.Headers = headers
+  frame.headersDecoded = true
   return nil
 }
 
