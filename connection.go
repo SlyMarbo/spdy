@@ -96,7 +96,7 @@ func (conn *connection) readFrames() {
       if frame.PingID&1 == 0 {
         log.Printf("Error: Received PING with Stream ID %d, which should be odd.\n", frame.PingID)
         reply := new(RstStreamFrame)
-        reply.Version = SPDY_VERSION
+        reply.version = SPDY_VERSION
         reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
         conn.WriteFrame(reply)
         break FrameHandling
@@ -106,14 +106,14 @@ func (conn *connection) readFrames() {
 
     case *GoawayFrame:
       // Check version.
-      if frame.Version != uint16(conn.version) {
+      if frame.Version() != uint16(conn.version) {
         log.Printf("Warning: Received frame with SPDY version %d on connection with version %d.\n",
-          frame.Version, conn.version)
-        if frame.Version > SPDY_VERSION {
+          frame.Version(), conn.version)
+        if frame.Version() > SPDY_VERSION {
           log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
             frame.Version)
           reply := new(RstStreamFrame)
-          reply.Version = SPDY_VERSION
+          reply.version = SPDY_VERSION
           reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
           conn.WriteFrame(reply)
           break FrameHandling
@@ -243,6 +243,21 @@ func (conn *connection) WriteFrame(frame Frame) error {
   return nil
 }
 
+func (conn *connection) checkFrameVersion(frame Frame) bool {
+  if frame.Version() != uint16(conn.version) {
+
+    // This is currently strict; only one version allowed per connection.
+    log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
+      frame.Version(), conn.version)
+    if frame.Version() > SPDY_VERSION {
+      log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
+        frame.Version())
+    }
+    return true
+  }
+  return false
+}
+
 func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   conn.RLock()
   defer func() { conn.RUnlock() }()
@@ -252,18 +267,9 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
     return
   }
 
-  // Check version.
-  if frame.Version != uint16(conn.version) {
-
-    // This is currently strict; only one version allowed per connection.
-    log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
-      frame.Version, conn.version)
-    if frame.Version > SPDY_VERSION {
-      log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
-        frame.Version)
-    }
+  if conn.checkFrameVersion(frame) {
     reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
+    reply.version = SPDY_VERSION
     reply.StreamID = frame.StreamID
     reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
     conn.WriteFrame(reply)
@@ -272,7 +278,7 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
 
   protocolError := func() {
     reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
+    reply.version = SPDY_VERSION
     reply.StreamID = frame.StreamID
     reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
     conn.WriteFrame(reply)
@@ -327,28 +333,28 @@ func (conn *connection) handleDataFrame(frame *DataFrame) {
   conn.RLock()
   defer func() { conn.RUnlock() }()
 
+  protocolError := func() {
+    reply := new(RstStreamFrame)
+    reply.version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+    conn.WriteFrame(reply)
+  }
+
   // Check Stream ID is odd.
   if frame.StreamID&1 == 0 {
     log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n",
       frame.StreamID)
-    reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
-    reply.StreamID = frame.StreamID
-    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-    conn.WriteFrame(reply)
+    protocolError()
     return
   }
 
   // Check stream is open.
   if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
     conn.nextClientStreamID != 0 {
-    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
+    log.Printf("Error: Received DATA with Stream ID %d, which should be %d.\n",
       frame.StreamID, conn.nextClientStreamID+2)
-    reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
-    reply.StreamID = frame.StreamID
-    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-    conn.WriteFrame(reply)
+    protocolError()
     return
   }
 
@@ -371,28 +377,37 @@ func (conn *connection) handleHeadersFrame(frame *HeadersFrame) {
   conn.RLock()
   defer func() { conn.RUnlock() }()
 
-  // Check Stream ID is odd.
-  if frame.StreamID&1 == 0 {
-    log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n",
-      frame.StreamID)
+  if conn.checkFrameVersion(frame) {
     reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
+    reply.version = SPDY_VERSION
+    reply.StreamID = frame.StreamID
+    reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+    conn.WriteFrame(reply)
+    return
+  }
+
+  protocolError := func() {
+    reply := new(RstStreamFrame)
+    reply.version = SPDY_VERSION
     reply.StreamID = frame.StreamID
     reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
     conn.WriteFrame(reply)
+  }
+
+  // Check Stream ID is odd.
+  if frame.StreamID&1 == 0 {
+    log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n",
+      frame.StreamID)
+    protocolError()
     return
   }
 
   // Check stream is open.
   if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
     conn.nextClientStreamID != 0 {
-    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
+    log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n",
       frame.StreamID, conn.nextClientStreamID+2)
-    reply := new(RstStreamFrame)
-    reply.Version = SPDY_VERSION
-    reply.StreamID = frame.StreamID
-    reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-    conn.WriteFrame(reply)
+    protocolError()
     return
   }
 
@@ -424,7 +439,7 @@ func (conn *connection) serve() {
   go func() { conn.send() }()
   if conn.server.GlobalSettings != nil {
     settings := new(SettingsFrame)
-    settings.Version = uint16(conn.version)
+    settings.version = uint16(conn.version)
     settings.Settings = conn.server.GlobalSettings
     conn.streamOutputs[3] <- settings
   }
