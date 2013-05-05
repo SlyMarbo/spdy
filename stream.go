@@ -12,6 +12,7 @@ type stream struct {
   sync.RWMutex
   conn           *connection
   streamID       uint32
+  requestBody    *bytes.Buffer
   state          StreamState
   input          <-chan Frame
   output         chan<- Frame
@@ -23,9 +24,9 @@ type stream struct {
   unidirectional bool
   responseSent   bool
   responseCode   int
+  stop           bool
   wroteHeader    bool
   version        int
-  stop           bool
 }
 
 func (s *stream) Header() Header {
@@ -100,32 +101,39 @@ func (s *stream) WriteSettings(settings ...*Setting) {
   s.output <- frame
 }
 
-type readCloserBuffer struct {
-  *bytes.Buffer
-}
+func (s *stream) processInput() {
+  var frame Frame
 
-func (_ *readCloserBuffer) Close() error {
-  return nil
+  for {
+    select {
+    case frame = <-s.input:
+      switch frame := frame.(type) {
+      case *DataFrame:
+        s.requestBody.Write(frame.Data)
+
+      case *HeadersFrame:
+        s.headers.Update(frame.Headers)
+
+      default:
+        panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
+      }
+
+    default:
+      return
+    }
+  }
 }
 
 func (s *stream) run() {
 
   // Make sure Request is prepared.
-  body := new(bytes.Buffer)
-  for frame := range s.input {
-    switch frame := frame.(type) {
-    case *DataFrame:
-      body.Write(frame.Data)
-
-    case *HeadersFrame:
-      s.headers.Update(frame.Headers)
-
-    default:
-      panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
-    }
-  }
+  s.requestBody = new(bytes.Buffer)
+  s.processInput()
   s.request.Body = &readCloserBuffer{body}
 
+  /***************
+   *** HANDLER ***
+   ***************/
   s.handler.ServeSPDY(s, s.request)
 
   if !s.wroteHeader {
@@ -149,4 +157,12 @@ func (s *stream) run() {
   }
 
   s.conn.done.Done()
+}
+
+type readCloserBuffer struct {
+  *bytes.Buffer
+}
+
+func (_ *readCloserBuffer) Close() error {
+  return nil
 }
