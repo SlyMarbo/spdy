@@ -101,22 +101,21 @@ func (s *stream) WriteSettings(settings ...*Setting) {
   s.output <- frame
 }
 
-func (s *stream) wait() {
-  var frame Frame
+func (s *stream) receiveFrame(frame Frame) {
+  switch frame := frame.(type) {
+  case *DataFrame:
+    s.requestBody.Write(frame.Data)
 
-  select {
-  case frame = <-s.input:
-    switch frame := frame.(type) {
-    case *DataFrame:
-      s.requestBody.Write(frame.Data)
+  case *HeadersFrame:
+    s.headers.Update(frame.Headers)
 
-    case *HeadersFrame:
-      s.headers.Update(frame.Headers)
-
-    default:
-      panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
-    }
+  default:
+    panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
   }
+}
+
+func (s *stream) wait() {
+  s.receiveFrame(<-s.input)
 }
 
 func (s *stream) processInput() {
@@ -125,16 +124,7 @@ func (s *stream) processInput() {
   for {
     select {
     case frame = <-s.input:
-      switch frame := frame.(type) {
-      case *DataFrame:
-        s.requestBody.Write(frame.Data)
-
-      case *HeadersFrame:
-        s.headers.Update(frame.Headers)
-
-      default:
-        panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
-      }
+      s.receiveFrame(frame)
 
     default:
       return
@@ -147,7 +137,7 @@ func (s *stream) run() {
   // Make sure Request is prepared.
   s.requestBody = new(bytes.Buffer)
   s.processInput()
-  s.request.Body = &readCloserBuffer{body}
+  s.request.Body = &readCloserBuffer{s.requestBody}
 
   /***************
    *** HANDLER ***
@@ -175,6 +165,34 @@ func (s *stream) run() {
   }
 
   s.conn.done.Done()
+}
+
+type queue struct {
+  data []byte
+}
+
+func (q *queue) Push(data []byte) {
+  if q.data == nil {
+    q.data = data
+  } else {
+    q.data = append(q.data, data...)
+  }
+}
+
+func (q *queue) Pop(n int) []byte {
+  if n < len(q.data) {
+    out := q.data[:n]
+    q.data = q.data[n:]
+    return out
+  }
+
+  out := q.data
+  q.data = nil
+  return out
+}
+
+func (q *queue) Empty() bool {
+  return len(q.data) == 0
 }
 
 type readCloserBuffer struct {
