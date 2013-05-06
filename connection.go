@@ -4,6 +4,7 @@ import (
   "bufio"
   "crypto/tls"
   "fmt"
+  "io"
   "log"
   "net/http"
   "net/url"
@@ -30,7 +31,7 @@ type connection struct {
   receivedSettings    []*Setting
   nextServerStreamID  uint32 // even
   nextClientStreamID  uint32 // odd
-	initialWindowSize   uint32
+  initialWindowSize   uint32
   goaway              bool
   version             int
   numInvalidStreamIDs int
@@ -50,6 +51,11 @@ func (conn *connection) readFrames() {
   for {
     frame, err := ReadFrame(conn.buf)
     if err != nil {
+      if err == io.EOF {
+        log.Println("[DISCONNECTED]")
+        return
+      }
+
       // TODO: handle error
       panic(err)
     }
@@ -92,10 +98,10 @@ func (conn *connection) readFrames() {
         }
       }
       for _, setting := range frame.Settings {
-      	if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE {
-					fmt.Printf("Changing initial window size to %d.\n", setting.Value)
-      		conn.initialWindowSize = setting.Value
-      	}
+        if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE {
+          fmt.Printf("Changing initial window size to %d.\n", setting.Value)
+          conn.initialWindowSize = setting.Value
+        }
       }
 
     /*** COMPLETE! ***/
@@ -111,6 +117,7 @@ func (conn *connection) readFrames() {
         close(conn.pings[frame.PingID])
         delete(conn.pings, frame.PingID)
       } else {
+        // TODO: Print to the log in DebugMode only.
         log.Println("Received PING. Replying...")
         conn.WriteFrame(frame)
       }
@@ -342,9 +349,6 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   conn.Lock()
   input := make(chan Frame)
   conn.streamInputs[frame.StreamID] = input
-  if frame.Flags&FLAG_FIN != 0 {
-    close(input)
-  }
   conn.streams[frame.StreamID] = conn.newStream(frame, input, conn.streamOutputs[frame.Priority])
   conn.Unlock()
   conn.RLock()
@@ -393,8 +397,9 @@ func (conn *connection) handleDataFrame(frame *DataFrame) {
   if frame.Flags&FLAG_FIN != 0 {
     stream := conn.streams[frame.StreamID]
     stream.Lock()
-    stream.state = STATE_HALF_CLOSED_THERE
-    close(conn.streamInputs[frame.StreamID])
+    if stream.state == STATE_OPEN {
+      stream.state = STATE_HALF_CLOSED_THERE
+    }
     stream.Unlock()
   }
 }
@@ -563,7 +568,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   *conn.tlsState = tlsConn.ConnectionState()
   conn.compressor = new(Compressor)
   conn.decompressor = new(Decompressor)
-	conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
+  conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
   conn.streams = make(map[uint32]*stream)
   conn.streamInputs = make(map[uint32]chan<- Frame)
   conn.streamOutputs = [8]chan Frame{}

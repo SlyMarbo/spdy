@@ -12,6 +12,7 @@ type stream struct {
   sync.RWMutex
   conn              *connection
   streamID          uint32
+  flow              *flowControl
   requestBody       *bytes.Buffer
   state             StreamState
   input             <-chan Frame
@@ -58,39 +59,7 @@ func (s *stream) Write(data []byte) (int, error) {
     s.WriteHeader(http.StatusOK)
   }
 
-  if len(data) == 0 {
-    return 0, nil
-  }
-
-  originalLen := len(data)
-
-  if !s.queuedData.Empty() {
-    s.queuedData.Push(data)
-    s.processTransferWindow()
-    return originalLen, nil
-  }
-
-  if int64(len(data)) > s.transferWindow {
-    s.queuedData.Push(data[s.transferWindow:])
-    data = data[:s.transferWindow]
-  }
-
-  if len(data) == 0 {
-    return originalLen, nil
-  }
-
-  dataFrame := new(DataFrame)
-  dataFrame.StreamID = s.streamID
-  dataFrame.Data = data
-
-  s.transferWindow -= int64(len(data))
-
-  s.output <- dataFrame
-  if DebugMode {
-    fmt.Printf("Debug: Wrote %d bytes of data from stream %d.\n", len(data), s.streamID)
-  }
-
-  return originalLen, nil
+  return s.flow.Write(data)
 }
 
 func (s *stream) WriteHeader(code int) {
@@ -124,30 +93,9 @@ func (s *stream) WriteSettings(settings ...*Setting) {
   s.output <- frame
 }
 
-func (s *stream) processTransferWindow() {
-  if s.initialWindowSize != s.conn.initialWindowSize {
-    if s.initialWindowSize > s.conn.initialWindowSize {
-      sent := int64(s.initialWindowSize) - s.transferWindow
-      s.transferWindow = int64(s.conn.initialWindowSize) - sent
-    }
-    s.initialWindowSize = s.conn.initialWindowSize
-  }
-
-  for !s.queuedData.Empty() && s.transferWindow == 0 {
-    data := s.queuedData.Pop(int(s.transferWindow))
-    if data != nil && len(data) > 0 {
-      dataFrame := new(DataFrame)
-      dataFrame.StreamID = s.streamID
-      dataFrame.Data = data
-      s.transferWindow -= int64(len(data))
-      s.output <- dataFrame
-    }
-  }
-}
-
 func (s *stream) receiveFrame(frame Frame) {
   if frame == nil {
-    panic("Nil frame stream.go:115")
+    panic("Nil frame received in receiveFrame.")
   }
 
   switch frame := frame.(type) {
@@ -158,8 +106,8 @@ func (s *stream) receiveFrame(frame Frame) {
     s.headers.Update(frame.Headers)
 
   case *WindowUpdateFrame:
-    if int64(frame.DeltaWindowSize)+s.transferWindow > MAX_TRANSFER_WINDOW_SIZE {
-      log.Println("Error: WINDOW_UPDATE delta window size overflows transfer window size.")
+    err := s.flow.UpdateWindow(frame.DeltaWindowSize)
+    if err != nil {
       reply := new(RstStreamFrame)
       reply.version = uint16(s.version)
       reply.StreamID = s.streamID
@@ -168,23 +116,17 @@ func (s *stream) receiveFrame(frame Frame) {
       return
     }
 
-    // Grow window and flush queue.
-    s.transferWindow += int64(frame.DeltaWindowSize)
-    s.processTransferWindow()
-    return
-
   default:
     panic(fmt.Sprintf("Received unknown frame of type %T.", frame))
   }
 }
 
-func (s *stream) wait() bool {
-  frame, ok := <-s.input
-  if !ok {
-    return false
+func (s *stream) wait() {
+  frame := <-s.input
+  if frame == nil {
+    return
   }
   s.receiveFrame(frame)
-  return true
 }
 
 func (s *stream) processInput() {
@@ -200,7 +142,6 @@ func (s *stream) processInput() {
       s.receiveFrame(frame)
 
     default:
-      fmt.Println("Got nil.")
       return
     }
   }
@@ -209,13 +150,10 @@ func (s *stream) processInput() {
 func (s *stream) run() {
 
   // Make sure Request is prepared.
+  s.AddFlowControl()
   s.requestBody = new(bytes.Buffer)
   s.processInput()
   s.request.Body = &readCloserBuffer{s.requestBody}
-
-  // Prime the transfer window to the default 64 kB.
-  s.transferWindow = int64(s.conn.initialWindowSize)
-  s.queuedData = new(queue)
 
   /***************
    *** HANDLER ***
@@ -223,10 +161,9 @@ func (s *stream) run() {
   s.handler.ServeSPDY(s, s.request)
 
   // Make sure any queued data has been sent.
-  for !s.queuedData.Empty() {
-    if !s.wait() {
-      break
-    }
+  for s.flow.Paused() {
+    s.wait()
+    s.flow.Flush()
   }
 
   if !s.wroteHeader {
