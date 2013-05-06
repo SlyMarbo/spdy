@@ -1426,10 +1426,13 @@ func (frame *DataFrame) Bytes() ([]byte, error) {
 
 func (frame *DataFrame) WriteTo(writer io.Writer) error {
   length := len(frame.Data)
-	if length > MAX_DATA_SIZE {
-		return errors.New("Error: Data size too large.")
-	}
-	
+  if length > MAX_DATA_SIZE {
+    return errors.New("Error: Data size too large.")
+  }
+  if length == 0 && frame.Flags&FLAG_FIN == 0 {
+    return errors.New("Error: Data is empty.")
+  }
+
   out := make([]byte, 8)
 
   out[0] = byte(frame.StreamID>>24) & 0x7f // Control bit and Stream ID
