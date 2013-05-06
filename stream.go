@@ -59,7 +59,20 @@ func (s *stream) Write(data []byte) (int, error) {
     s.WriteHeader(http.StatusOK)
   }
 
-  return s.flow.Write(data)
+  written := 0
+  for len(data) > MAX_DATA_SIZE {
+    n, err := s.flow.Write(data[:MAX_DATA_SIZE])
+    if err != nil {
+      return written, err
+    }
+    written += n
+    data = data[MAX_DATA_SIZE:]
+  }
+
+  n, err := s.flow.Write(data)
+  written += n
+
+  return written, err
 }
 
 func (s *stream) WriteHeader(code int) {
