@@ -99,6 +99,8 @@ const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 // Maximum frame size (2 ** 24 -1).
 const MAX_FRAME_SIZE = 0xffffff
 
+const MAX_DATA_SIZE = 0xffffff
+
 // Maximum stream ID (2 ** 31 -1).
 const MAX_STREAM_ID = 0x7fffffff
 
