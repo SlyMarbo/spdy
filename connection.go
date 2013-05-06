@@ -98,8 +98,8 @@ func (conn *connection) readFrames() {
         }
       }
       for _, setting := range frame.Settings {
-        if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE {
-          fmt.Printf("Changing initial window size to %d.\n", setting.Value)
+        if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE && conn.version > 2 {
+          log.Printf("Initial window size is %d.\n", setting.Value)
           conn.initialWindowSize = setting.Value
         }
       }
@@ -249,7 +249,7 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
     ProtoMajor: major,
     ProtoMinor: minor,
     Priority:   int(frame.Priority),
-		RemoteAddr: conn.remoteAddr,
+    RemoteAddr: conn.remoteAddr,
     Header:     headers,
     Host:       url.Host,
     RequestURI: url.Path,
