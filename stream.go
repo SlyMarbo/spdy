@@ -49,11 +49,15 @@ func (s *stream) Settings() []*Setting {
   return s.conn.receivedSettings
 }
 
-func (s *stream) Write(data []byte) (int, error) {
+func (s *stream) Write(inputData []byte) (int, error) {
   s.processInput()
   if s.stop {
     return 0, ErrCancelled
   }
+
+  // Dereference the pointer.
+  data := make([]byte, len(inputData))
+  copy(data, inputData)
 
   if !s.wroteHeader {
     s.WriteHeader(http.StatusOK)
