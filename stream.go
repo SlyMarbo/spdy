@@ -2,6 +2,7 @@ package spdy
 
 import (
   "bytes"
+	"errors"
   "fmt"
   "log"
   "net/http"
@@ -47,6 +48,10 @@ func (s *stream) Settings() []*Setting {
 }
 
 func (s *stream) Write(inputData []byte) (int, error) {
+  if s.state == STATE_CLOSED || s.state == STATE_HALF_CLOSED_HERE {
+    return 0, errors.New("Error: Stream already closed.")
+  }
+
   s.processInput()
   if s.stop {
     return 0, ErrCancelled
@@ -92,6 +97,16 @@ func (s *stream) WriteHeader(code int) {
   synReply.version = uint16(s.version)
   synReply.StreamID = s.streamID
   synReply.Headers = s.headers
+
+  // These responses have no body, so close the stream now.
+  if code == 204 || code == 304 || code/100 == 1 {
+    synReply.Flags = FLAG_FIN
+    if s.state == STATE_HALF_CLOSED_THERE {
+      s.state = STATE_CLOSED
+    } else if s.state == STATE_OPEN {
+      s.state = STATE_HALF_CLOSED_HERE
+    }
+  }
 
   s.output <- synReply
 }
@@ -191,7 +206,7 @@ func (s *stream) run() {
     synReply.Headers = s.headers
 
     s.output <- synReply
-  } else {
+  } else if s.state == STATE_OPEN {
     data := new(DataFrame)
     data.StreamID = s.streamID
     data.Flags = FLAG_FIN
@@ -203,8 +218,8 @@ func (s *stream) run() {
   // Clean up state.
   if s.state == STATE_HALF_CLOSED_THERE {
     s.state = STATE_CLOSED
-  } else {
-    state = STATE_HALF_CLOSED_HERE
+  } else if s.state == STATE_OPEN {
+    s.state = STATE_HALF_CLOSED_HERE
   }
   s.conn.done.Done()
 }
