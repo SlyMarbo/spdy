@@ -10,27 +10,24 @@ import (
 
 type stream struct {
   sync.RWMutex
-  conn              *connection
-  streamID          uint32
-  flow              *flowControl
-  requestBody       *bytes.Buffer
-  state             StreamState
-  input             <-chan Frame
-  output            chan<- Frame
-  request           *Request
-  handler           *ServeMux
-  certificates      []Certificate
-  headers           Header
-  settings          []*Setting
-  unidirectional    bool
-  responseSent      bool
-  responseCode      int
-  stop              bool
-  initialWindowSize uint32
-  transferWindow    int64
-  queuedData        *queue
-  wroteHeader       bool
-  version           int
+  conn           *connection
+  streamID       uint32
+  flow           *flowControl
+  requestBody    *bytes.Buffer
+  state          StreamState
+  input          <-chan Frame
+  output         chan<- Frame
+  request        *Request
+  handler        *ServeMux
+  certificates   []Certificate
+  headers        Header
+  settings       []*Setting
+  unidirectional bool
+  responseSent   bool
+  responseCode   int
+  stop           bool
+  wroteHeader    bool
+  version        int
 }
 
 func (s *stream) Header() Header {
@@ -204,41 +201,6 @@ func (s *stream) run() {
   }
 
   s.conn.done.Done()
-}
-
-type queue struct {
-  data []byte
-}
-
-func (q *queue) Push(data []byte) {
-  if q.data == nil {
-    q.data = data
-  } else {
-    q.data = append(q.data, data...)
-  }
-}
-
-func (q *queue) Pop(n int) []byte {
-  if n < 0 {
-    return nil
-  }
-
-  if n < len(q.data) {
-    out := q.data[:n]
-    q.data = q.data[n:]
-    return out
-  }
-
-  out := q.data
-  q.data = nil
-  return out
-}
-
-func (q *queue) Empty() bool {
-  if q.data == nil {
-    return true
-  }
-  return len(q.data) == 0
 }
 
 type readCloserBuffer struct {
