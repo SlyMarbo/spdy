@@ -154,9 +154,9 @@ func spdyRequestToHttpRequest(req *Request) *http.Request {
   out.ProtoMajor = req.ProtoMajor
   out.ProtoMinor = req.ProtoMinor
   out.Header = http.Header(req.Header)
+	out.Header.Set("Connection", "keep-alive")
   out.Body = req.Body
-  out.ContentLength = -1
-  out.TransferEncoding = []string{}
+  out.ContentLength = req.ContentLength
   out.Host = req.Host
   out.RemoteAddr = req.RemoteAddr
   out.RequestURI = req.RequestURI
