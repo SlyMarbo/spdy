@@ -17,15 +17,23 @@ type flowControl struct {
 
 func (s *stream) AddFlowControl() {
   flow := new(flowControl)
-	initialWindow := s.conn.initialWindowSize
+  initialWindow := s.conn.initialWindowSize
   if s.version == 3 {
     flow.active = true
     flow.buffer = make([][]byte, 0, 10)
     flow.initialWindow = initialWindow
-		flow.transferWindow = int64(initialWindow)
+    flow.transferWindow = int64(initialWindow)
     flow.stream = s
   }
   s.flow = flow
+}
+
+func (f *flowControl) Activate() {
+  f.active = true
+}
+
+func (f *flowControl) Deactivate() {
+  f.active = false
 }
 
 func (f *flowControl) CheckInitialWindow() {
