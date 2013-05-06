@@ -200,6 +200,12 @@ func (s *stream) run() {
     s.output <- data
   }
 
+  // Clean up state.
+  if s.state == STATE_HALF_CLOSED_THERE {
+    s.state = STATE_CLOSED
+  } else {
+    state = STATE_HALF_CLOSED_HERE
+  }
   s.conn.done.Done()
 }
 
