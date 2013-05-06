@@ -28,6 +28,10 @@ func (s *stream) AddFlowControl() {
   s.flow = flow
 }
 
+func (f *flowControl) Active() bool {
+	return f.active
+}
+
 func (f *flowControl) Activate() {
   f.active = true
 }
