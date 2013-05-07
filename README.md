@@ -161,8 +161,8 @@ import "github.com/SlyMarbo/spdy"
 func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 	
 	setting := new(spdy.Setting)
-	setting.Flags = FLAG_SETTINGS_PERSIST_VALUE
-	setting.ID = SETTINGS_MAX_CONCURRENT_STREAMS
+	setting.Flags = spdy.FLAG_SETTINGS_PERSIST_VALUE
+	setting.ID = spdy.SETTINGS_MAX_CONCURRENT_STREAMS
 	setting.Value = 500
 	
 	w.WriteSettings(setting)
