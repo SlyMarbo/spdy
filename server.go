@@ -454,9 +454,10 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
   return server.ListenAndServeTLS(certFile, keyFile)
 }
 
-func ListenAndServeTLS(addr string, certFile string, keyFile string) error {
+func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Handler) error {
   server := &http.Server{
-    Addr: addr,
+    Addr:    addr,
+    Handler: handler,
     TLSConfig: &tls.Config{
       NextProtos: []string{
         "spdy/3",
