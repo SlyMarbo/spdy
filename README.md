@@ -61,6 +61,8 @@ func main() {
 }
 ```
 
+
+
 A very simple file server for both SPDY and HTTPS:
 ```go
 package main
@@ -91,7 +93,10 @@ func main() {
 }
 ```
 
+
+
 The following examples use features specific to SPDY, so just the SPDY handler is shown.
+----------------------------------------------------------------------------------------
 
 Use SPDY's pinging features to test the connection:
 ```go
@@ -123,6 +128,8 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 }
 ```
 
+
+
 Sending a server push:
 ```go
 package main
@@ -142,6 +149,8 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 	// ...
 }
 ```
+
+
 
 Sending SPDY settings:
 ```go
