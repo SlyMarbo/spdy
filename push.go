@@ -83,6 +83,7 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
 }
 
 func (p *pushStream) WriteHeader(_ int) {
+	p.WriteHeaders()
   return
 }
 
