@@ -21,6 +21,7 @@ type Stream interface {
   StreamID() uint32
   Write([]byte) (int, error)
   WriteHeader(int)
+  WriteHeaders()
   Version() uint16
 }
 

@@ -68,6 +68,8 @@ func (s *responseStream) Write(inputData []byte) (int, error) {
     return 0, ErrCancelled
   }
 
+  s.WriteHeaders()
+
   // Dereference the pointer.
   data := make([]byte, len(inputData))
   copy(data, inputData)
@@ -108,6 +110,7 @@ func (s *responseStream) WriteHeader(code int) {
   synReply.version = uint16(s.version)
   synReply.StreamID = s.streamID
   synReply.Headers = s.headers
+  s.headers = make(Header)
 
   // These responses have no body, so close the stream now.
   if code == 204 || code == 304 || code/100 == 1 {
@@ -120,6 +123,21 @@ func (s *responseStream) WriteHeader(code int) {
   }
 
   s.output <- synReply
+}
+
+func (s *responseStream) WriteHeaders() {
+  if len(s.headers) == 0 {
+    return
+  }
+
+  headers := new(HeadersFrame)
+  headers.version = uint16(s.version)
+  headers.StreamID = s.streamID
+  headers.Headers = s.headers.clone()
+	for name := range headers.Headers {
+		s.headers.Del(name)
+	}
+  s.output <- headers
 }
 
 func (s *responseStream) WriteSettings(settings ...*Setting) {

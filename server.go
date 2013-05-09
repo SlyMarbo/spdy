@@ -17,15 +17,14 @@ type Handler interface {
 }
 
 type ResponseWriter interface {
-  // Header returns the header map that will be sent by WriteHeader.
-  // Changing the header after a call to WriteHeader (or Write) has
-  // no effect.
+  // Header returns the header map that will be sent by WriteHeader
+	// and WriteHeaders.
   Header() Header
 
   // Ping immediately returns a channel on which a single boolean will
   // sent when the ping completes, which can be used as some measure of
-  // the network's current performance. The boolean will be false if
-  // the ping failed for any reason, and true otherwise.
+  // the network's current performance. The boolean will be true if
+  // the ping was replied to, and false otherwise.
   Ping() <-chan bool
 
   // Push returns a PushWriter, which can be used immediately to send
@@ -46,11 +45,16 @@ type ResponseWriter interface {
   // data to DetectContentType.
   Write([]byte) (int, error)
 
-  // WriteHeader sends an HTTP/SPDY response header with status code.
+  // WriteHeader sends a SPDY response with the status code provided.
   // If WriteHeader is not called explicitly, the first call to Write
   // will Trigger an implicit WriteHeader(http.StatusOK). Thus
   // explicit calls to WriteHeader are mainly used to send error codes.
   WriteHeader(int)
+	
+	// WriteHeaders is used to send new changes to the Header. This is
+	// called implicitly by WriteHeader and Write, so it's rarely
+	// necessary to call manually.
+	WriteHeaders()
 
   // WriteSettings sends the provided settings to the client. Note that
   // any settings to be sent unconditionally to all clients can be set
@@ -70,7 +74,6 @@ type PushWriter interface {
   Close()
 
   // Header returns the header map that will be sent with the push.
-  // Changing the header after a call to Write has no effect.
   Header() Header
 
   // Write writes the data to the connection as part of a SPDY server
@@ -78,6 +81,11 @@ type PushWriter interface {
   // adds a Content-Type set to the result of passing the initial 512
   // bytes of written data to DetectContentType.
   Write([]byte) (int, error)
+	
+	// WriteHeaders is used to send new changes to the Header. This is
+	// called implicitly by Write, so it's rarely necessary to call
+	// manually.
+	WriteHeaders()
 }
 
 // The HandlerFunc type is an adapter to allow the use of ordinary

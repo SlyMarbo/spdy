@@ -59,15 +59,8 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
   if p.stop {
     return 0, ErrCancelled
   }
-	
-	if !p.headersSent && p.headers != nil {
-		headers := new(HeadersFrame)
-		headers.version = uint16(p.version)
-		headers.StreamID = p.streamID
-		headers.Headers = p.headers
-		p.output <- headers
-		p.headersSent = true
-	}
+
+  p.WriteHeaders()
 
   // Dereference the pointer.
   data := make([]byte, len(inputData))
@@ -91,6 +84,21 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
 
 func (p *pushStream) WriteHeader(_ int) {
   return
+}
+
+func (p *pushStream) WriteHeaders() {
+  if len(p.headers) == 0 {
+    return
+  }
+
+  headers := new(HeadersFrame)
+  headers.version = uint16(p.version)
+  headers.StreamID = p.streamID
+  headers.Headers = p.headers.clone()
+	for name := range headers.Headers {
+		p.headers.Del(name)
+	}
+  p.output <- headers
 }
 
 func (p *pushStream) Version() uint16 {
