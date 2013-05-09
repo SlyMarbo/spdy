@@ -5,15 +5,16 @@ import (
 )
 
 type pushStream struct {
-  conn     *serverConnection
-  streamID uint32
-  flow     *flowControl
-  origin   Stream
-  state    StreamState
-  output   chan<- Frame
-  headers  Header
-  stop     bool
-  version  int
+  conn        *serverConnection
+  streamID    uint32
+  flow        *flowControl
+  origin      Stream
+  state       StreamState
+  output      chan<- Frame
+  headers     Header
+  headersSent bool
+  stop        bool
+  version     int
 }
 
 func (p *pushStream) Connection() Connection {
@@ -23,10 +24,10 @@ func (p *pushStream) Connection() Connection {
 func (p *pushStream) Close() {
   p.stop = true
 
-  stop := new(RstStreamFrame)
-  stop.version = uint16(p.version)
+  stop := new(DataFrame)
   stop.StreamID = p.streamID
-  stop.StatusCode = RST_STREAM_CANCEL
+  stop.Flags = FLAG_FIN
+  stop.Data = []byte{}
 
   p.output <- stop
 
@@ -58,6 +59,15 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
   if p.stop {
     return 0, ErrCancelled
   }
+	
+	if !p.headersSent && p.headers != nil {
+		headers := new(HeadersFrame)
+		headers.version = uint16(p.version)
+		headers.StreamID = p.streamID
+		headers.Headers = p.headers
+		p.output <- headers
+		p.headersSent = true
+	}
 
   // Dereference the pointer.
   data := make([]byte, len(inputData))

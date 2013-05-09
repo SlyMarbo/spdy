@@ -289,6 +289,8 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
   headers.Set(":scheme", url.Scheme)
   headers.Set(":host", url.Host)
   headers.Set(":path", url.Path)
+	headers.Set(":version", "HTTP/1.1")
+	headers.Set(":status", "200")
   push.Headers = headers
   conn.WriteFrame(push)
 

@@ -2,6 +2,7 @@ package spdy
 
 import (
   "net/http"
+  "net/url"
 )
 
 type _httpResponseWriter struct {
@@ -30,14 +31,18 @@ func ServeFile(wrt ResponseWriter, req *Request, name string) {
   http.ServeFile(w, r, name)
 }
 
-func PushFile(wrt ResponseWriter, req *Request, name string) error {
-  push, err := wrt.Push(name)
+func PushFile(wrt ResponseWriter, req *Request, name, path string) error {
+  url := new(url.URL)
+  *url = *req.URL
+  url.Path = name
+
+  push, err := wrt.Push(url.String())
   if err != nil {
     return err
   }
   r := spdyRequestToHttpRequest(req)
   w := &_httpPushWriter{push}
-  http.ServeFile(w, r, name)
+  http.ServeFile(w, r, path)
   push.Close()
   return nil
 }
