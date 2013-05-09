@@ -16,6 +16,19 @@ type pushStream struct {
   version  int
 }
 
+func (p *pushStream) Close() {
+  p.stop = true
+
+  stop := new(RstStreamFrame)
+  stop.version = uint16(p.version)
+  stop.StreamID = p.streamID
+  stop.StatusCode = RST_STREAM_CANCEL
+
+  p.output <- stop
+
+  p.state = STATE_CLOSED
+}
+
 func (p *pushStream) Header() Header {
   return p.headers
 }
@@ -24,10 +37,10 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
   if p.state == STATE_CLOSED || p.state == STATE_HALF_CLOSED_HERE {
     return 0, errors.New("Error: Stream already closed.")
   }
-	
-	if p.origin == nil || p.origin.state == STATE_CLOSED || p.origin.state == STATE_HALF_CLOSED_HERE {
-		return 0, errors.New("Error: Origin stream is closed.")
-	}
+
+  if p.origin == nil || p.origin.state == STATE_CLOSED || p.origin.state == STATE_HALF_CLOSED_HERE {
+    return 0, errors.New("Error: Origin stream is closed.")
+  }
 
   if p.stop {
     return 0, ErrCancelled

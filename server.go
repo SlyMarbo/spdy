@@ -63,6 +63,12 @@ type ResponseWriter interface {
 // a ResponseWriter will always be available in situations where
 // a PushWriter will be used.
 type PushWriter interface {
+  // Close is used to complete a server push. This closes the underlying
+  // stream and signals to the recipient that the push is complete. The
+  // equivalent action in a ResponseWriter is to return from the handler.
+  // Any calls to Write after calling Close will have no effect.
+  Close()
+
   // Header returns the header map that will be sent with the push.
   // Changing the header after a call to Write has no effect.
   Header() Header

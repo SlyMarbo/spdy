@@ -13,15 +13,15 @@ func (h *_httpResponseWriter) Header() http.Header {
 }
 
 type _httpPushWriter struct {
-	PushWriter
+  PushWriter
 }
 
 func (h *_httpPushWriter) Header() http.Header {
-	return http.Header(h.PushWriter.Header())
+  return http.Header(h.PushWriter.Header())
 }
 
 func (_ *_httpPushWriter) WriteHeader(_ int) {
-	return
+  return
 }
 
 func ServeFile(wrt ResponseWriter, req *Request, name string) {
@@ -31,12 +31,13 @@ func ServeFile(wrt ResponseWriter, req *Request, name string) {
 }
 
 func PushFile(wrt ResponseWriter, req *Request, name string) error {
-	push, err := wrt.Push(name)
-	if err != nil {
-		return err
-	}
-	r := spdyRequestToHttpRequest(req)
-	w := &_httpPushWriter{push}
-	http.ServeFile(w, r, name)
-	return nil
+  push, err := wrt.Push(name)
+  if err != nil {
+    return err
+  }
+  r := spdyRequestToHttpRequest(req)
+  w := &_httpPushWriter{push}
+  http.ServeFile(w, r, name)
+  push.Close()
+  return nil
 }
