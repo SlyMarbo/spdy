@@ -30,6 +30,10 @@ type responseStream struct {
   version        int
 }
 
+func (s *responseStream) Connection() Connection {
+  return s.conn
+}
+
 func (s *responseStream) Header() Header {
   return s.headers
 }
@@ -44,6 +48,14 @@ func (s *responseStream) Push(resource string) (PushWriter, error) {
 
 func (s *responseStream) Settings() []*Setting {
   return s.conn.receivedSettings
+}
+
+func (s *responseStream) State() StreamState {
+  return s.state
+}
+
+func (s *responseStream) StreamID() uint32 {
+  return s.streamID
 }
 
 func (s *responseStream) Write(inputData []byte) (int, error) {
@@ -119,6 +131,10 @@ func (s *responseStream) WriteSettings(settings ...*Setting) {
   frame.version = uint16(s.version)
   frame.Settings = settings
   s.output <- frame
+}
+
+func (s *responseStream) Version() uint16 {
+  return uint16(s.version)
 }
 
 func (s *responseStream) receiveFrame(frame Frame) {

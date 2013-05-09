@@ -8,12 +8,16 @@ type pushStream struct {
   conn     *serverConnection
   streamID uint32
   flow     *flowControl
-  origin   *responseStream
+  origin   Stream
   state    StreamState
   output   chan<- Frame
   headers  Header
   stop     bool
   version  int
+}
+
+func (p *pushStream) Connection() Connection {
+  return p.conn
 }
 
 func (p *pushStream) Close() {
@@ -33,12 +37,21 @@ func (p *pushStream) Header() Header {
   return p.headers
 }
 
+func (p *pushStream) State() StreamState {
+  return p.state
+}
+
+func (p *pushStream) StreamID() uint32 {
+  return p.streamID
+}
+
 func (p *pushStream) Write(inputData []byte) (int, error) {
   if p.state == STATE_CLOSED || p.state == STATE_HALF_CLOSED_HERE {
     return 0, errors.New("Error: Stream already closed.")
   }
 
-  if p.origin == nil || p.origin.state == STATE_CLOSED || p.origin.state == STATE_HALF_CLOSED_HERE {
+  state := p.origin.State()
+  if p.origin == nil || state == STATE_CLOSED || state == STATE_HALF_CLOSED_HERE {
     return 0, errors.New("Error: Origin stream is closed.")
   }
 
@@ -64,4 +77,12 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
   written += n
 
   return written, err
+}
+
+func (p *pushStream) WriteHeader(_ int) {
+  return
+}
+
+func (p *pushStream) Version() uint16 {
+  return uint16(p.version)
 }

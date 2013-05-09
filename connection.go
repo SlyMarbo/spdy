@@ -265,7 +265,7 @@ func (conn *serverConnection) WriteFrame(frame Frame) {
   conn.streamOutputs[0] <- frame
 }
 
-func (conn *serverConnection) Push(resource string, origin *responseStream) (PushWriter, error) {
+func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, error) {
   conn.Lock()
   defer conn.Unlock()
   conn.nextServerStreamID += 2
@@ -276,7 +276,7 @@ func (conn *serverConnection) Push(resource string, origin *responseStream) (Pus
   push.version = uint16(conn.version)
   push.Flags = FLAG_UNIDIRECTIONAL
   push.StreamID = newID
-  push.AssocStreamID = origin.streamID
+  push.AssocStreamID = origin.StreamID()
   push.Priority = 0
   url, err := url.Parse(resource)
   if err != nil {

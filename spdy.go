@@ -8,6 +8,22 @@ import (
   "io"
 )
 
+type Connection interface {
+  Ping() <-chan bool
+  Push(string, Stream) (PushWriter, error)
+  WriteFrame(Frame)
+}
+
+type Stream interface {
+  Connection() Connection
+  Header() Header
+  State() StreamState
+  StreamID() uint32
+  Write([]byte) (int, error)
+  WriteHeader(int)
+  Version() uint16
+}
+
 type Frame interface {
   Bytes() ([]byte, error)
   Parse(*bufio.Reader) error
