@@ -98,8 +98,7 @@ func main() {
 The following examples use features specific to SPDY
 ----------------------------------------------------
 
-Just the SPDY handler is shown
-------------------------------
+Just the SPDY handler is shown.
 
 Use SPDY's pinging features to test the connection:
 ```go
@@ -151,7 +150,7 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 	if err != nil {
 		// Handle the error.
 	}
-	push.Write([]byte("Some stuff."))   // Push dynamic content which shouldn't be cached.
+	push.Write([]byte("Some stuff."))   // Push data manually.
 	
 	// ...
 }
