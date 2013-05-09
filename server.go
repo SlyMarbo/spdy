@@ -28,9 +28,10 @@ type ResponseWriter interface {
   // the ping failed for any reason, and true otherwise.
   Ping() <-chan bool
 
-  // Push returns a PushWriter which can be used immediately to send
-  // server pushes.
-  Push() (PushWriter, error)
+  // Push returns a PushWriter, which can be used immediately to send
+  // server pushes, and takes a string giving the name for the
+  // resource being pushed.
+  Push(string) (PushWriter, error)
 
   // Settings returns any settings presented by the client. Note that
   // the client can send settings at any time, so successive calls to

@@ -3,6 +3,7 @@ package spdy
 import (
   "bufio"
   "crypto/tls"
+  "errors"
   "fmt"
   "io"
   "log"
@@ -259,8 +260,38 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
   return stream
 }
 
-func (conn *connection) WriteFrame(frame Frame) error {
-  return nil
+// Internally-sent frames have high priority.
+func (conn *connection) WriteFrame(frame Frame) {
+  conn.streamOutputs[0] <- frame
+}
+
+func (conn *connection) Push(resource string, originStreamID uint32) (uint32, error) {
+  conn.Lock()
+  defer conn.Unlock()
+  conn.nextServerStreamID += 2
+  newID := conn.nextServerStreamID
+
+  push := new(SynStreamFrame)
+  push.version = uint16(conn.version)
+  push.Flags = FLAG_UNIDIRECTIONAL
+  push.StreamID = newID
+  push.AssocStreamID = originStreamID
+  push.Priority = 0
+  url, err := url.Parse(resource)
+  if err != nil {
+    return 0, err
+  }
+  if url.Scheme == "" || url.Host == "" || url.Path == "" {
+    return 0, errors.New("Error: Incomplete path provided to resource.")
+  }
+  headers := make(Header)
+  headers.Set(":scheme", url.Scheme)
+  headers.Set(":host", url.Host)
+  headers.Set(":path", url.Path)
+  push.Headers = headers
+  conn.WriteFrame(push)
+
+  return newID, nil
 }
 
 func (conn *connection) Ping() <-chan bool {

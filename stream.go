@@ -39,7 +39,14 @@ func (s *stream) Ping() <-chan bool {
   return s.conn.Ping()
 }
 
-func (s *stream) Push() (PushWriter, error) {
+func (s *stream) Push(resource string) (PushWriter, error) {
+	newID, err := s.conn.Push(resource, s.streamID)
+	if err != nil {
+		return nil, err
+	}
+	
+	
+	
   return nil, nil
 }
 
