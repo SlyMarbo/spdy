@@ -137,13 +137,18 @@ package main
 import "github.com/SlyMarbo/spdy"
 
 func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+	
+	// Push a whole file automatically.
+	spdy.PushFile(w, r, otherFile)
+	
+	// or
+	
 	// Push returns a PushWriter (similar to a ResponseWriter) and an error.
 	push, err := w.Push()
 	if err != nil {
 		// Handle the error.
 	}
 	
-	spdy.ServeFile(push, r, secondFile) // Push a file.
 	push.Write([]byte("Some stuff."))   // Push dynamic content which shouldn't be cached.
 	
 	// ...

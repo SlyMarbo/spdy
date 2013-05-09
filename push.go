@@ -24,6 +24,10 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
   if p.state == STATE_CLOSED || p.state == STATE_HALF_CLOSED_HERE {
     return 0, errors.New("Error: Stream already closed.")
   }
+	
+	if p.origin == nil || p.origin.state == STATE_CLOSED || p.origin.state == STATE_HALF_CLOSED_HERE {
+		return 0, errors.New("Error: Origin stream is closed.")
+	}
 
   if p.stop {
     return 0, ErrCancelled
