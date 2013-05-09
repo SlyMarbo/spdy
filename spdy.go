@@ -1053,7 +1053,7 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
   out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
   out[1] = byte(frame.version)             // Version
   out[2] = 0                               // Type
-  out[3] = 1                               // Type
+  out[3] = 8                               // Type
   out[4] = frame.Flags                     // Flags
   out[5] = byte(length >> 16)              // Length
   out[6] = byte(length >> 8)               // Length

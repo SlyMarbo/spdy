@@ -221,7 +221,7 @@ func (s *responseStream) run() {
     synReply.Headers = s.headers
 
     s.output <- synReply
-  } else if s.state == STATE_OPEN {
+  } else if s.state == STATE_OPEN || s.state == STATE_HALF_CLOSED_THERE {
     data := new(DataFrame)
     data.StreamID = s.streamID
     data.Flags = FLAG_FIN
