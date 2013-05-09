@@ -6,7 +6,10 @@ import (
 )
 
 type flowControl struct {
-  stream         *stream
+  stream         *responseStream
+	push           *pushStream
+	streamID       uint32
+	output         chan<- Frame
   active         bool
   initialWindow  uint32
   transferWindow int64
@@ -15,7 +18,7 @@ type flowControl struct {
   constrained    bool
 }
 
-func (s *stream) AddFlowControl() {
+func (s *responseStream) AddFlowControl() {
   flow := new(flowControl)
   initialWindow := s.conn.initialWindowSize
   if s.version == 3 {
@@ -24,8 +27,25 @@ func (s *stream) AddFlowControl() {
     flow.initialWindow = initialWindow
     flow.transferWindow = int64(initialWindow)
     flow.stream = s
+		flow.streamID = s.streamID
+		flow.output = s.output
   }
   s.flow = flow
+}
+
+func (p *pushStream) AddFlowControl() {
+  flow := new(flowControl)
+  initialWindow := p.conn.initialWindowSize
+  if p.version == 3 {
+    flow.active = true
+    flow.buffer = make([][]byte, 0, 10)
+    flow.initialWindow = initialWindow
+    flow.transferWindow = int64(initialWindow)
+    flow.push = p
+		flow.streamID = p.streamID
+		flow.output = p.output
+  }
+  p.flow = flow
 }
 
 func (f *flowControl) Active() bool {
@@ -41,7 +61,12 @@ func (f *flowControl) Deactivate() {
 }
 
 func (f *flowControl) CheckInitialWindow() {
-  newWindow := f.stream.conn.initialWindowSize
+	var newWindow uint32
+	if f.stream != nil {
+		newWindow = f.stream.conn.initialWindowSize
+	} else {
+		newWindow = f.push.conn.initialWindowSize
+	}
 
   if f.initialWindow != newWindow {
     if f.initialWindow > newWindow {
@@ -62,7 +87,7 @@ func (f *flowControl) UpdateWindow(deltaWindowSize uint32) error {
   }
 
   // Grow window and flush queue.
-  fmt.Printf("Flow: Growing window in stream %d by %d bytes.\n", f.stream.streamID, deltaWindowSize)
+  fmt.Printf("Flow: Growing window in stream %d by %d bytes.\n", f.streamID, deltaWindowSize)
   f.transferWindow += int64(deltaWindowSize)
 
   f.Flush()
@@ -94,7 +119,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
       f.sent += window
       f.transferWindow -= int64(window)
       f.constrained = true
-      fmt.Printf("Stream %d is now constrained.\n", f.stream.streamID)
+      fmt.Printf("Stream %d is now constrained.\n", f.streamID)
     }
   }
 
@@ -103,10 +128,10 @@ func (f *flowControl) Write(data []byte) (int, error) {
   }
 
   dataFrame := new(DataFrame)
-  dataFrame.StreamID = f.stream.streamID
+  dataFrame.StreamID = f.streamID
   dataFrame.Data = data
 
-  f.stream.output <- dataFrame
+  f.output <- dataFrame
   return l, nil
 }
 
@@ -138,14 +163,14 @@ func (f *flowControl) Flush() {
 
   if f.transferWindow > 0 {
     f.constrained = false
-    fmt.Printf("Stream %d is no longer constrained.\n", f.stream.streamID)
+    fmt.Printf("Stream %d is no longer constrained.\n", f.streamID)
   }
 
   dataFrame := new(DataFrame)
-  dataFrame.StreamID = f.stream.streamID
+  dataFrame.StreamID = f.streamID
   dataFrame.Data = out
 
-  f.stream.output <- dataFrame
+  f.output <- dataFrame
 }
 
 func (f *flowControl) Paused() bool {

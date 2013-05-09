@@ -14,7 +14,7 @@ import (
   "time"
 )
 
-type connection struct {
+type serverConnection struct {
   sync.RWMutex
   remoteAddr          string // network address of remote side
   server              *Server
@@ -22,7 +22,7 @@ type connection struct {
   buf                 *bufio.Reader
   tlsState            *tls.ConnectionState
   tlsConfig           *tls.Config
-  streams             map[uint32]*stream
+  streams             map[uint32]*responseStream
   streamInputs        map[uint32]chan<- Frame
   streamOutputs       [8]chan Frame
   pings               map[uint32]chan<- bool
@@ -39,7 +39,7 @@ type connection struct {
   done                *sync.WaitGroup
 }
 
-func (conn *connection) readFrames() {
+func (conn *serverConnection) readFrames() {
   if d := conn.server.ReadTimeout; d != 0 {
     conn.conn.SetReadDeadline(time.Now().Add(d))
   }
@@ -167,7 +167,7 @@ func (conn *connection) readFrames() {
   }
 }
 
-func (conn *connection) send() {
+func (conn *serverConnection) send() {
   for {
     frame := conn.selectFrameToSend()
     err := frame.WriteHeaders(conn.compressor)
@@ -181,7 +181,7 @@ func (conn *connection) send() {
   }
 }
 
-func (conn *connection) selectFrameToSend() (frame Frame) {
+func (conn *serverConnection) selectFrameToSend() (frame Frame) {
   // Try in priority order first.
   for i := 0; i < 8; i++ {
     select {
@@ -214,10 +214,10 @@ func (conn *connection) selectFrameToSend() (frame Frame) {
   panic("Unreachable")
 }
 
-func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
-  output chan<- Frame) *stream {
+func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Frame,
+  output chan<- Frame) *responseStream {
 
-  stream := new(stream)
+  stream := new(responseStream)
   stream.conn = conn
   stream.streamID = frame.StreamID
   stream.state = STATE_OPEN
@@ -261,28 +261,29 @@ func (conn *connection) newStream(frame *SynStreamFrame, input <-chan Frame,
 }
 
 // Internally-sent frames have high priority.
-func (conn *connection) WriteFrame(frame Frame) {
+func (conn *serverConnection) WriteFrame(frame Frame) {
   conn.streamOutputs[0] <- frame
 }
 
-func (conn *connection) Push(resource string, originStreamID uint32) (uint32, error) {
+func (conn *serverConnection) Push(resource string, origin *responseStream) (PushWriter, error) {
   conn.Lock()
   defer conn.Unlock()
   conn.nextServerStreamID += 2
   newID := conn.nextServerStreamID
 
+  // Send the SYN_STREAM.
   push := new(SynStreamFrame)
   push.version = uint16(conn.version)
   push.Flags = FLAG_UNIDIRECTIONAL
   push.StreamID = newID
-  push.AssocStreamID = originStreamID
+  push.AssocStreamID = origin.streamID
   push.Priority = 0
   url, err := url.Parse(resource)
   if err != nil {
-    return 0, err
+    return nil, err
   }
   if url.Scheme == "" || url.Host == "" || url.Path == "" {
-    return 0, errors.New("Error: Incomplete path provided to resource.")
+    return nil, errors.New("Error: Incomplete path provided to resource.")
   }
   headers := make(Header)
   headers.Set(":scheme", url.Scheme)
@@ -291,10 +292,22 @@ func (conn *connection) Push(resource string, originStreamID uint32) (uint32, er
   push.Headers = headers
   conn.WriteFrame(push)
 
-  return newID, nil
+  // Create the pushStream.
+  out := new(pushStream)
+  out.conn = conn
+  out.streamID = newID
+  out.origin = origin
+  out.state = STATE_HALF_CLOSED_THERE
+  out.output = conn.streamOutputs[0]
+  out.headers = make(Header)
+  out.stop = false
+  out.version = conn.version
+  out.AddFlowControl()
+
+  return out, nil
 }
 
-func (conn *connection) Ping() <-chan bool {
+func (conn *serverConnection) Ping() <-chan bool {
   conn.Lock()
   defer conn.Unlock()
 
@@ -308,7 +321,7 @@ func (conn *connection) Ping() <-chan bool {
   return c
 }
 
-func (conn *connection) checkFrameVersion(frame Frame) bool {
+func (conn *serverConnection) checkFrameVersion(frame Frame) bool {
   if frame.Version() != uint16(conn.version) {
 
     // This is currently strict; only one version allowed per connection.
@@ -323,7 +336,7 @@ func (conn *connection) checkFrameVersion(frame Frame) bool {
   return false
 }
 
-func (conn *connection) handleSynStream(frame *SynStreamFrame) {
+func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
   conn.RLock()
   defer func() { conn.RUnlock() }()
 
@@ -391,7 +404,7 @@ func (conn *connection) handleSynStream(frame *SynStreamFrame) {
   return
 }
 
-func (conn *connection) handleDataFrame(frame *DataFrame) {
+func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
   conn.RLock()
   defer func() { conn.RUnlock() }()
 
@@ -436,7 +449,7 @@ func (conn *connection) handleDataFrame(frame *DataFrame) {
   }
 }
 
-func (conn *connection) handleHeadersFrame(frame *HeadersFrame) {
+func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
   conn.RLock()
   defer func() { conn.RUnlock() }()
 
@@ -489,7 +502,7 @@ func (conn *connection) handleHeadersFrame(frame *HeadersFrame) {
   }
 }
 
-func (conn *connection) handleWindowUpdateFrame(frame *WindowUpdateFrame) {
+func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) {
   conn.RLock()
   defer func() { conn.RUnlock() }()
 
@@ -541,7 +554,7 @@ func (conn *connection) handleWindowUpdateFrame(frame *WindowUpdateFrame) {
   conn.streamInputs[frame.StreamID] <- frame
 }
 
-func (conn *connection) serve() {
+func (conn *serverConnection) serve() {
   defer func() {
     if err := recover(); err != nil {
       const size = 4096
@@ -591,8 +604,8 @@ func acceptSPDYv3(server *Server, tlsConn *tls.Conn, _ http.Handler) {
   conn.serve()
 }
 
-func newConn(tlsConn *tls.Conn) *connection {
-  conn := new(connection)
+func newConn(tlsConn *tls.Conn) *serverConnection {
+  conn := new(serverConnection)
   conn.remoteAddr = tlsConn.RemoteAddr().String()
   conn.conn = tlsConn
   conn.buf = bufio.NewReader(tlsConn)
@@ -601,7 +614,7 @@ func newConn(tlsConn *tls.Conn) *connection {
   conn.compressor = new(Compressor)
   conn.decompressor = new(Decompressor)
   conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
-  conn.streams = make(map[uint32]*stream)
+  conn.streams = make(map[uint32]*responseStream)
   conn.streamInputs = make(map[uint32]chan<- Frame)
   conn.streamOutputs = [8]chan Frame{}
   conn.streamOutputs[0] = make(chan Frame)

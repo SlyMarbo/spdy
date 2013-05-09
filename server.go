@@ -58,27 +58,20 @@ type ResponseWriter interface {
   WriteSettings(...*Setting)
 }
 
+// PushWriter is used for server pushes. The methods provided by
+// PushWriter are fairly limited compared to a ResponseWriter, but
+// a ResponseWriter will always be available in situations where
+// a PushWriter will be used.
 type PushWriter interface {
   // Header returns the header map that will be sent with the push.
   // Changing the header after a call to Write has no effect.
   Header() Header
-
-  // Ping immediately returns a channel on which a single boolean will
-  // sent when the ping completes, which can be used as some measure of
-  // the network's current performance. The boolean will be false if
-  // the ping failed for any reason, and true otherwise.
-  Ping() <-chan bool
 
   // Write writes the data to the connection as part of a SPDY server
   // push. If the Header does not contain a Content-Type line, Write
   // adds a Content-Type set to the result of passing the initial 512
   // bytes of written data to DetectContentType.
   Write([]byte) (int, error)
-
-  // WriteSettings sends the provided settings to the client. Note that
-  // any settings to be sent unconditionally to all clients can be set
-  // in Server.GlobalSettings.
-  WriteSettings(...*Setting)
 }
 
 // The HandlerFunc type is an adapter to allow the use of ordinary

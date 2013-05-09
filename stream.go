@@ -2,16 +2,16 @@ package spdy
 
 import (
   "bytes"
-	"errors"
+  "errors"
   "fmt"
   "log"
   "net/http"
   "sync"
 )
 
-type stream struct {
+type responseStream struct {
   sync.RWMutex
-  conn           *connection
+  conn           *serverConnection
   streamID       uint32
   flow           *flowControl
   requestBody    *bytes.Buffer
@@ -24,37 +24,29 @@ type stream struct {
   headers        Header
   settings       []*Setting
   unidirectional bool
-  responseSent   bool
   responseCode   int
   stop           bool
   wroteHeader    bool
   version        int
 }
 
-func (s *stream) Header() Header {
+func (s *responseStream) Header() Header {
   return s.headers
 }
 
-func (s *stream) Ping() <-chan bool {
+func (s *responseStream) Ping() <-chan bool {
   return s.conn.Ping()
 }
 
-func (s *stream) Push(resource string) (PushWriter, error) {
-	newID, err := s.conn.Push(resource, s.streamID)
-	if err != nil {
-		return nil, err
-	}
-	
-	
-	
-  return nil, nil
+func (s *responseStream) Push(resource string) (PushWriter, error) {
+  return s.conn.Push(resource, s)
 }
 
-func (s *stream) Settings() []*Setting {
+func (s *responseStream) Settings() []*Setting {
   return s.conn.receivedSettings
 }
 
-func (s *stream) Write(inputData []byte) (int, error) {
+func (s *responseStream) Write(inputData []byte) (int, error) {
   if s.state == STATE_CLOSED || s.state == STATE_HALF_CLOSED_HERE {
     return 0, errors.New("Error: Stream already closed.")
   }
@@ -88,7 +80,7 @@ func (s *stream) Write(inputData []byte) (int, error) {
   return written, err
 }
 
-func (s *stream) WriteHeader(code int) {
+func (s *responseStream) WriteHeader(code int) {
   if s.wroteHeader {
     log.Println("spdy: Error: Multiple calls to ResponseWriter.WriteHeader.")
     return
@@ -118,7 +110,7 @@ func (s *stream) WriteHeader(code int) {
   s.output <- synReply
 }
 
-func (s *stream) WriteSettings(settings ...*Setting) {
+func (s *responseStream) WriteSettings(settings ...*Setting) {
   if settings == nil {
     return
   }
@@ -129,7 +121,7 @@ func (s *stream) WriteSettings(settings ...*Setting) {
   s.output <- frame
 }
 
-func (s *stream) receiveFrame(frame Frame) {
+func (s *responseStream) receiveFrame(frame Frame) {
   if frame == nil {
     panic("Nil frame received in receiveFrame.")
   }
@@ -157,7 +149,7 @@ func (s *stream) receiveFrame(frame Frame) {
   }
 }
 
-func (s *stream) wait() {
+func (s *responseStream) wait() {
   frame := <-s.input
   if frame == nil {
     return
@@ -165,7 +157,7 @@ func (s *stream) wait() {
   s.receiveFrame(frame)
 }
 
-func (s *stream) processInput() {
+func (s *responseStream) processInput() {
   var frame Frame
   var ok bool
 
@@ -183,7 +175,7 @@ func (s *stream) processInput() {
   }
 }
 
-func (s *stream) run() {
+func (s *responseStream) run() {
 
   // Make sure Request is prepared.
   s.AddFlowControl()
