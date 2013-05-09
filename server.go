@@ -455,9 +455,9 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 }
 
 func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Handler) error {
+  srv := &Server{Handler: handler}
   server := &http.Server{
-    Addr:    addr,
-    Handler: handler,
+    Addr: addr,
     TLSConfig: &tls.Config{
       NextProtos: []string{
         "spdy/3",
@@ -466,7 +466,9 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Han
     },
     TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
       //"spdy/2": acceptDefaultSPDYv2,
-      "spdy/3": acceptDefaultSPDYv3,
+      "spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+        acceptSPDYv3(srv, tlsConn, nil)
+      },
     },
   }
 

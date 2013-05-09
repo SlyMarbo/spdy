@@ -130,12 +130,12 @@ func (conn *connection) readFrames() {
         if frame.Version() > SPDY_VERSION {
           log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
             frame.Version)
-          reply := new(RstStreamFrame)
-          reply.version = SPDY_VERSION
-          reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
-          conn.WriteFrame(reply)
-          break FrameHandling
         }
+        reply := new(RstStreamFrame)
+        reply.version = SPDY_VERSION
+        reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+        conn.WriteFrame(reply)
+        break FrameHandling
       }
 
       // TODO: inform push streams that they haven't been processed if
