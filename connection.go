@@ -265,6 +265,20 @@ func (conn *serverConnection) WriteFrame(frame Frame) {
   conn.streamOutputs[0] <- frame
 }
 
+func (conn *serverConnection) Ping() <-chan bool {
+  conn.Lock()
+  defer conn.Unlock()
+
+  conn.pingID += 2
+  ping := new(PingFrame)
+  ping.version = uint16(conn.version)
+  ping.PingID = conn.pingID
+  conn.streamOutputs[0] <- ping
+  c := make(chan bool, 1)
+  conn.pings[conn.pingID] = c
+  return c
+}
+
 func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, error) {
   conn.Lock()
   defer conn.Unlock()
@@ -300,27 +314,13 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
   out.streamID = newID
   out.origin = origin
   out.state = STATE_HALF_CLOSED_THERE
-  out.output = conn.streamOutputs[0]
+  out.output = conn.streamOutputs[7] // The SYN_STREAM is priority 0, but its data is less urgent.
   out.headers = make(Header)
   out.stop = false
   out.version = conn.version
   out.AddFlowControl()
 
   return out, nil
-}
-
-func (conn *serverConnection) Ping() <-chan bool {
-  conn.Lock()
-  defer conn.Unlock()
-
-  conn.pingID += 2
-  ping := new(PingFrame)
-  ping.version = uint16(conn.version)
-  ping.PingID = conn.pingID
-  conn.streamOutputs[0] <- ping
-  c := make(chan bool, 1)
-  conn.pings[conn.pingID] = c
-  return c
 }
 
 func (conn *serverConnection) checkFrameVersion(frame Frame) bool {
