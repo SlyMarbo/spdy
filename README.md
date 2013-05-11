@@ -3,6 +3,9 @@ spdy
 
 My implementation of SPDY/v3 (work in progress)
 
+Servers
+-------
+
 Adding SPDY support to an existing server doesn't take much work.
 
 Modifying a simple example server like the following:
@@ -95,8 +98,7 @@ func main() {
 
 
 
-The following examples use features specific to SPDY
-----------------------------------------------------
+The following examples use features specific to SPDY.
 
 Just the SPDY handler is shown.
 
