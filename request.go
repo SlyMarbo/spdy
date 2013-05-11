@@ -1,25 +1,25 @@
 package spdy
 
 import (
-  "bytes"
-  "crypto/tls"
-  "encoding/base64"
-  "errors"
-  "fmt"
-  "io"
-  "io/ioutil"
-  "mime"
-  "mime/multipart"
-  "net/http"
-  "net/url"
-  "strings"
+	"bytes"
+	"crypto/tls"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"strings"
 )
 
 const (
-  maxValueLength   = 4096
-  maxHeaderLines   = 1024
-  chunkSize        = 4 << 10  // 4 KB chunks
-  defaultMaxMemory = 32 << 20 // 32 MB
+	maxValueLength   = 4096
+	maxHeaderLines   = 1024
+	chunkSize        = 4 << 10  // 4 KB chunks
+	defaultMaxMemory = 32 << 20 // 32 MB
 )
 
 // ErrMissingFile is returned by FormFile when the provided file field name
@@ -28,157 +28,157 @@ var ErrMissingFile = errors.New("spdy: no such file")
 
 // HTTP request parsing errors.
 type ProtocolError struct {
-  ErrorString string
+	ErrorString string
 }
 
 func (err *ProtocolError) Error() string { return err.ErrorString }
 
 var (
-  ErrHeaderTooLong        = &ProtocolError{"header too long"}
-  ErrShortBody            = &ProtocolError{"entity body too short"}
-  ErrNotSupported         = &ProtocolError{"feature not supported"}
-  ErrUnexpectedTrailer    = &ProtocolError{"trailer header without chunked transfer encoding"}
-  ErrMissingContentLength = &ProtocolError{"missing ContentLength in HEAD response"}
-  ErrNotMultipart         = &ProtocolError{"request Content-Type isn't multipart/form-data"}
-  ErrMissingBoundary      = &ProtocolError{"no multipart boundary param in Content-Type"}
+	ErrHeaderTooLong        = &ProtocolError{"header too long"}
+	ErrShortBody            = &ProtocolError{"entity body too short"}
+	ErrNotSupported         = &ProtocolError{"feature not supported"}
+	ErrUnexpectedTrailer    = &ProtocolError{"trailer header without chunked transfer encoding"}
+	ErrMissingContentLength = &ProtocolError{"missing ContentLength in HEAD response"}
+	ErrNotMultipart         = &ProtocolError{"request Content-Type isn't multipart/form-data"}
+	ErrMissingBoundary      = &ProtocolError{"no multipart boundary param in Content-Type"}
 )
 
 // A Request represents an HTTP request received by a server
 // or to be sent by a client.
 type Request struct {
-  Method string // GET, POST, PUT, etc.
+	Method string // GET, POST, PUT, etc.
 
-  // URL is created from the URI supplied on the Request-Line
-  // as stored in RequestURI.
-  URL *url.URL
+	// URL is created from the URI supplied on the Request-Line
+	// as stored in RequestURI.
+	URL *url.URL
 
-  // The protocol version for incoming requests.
-  // Outgoing requests always use HTTP/1.1.
-  Proto      string // "HTTP/1.0"
-  ProtoMajor int    // 1
-  ProtoMinor int    // 0
+	// The protocol version for incoming requests.
+	// Outgoing requests always use HTTP/1.1.
+	Proto      string // "HTTP/1.0"
+	ProtoMajor int    // 1
+	ProtoMinor int    // 0
 
-  // The priority of the request, as set by the sender.
-  Priority int
+	// The priority of the request, as set by the sender.
+	Priority int
 
-  // A header maps request lines to their values.
-  // If the header says
-  //
-  //      accept-encoding: gzip, deflate
-  //      Accept-Language: en-us
-  //      Connection: keep-alive
-  //
-  // then
-  //
-  //      Header = map[string][]string{
-  //              "Accept-Encoding": {"gzip, deflate"},
-  //              "Accept-Language": {"en-us"},
-  //              "Connection": {"keep-alive"},
-  //      }
-  //
-  // HTTP defines that header names are case-insensitive.
-  // The request parser implements this by canonicalizing the
-  // name, making the first character and any characters
-  // following a hyphen uppercase and the rest lowercase.
-  Header Header
+	// A header maps request lines to their values.
+	// If the header says
+	//
+	//      accept-encoding: gzip, deflate
+	//      Accept-Language: en-us
+	//      Connection: keep-alive
+	//
+	// then
+	//
+	//      Header = map[string][]string{
+	//              "Accept-Encoding": {"gzip, deflate"},
+	//              "Accept-Language": {"en-us"},
+	//              "Connection": {"keep-alive"},
+	//      }
+	//
+	// HTTP defines that header names are case-insensitive.
+	// The request parser implements this by canonicalizing the
+	// name, making the first character and any characters
+	// following a hyphen uppercase and the rest lowercase.
+	Header Header
 
-  // The message body.
-  Body io.ReadCloser
+	// The message body.
+	Body io.ReadCloser
 
-  // ContentLength records the length of the associated content.
-  // The value -1 indicates that the length is unknown.
-  // Values >= 0 indicate that the given number of bytes may
-  // be read from Body.
-  // For outgoing requests, a value of 0 means unknown if Body is not nil.
-  ContentLength int64
+	// ContentLength records the length of the associated content.
+	// The value -1 indicates that the length is unknown.
+	// Values >= 0 indicate that the given number of bytes may
+	// be read from Body.
+	// For outgoing requests, a value of 0 means unknown if Body is not nil.
+	ContentLength int64
 
-  // The host on which the URL is sought.
-  // Per SPDY draft 3, this is either the value of the :host header
-  // or the host name given in the URL itself.
-  // It may be of the form "host:port".
-  Host string
+	// The host on which the URL is sought.
+	// Per SPDY draft 3, this is either the value of the :host header
+	// or the host name given in the URL itself.
+	// It may be of the form "host:port".
+	Host string
 
-  // Form contains the parsed form data, including both the URL
-  // field's query parameters and the POST or PUT form data.
-  // This field is only available after ParseForm is called.
-  // The HTTP client ignores Form and uses Body instead.
-  Form url.Values
+	// Form contains the parsed form data, including both the URL
+	// field's query parameters and the POST or PUT form data.
+	// This field is only available after ParseForm is called.
+	// The HTTP client ignores Form and uses Body instead.
+	Form url.Values
 
-  // PostForm contains the parsed form data from POST or PUT
-  // body parameters.
-  // This field is only available after ParseForm is called.
-  // The HTTP client ignores PostForm and uses Body instead.
-  PostForm url.Values
+	// PostForm contains the parsed form data from POST or PUT
+	// body parameters.
+	// This field is only available after ParseForm is called.
+	// The HTTP client ignores PostForm and uses Body instead.
+	PostForm url.Values
 
-  // MultipartForm is the parsed multipart form, including file uploads.
-  // This field is only available after ParseMultipartForm is called.
-  // The HTTP client ignores MultipartForm and uses Body instead.
-  MultipartForm *multipart.Form
+	// MultipartForm is the parsed multipart form, including file uploads.
+	// This field is only available after ParseMultipartForm is called.
+	// The HTTP client ignores MultipartForm and uses Body instead.
+	MultipartForm *multipart.Form
 
-  // Trailer maps trailer keys to values.  Like for Header, if the
-  // response has multiple trailer lines with the same key, they will be
-  // concatenated, delimited by commas.
-  // For server requests, Trailer is only populated after Body has been
-  // closed or fully consumed.
-  // Trailer support is only partially complete.
-  Trailer Header
+	// Trailer maps trailer keys to values.  Like for Header, if the
+	// response has multiple trailer lines with the same key, they will be
+	// concatenated, delimited by commas.
+	// For server requests, Trailer is only populated after Body has been
+	// closed or fully consumed.
+	// Trailer support is only partially complete.
+	Trailer Header
 
-  // RemoteAddr allows HTTP servers and other software to record
-  // the network address that sent the request, usually for
-  // logging. This field is not filled in by ReadRequest and
-  // has no defined format. The HTTP server in this package
-  // sets RemoteAddr to an "IP:port" address before invoking a
-  // handler.
-  // This field is ignored by the HTTP client.
-  RemoteAddr string
+	// RemoteAddr allows HTTP servers and other software to record
+	// the network address that sent the request, usually for
+	// logging. This field is not filled in by ReadRequest and
+	// has no defined format. The HTTP server in this package
+	// sets RemoteAddr to an "IP:port" address before invoking a
+	// handler.
+	// This field is ignored by the HTTP client.
+	RemoteAddr string
 
-  // RequestURI is the unmodified Request-URI of the
-  // Request-Line (RFC 2616, Section 5.1) as sent by the client
-  // to a server. Usually the URL field should be used instead.
-  // It is an error to set this field in an HTTP client request.
-  RequestURI string
+	// RequestURI is the unmodified Request-URI of the
+	// Request-Line (RFC 2616, Section 5.1) as sent by the client
+	// to a server. Usually the URL field should be used instead.
+	// It is an error to set this field in an HTTP client request.
+	RequestURI string
 
-  // TLS allows HTTP servers and other software to record
-  // information about the TLS connection on which the request
-  // was received. This field is not filled in by ReadRequest.
-  // The HTTP server in this package sets the field for
-  // TLS-enabled connections before invoking a handler.
-  TLS *tls.ConnectionState
+	// TLS allows HTTP servers and other software to record
+	// information about the TLS connection on which the request
+	// was received. This field is not filled in by ReadRequest.
+	// The HTTP server in this package sets the field for
+	// TLS-enabled connections before invoking a handler.
+	TLS *tls.ConnectionState
 }
 
 func spdyRequestToHttpRequest(req *Request) *http.Request {
-  out := new(http.Request)
-  out.Method = req.Method
-  out.URL = req.URL
-  out.Proto = req.Proto
-  out.ProtoMajor = req.ProtoMajor
-  out.ProtoMinor = req.ProtoMinor
-  out.Header = http.Header(req.Header)
+	out := new(http.Request)
+	out.Method = req.Method
+	out.URL = req.URL
+	out.Proto = req.Proto
+	out.ProtoMajor = req.ProtoMajor
+	out.ProtoMinor = req.ProtoMinor
+	out.Header = http.Header(req.Header)
 	out.Header.Set("Connection", "keep-alive")
-  out.Body = req.Body
-  out.ContentLength = req.ContentLength
-  out.Host = req.Host
-  out.RemoteAddr = req.RemoteAddr
-  out.RequestURI = req.RequestURI
-  out.TLS = req.TLS
-  return out
+	out.Body = req.Body
+	out.ContentLength = req.ContentLength
+	out.Host = req.Host
+	out.RemoteAddr = req.RemoteAddr
+	out.RequestURI = req.RequestURI
+	out.TLS = req.TLS
+	return out
 }
 
 // ProtoAtLeast returns whether the HTTP protocol used
 // in the request is at least major.minor.
 func (r *Request) ProtoAtLeast(major, minor int) bool {
-  return r.ProtoMajor > major ||
-    r.ProtoMajor == major && r.ProtoMinor >= minor
+	return r.ProtoMajor > major ||
+		r.ProtoMajor == major && r.ProtoMinor >= minor
 }
 
 // UserAgent returns the client's User-Agent, if sent in the request.
 func (r *Request) UserAgent() string {
-  return r.Header.Get("User-Agent")
+	return r.Header.Get("User-Agent")
 }
 
 // Cookies parses and returns the HTTP cookies sent with the request.
 func (r *Request) Cookies() []*Cookie {
-  return readCookies(r.Header, "")
+	return readCookies(r.Header, "")
 }
 
 var ErrNoCookie = errors.New("spdy: named cookie not present")
@@ -186,10 +186,10 @@ var ErrNoCookie = errors.New("spdy: named cookie not present")
 // Cookie returns the named cookie provided in the request or
 // ErrNoCookie if not found.
 func (r *Request) Cookie(name string) (*Cookie, error) {
-  for _, c := range readCookies(r.Header, name) {
-    return c, nil
-  }
-  return nil, ErrNoCookie
+	for _, c := range readCookies(r.Header, name) {
+		return c, nil
+	}
+	return nil, ErrNoCookie
 }
 
 // AddCookie adds a cookie to the request.  Per RFC 6265 section 5.4,
@@ -197,12 +197,12 @@ func (r *Request) Cookie(name string) (*Cookie, error) {
 // means all cookies, if any, are written into the same line,
 // separated by semicolon.
 func (r *Request) AddCookie(c *Cookie) {
-  s := fmt.Sprintf("%s=%s", sanitizeName(c.Name), sanitizeValue(c.Value))
-  if c := r.Header.Get("Cookie"); c != "" {
-    r.Header.Set("Cookie", c+"; "+s)
-  } else {
-    r.Header.Set("Cookie", s)
-  }
+	s := fmt.Sprintf("%s=%s", sanitizeName(c.Name), sanitizeValue(c.Value))
+	if c := r.Header.Get("Cookie"); c != "" {
+		r.Header.Set("Cookie", c+"; "+s)
+	} else {
+		r.Header.Set("Cookie", s)
+	}
 }
 
 // Referer returns the referring URL, if sent in the request.
@@ -214,15 +214,15 @@ func (r *Request) AddCookie(c *Cookie) {
 // alternate (correct English) spelling req.Referrer() but cannot
 // diagnose programs that use Header["Referrer"].
 func (r *Request) Referer() string {
-  return r.Header.Get("Referer")
+	return r.Header.Get("Referer")
 }
 
 // multipartByReader is a sentinel value.
 // Its presence in Request.MultipartForm indicates that parsing of the request
 // body has been handed off to a MultipartReader instead of ParseMultipartFrom.
 var multipartByReader = &multipart.Form{
-  Value: make(map[string][]string),
-  File:  make(map[string][]*multipart.FileHeader),
+	Value: make(map[string][]string),
+	File:  make(map[string][]*multipart.FileHeader),
 }
 
 // MultipartReader returns a MIME multipart reader if this is a
@@ -230,38 +230,38 @@ var multipartByReader = &multipart.Form{
 // Use this function instead of ParseMultipartForm to
 // process the request body as a stream.
 func (r *Request) MultipartReader() (*multipart.Reader, error) {
-  if r.MultipartForm == multipartByReader {
-    return nil, errors.New("spdy: MultipartReader called twice")
-  }
-  if r.MultipartForm != nil {
-    return nil, errors.New("spdy: multipart handled by ParseMultipartForm")
-  }
-  r.MultipartForm = multipartByReader
-  return r.multipartReader()
+	if r.MultipartForm == multipartByReader {
+		return nil, errors.New("spdy: MultipartReader called twice")
+	}
+	if r.MultipartForm != nil {
+		return nil, errors.New("spdy: multipart handled by ParseMultipartForm")
+	}
+	r.MultipartForm = multipartByReader
+	return r.multipartReader()
 }
 
 func (r *Request) multipartReader() (*multipart.Reader, error) {
-  v := r.Header.Get("Content-Type")
-  if v == "" {
-    return nil, ErrNotMultipart
-  }
-  d, params, err := mime.ParseMediaType(v)
-  if err != nil || d != "multipart/form-data" {
-    return nil, ErrNotMultipart
-  }
-  boundary, ok := params["boundary"]
-  if !ok {
-    return nil, ErrMissingBoundary
-  }
-  return multipart.NewReader(r.Body, boundary), nil
+	v := r.Header.Get("Content-Type")
+	if v == "" {
+		return nil, ErrNotMultipart
+	}
+	d, params, err := mime.ParseMediaType(v)
+	if err != nil || d != "multipart/form-data" {
+		return nil, ErrNotMultipart
+	}
+	boundary, ok := params["boundary"]
+	if !ok {
+		return nil, ErrMissingBoundary
+	}
+	return multipart.NewReader(r.Body, boundary), nil
 }
 
 // Return value if nonempty, def otherwise.
 func valueOrDefault(value, def string) string {
-  if value != "" {
-    return value
-  }
-  return def
+	if value != "" {
+		return value
+	}
+	return def
 }
 
 const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
@@ -379,36 +379,36 @@ const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
 
 // NewRequest returns a new Request given a method, URL, and optional body.
 func NewRequest(method, urlStr string, body io.Reader) (*Request, error) {
-  u, err := url.Parse(urlStr)
-  if err != nil {
-    return nil, err
-  }
-  rc, ok := body.(io.ReadCloser)
-  if !ok && body != nil {
-    rc = ioutil.NopCloser(body)
-  }
-  req := &Request{
-    Method:     method,
-    URL:        u,
-    Proto:      "HTTP/1.1",
-    ProtoMajor: 1,
-    ProtoMinor: 1,
-    Header:     make(Header),
-    Body:       rc,
-    Host:       u.Host,
-  }
-  if body != nil {
-    switch v := body.(type) {
-    case *bytes.Buffer:
-      req.ContentLength = int64(v.Len())
-    case *bytes.Reader:
-      req.ContentLength = int64(v.Len())
-    case *strings.Reader:
-      req.ContentLength = int64(v.Len())
-    }
-  }
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+	rc, ok := body.(io.ReadCloser)
+	if !ok && body != nil {
+		rc = ioutil.NopCloser(body)
+	}
+	req := &Request{
+		Method:     method,
+		URL:        u,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     make(Header),
+		Body:       rc,
+		Host:       u.Host,
+	}
+	if body != nil {
+		switch v := body.(type) {
+		case *bytes.Buffer:
+			req.ContentLength = int64(v.Len())
+		case *bytes.Reader:
+			req.ContentLength = int64(v.Len())
+		case *strings.Reader:
+			req.ContentLength = int64(v.Len())
+		}
+	}
 
-  return req, nil
+	return req, nil
 }
 
 // SetBasicAuth sets the request's Authorization header to use HTTP
@@ -417,8 +417,8 @@ func NewRequest(method, urlStr string, body io.Reader) (*Request, error) {
 // With HTTP Basic Authentication the provided username and password
 // are not encrypted.
 func (r *Request) SetBasicAuth(username, password string) {
-  s := username + ":" + password
-  r.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(s)))
+	s := username + ":" + password
+	r.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(s)))
 }
 
 // ParseForm parses the raw query from the URL and updates r.Form.
@@ -434,38 +434,38 @@ func (r *Request) SetBasicAuth(username, password string) {
 // ParseMultipartForm calls ParseForm automatically.
 // It is idempotent.
 func (r *Request) ParseForm() error {
-  var err error
-  if r.PostForm == nil {
-    if r.Method == "POST" || r.Method == "PUT" {
-      r.PostForm, err = parsePostForm(r)
-    }
-    if r.PostForm == nil {
-      r.PostForm = make(url.Values)
-    }
-  }
-  if r.Form == nil {
-    if len(r.PostForm) > 0 {
-      r.Form = make(url.Values)
-      copyValues(r.Form, r.PostForm)
-    }
-    var newValues url.Values
-    if r.URL != nil {
-      var e error
-      newValues, e = url.ParseQuery(r.URL.RawQuery)
-      if err == nil {
-        err = e
-      }
-    }
-    if newValues == nil {
-      newValues = make(url.Values)
-    }
-    if r.Form == nil {
-      r.Form = newValues
-    } else {
-      copyValues(r.Form, newValues)
-    }
-  }
-  return err
+	var err error
+	if r.PostForm == nil {
+		if r.Method == "POST" || r.Method == "PUT" {
+			r.PostForm, err = parsePostForm(r)
+		}
+		if r.PostForm == nil {
+			r.PostForm = make(url.Values)
+		}
+	}
+	if r.Form == nil {
+		if len(r.PostForm) > 0 {
+			r.Form = make(url.Values)
+			copyValues(r.Form, r.PostForm)
+		}
+		var newValues url.Values
+		if r.URL != nil {
+			var e error
+			newValues, e = url.ParseQuery(r.URL.RawQuery)
+			if err == nil {
+				err = e
+			}
+		}
+		if newValues == nil {
+			newValues = make(url.Values)
+		}
+		if r.Form == nil {
+			r.Form = newValues
+		} else {
+			copyValues(r.Form, newValues)
+		}
+	}
+	return err
 }
 
 // ParseMultipartForm parses a request body as multipart/form-data.
@@ -475,36 +475,36 @@ func (r *Request) ParseForm() error {
 // ParseMultipartForm calls ParseForm if necessary.
 // After one call to ParseMultipartForm, subsequent calls have no effect.
 func (r *Request) ParseMultipartForm(maxMemory int64) error {
-  if r.MultipartForm == multipartByReader {
-    return errors.New("spdy: multipart handled by MultipartReader")
-  }
-  if r.Form == nil {
-    err := r.ParseForm()
-    if err != nil {
-      return err
-    }
-  }
-  if r.MultipartForm != nil {
-    return nil
-  }
+	if r.MultipartForm == multipartByReader {
+		return errors.New("spdy: multipart handled by MultipartReader")
+	}
+	if r.Form == nil {
+		err := r.ParseForm()
+		if err != nil {
+			return err
+		}
+	}
+	if r.MultipartForm != nil {
+		return nil
+	}
 
-  mr, err := r.multipartReader()
-  if err == ErrNotMultipart {
-    return nil
-  } else if err != nil {
-    return err
-  }
+	mr, err := r.multipartReader()
+	if err == ErrNotMultipart {
+		return nil
+	} else if err != nil {
+		return err
+	}
 
-  f, err := mr.ReadForm(maxMemory)
-  if err != nil {
-    return err
-  }
-  for k, v := range f.Value {
-    r.Form[k] = append(r.Form[k], v...)
-  }
-  r.MultipartForm = f
+	f, err := mr.ReadForm(maxMemory)
+	if err != nil {
+		return err
+	}
+	for k, v := range f.Value {
+		r.Form[k] = append(r.Form[k], v...)
+	}
+	r.MultipartForm = f
 
-  return nil
+	return nil
 }
 
 // FormValue returns the first value for the named component of the query.
@@ -512,51 +512,51 @@ func (r *Request) ParseMultipartForm(maxMemory int64) error {
 // FormValue calls ParseMultipartForm and ParseForm if necessary.
 // To access multiple values of the same key use ParseForm.
 func (r *Request) FormValue(key string) string {
-  if r.Form == nil {
-    r.ParseMultipartForm(defaultMaxMemory)
-  }
-  if vs := r.Form[key]; len(vs) > 0 {
-    return vs[0]
-  }
-  return ""
+	if r.Form == nil {
+		r.ParseMultipartForm(defaultMaxMemory)
+	}
+	if vs := r.Form[key]; len(vs) > 0 {
+		return vs[0]
+	}
+	return ""
 }
 
 // PostFormValue returns the first value for the named component of the POST
 // or PUT request body. URL query parameters are ignored.
 // PostFormValue calls ParseMultipartForm and ParseForm if necessary.
 func (r *Request) PostFormValue(key string) string {
-  if r.PostForm == nil {
-    r.ParseMultipartForm(defaultMaxMemory)
-  }
-  if vs := r.PostForm[key]; len(vs) > 0 {
-    return vs[0]
-  }
-  return ""
+	if r.PostForm == nil {
+		r.ParseMultipartForm(defaultMaxMemory)
+	}
+	if vs := r.PostForm[key]; len(vs) > 0 {
+		return vs[0]
+	}
+	return ""
 }
 
 // FormFile returns the first file for the provided form key.
 // FormFile calls ParseMultipartForm and ParseForm if necessary.
 func (r *Request) FormFile(key string) (multipart.File, *multipart.FileHeader, error) {
-  if r.MultipartForm == multipartByReader {
-    return nil, nil, errors.New("spdy: multipart handled by MultipartReader")
-  }
-  if r.MultipartForm == nil {
-    err := r.ParseMultipartForm(defaultMaxMemory)
-    if err != nil {
-      return nil, nil, err
-    }
-  }
-  if r.MultipartForm != nil && r.MultipartForm.File != nil {
-    if fhs := r.MultipartForm.File[key]; len(fhs) > 0 {
-      f, err := fhs[0].Open()
-      return f, fhs[0], err
-    }
-  }
-  return nil, nil, ErrMissingFile
+	if r.MultipartForm == multipartByReader {
+		return nil, nil, errors.New("spdy: multipart handled by MultipartReader")
+	}
+	if r.MultipartForm == nil {
+		err := r.ParseMultipartForm(defaultMaxMemory)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if r.MultipartForm != nil && r.MultipartForm.File != nil {
+		if fhs := r.MultipartForm.File[key]; len(fhs) > 0 {
+			f, err := fhs[0].Open()
+			return f, fhs[0], err
+		}
+	}
+	return nil, nil, ErrMissingFile
 }
 
 func (r *Request) expectsContinue() bool {
-  return hasToken(r.Header.get("Expect"), "100-continue")
+	return hasToken(r.Header.get("Expect"), "100-continue")
 }
 
 // MaxBytesReader is similar to io.LimitReader but is intended for
@@ -568,80 +568,80 @@ func (r *Request) expectsContinue() bool {
 // MaxBytesReader prevents clients from accidentally or maliciously
 // sending a large request and wasting server resources.
 func MaxBytesReader(w ResponseWriter, r io.ReadCloser, n int64) io.ReadCloser {
-  return &maxBytesReader{w: w, r: r, n: n}
+	return &maxBytesReader{w: w, r: r, n: n}
 }
 
 type maxBytesReader struct {
-  w       ResponseWriter
-  r       io.ReadCloser // underlying reader
-  n       int64         // max bytes remaining
-  stopped bool
+	w       ResponseWriter
+	r       io.ReadCloser // underlying reader
+	n       int64         // max bytes remaining
+	stopped bool
 }
 
 func (l *maxBytesReader) Read(p []byte) (n int, err error) {
-  if l.n <= 0 {
-    if !l.stopped {
-      l.stopped = true
-    }
-    return 0, errors.New("spdy: request body too large")
-  }
-  if int64(len(p)) > l.n {
-    p = p[:l.n]
-  }
-  n, err = l.r.Read(p)
-  l.n -= int64(n)
-  return
+	if l.n <= 0 {
+		if !l.stopped {
+			l.stopped = true
+		}
+		return 0, errors.New("spdy: request body too large")
+	}
+	if int64(len(p)) > l.n {
+		p = p[:l.n]
+	}
+	n, err = l.r.Read(p)
+	l.n -= int64(n)
+	return
 }
 
 func (l *maxBytesReader) Close() error {
-  return l.r.Close()
+	return l.r.Close()
 }
 
 func copyValues(dst, src url.Values) {
-  for k, vs := range src {
-    for _, value := range vs {
-      dst.Add(k, value)
-    }
-  }
+	for k, vs := range src {
+		for _, value := range vs {
+			dst.Add(k, value)
+		}
+	}
 }
 
 func parsePostForm(r *Request) (vs url.Values, err error) {
-  if r.Body == nil {
-    err = errors.New("missing form body")
-    return
-  }
-  ct := r.Header.Get("Content-Type")
-  ct, _, err = mime.ParseMediaType(ct)
-  switch {
-  case ct == "application/x-www-form-urlencoded":
-    var reader io.Reader = r.Body
-    maxFormSize := int64(1<<63 - 1)
-    if _, ok := r.Body.(*maxBytesReader); !ok {
-      maxFormSize = int64(10 << 20) // 10 MB is a lot of text.
-      reader = io.LimitReader(r.Body, maxFormSize+1)
-    }
-    b, e := ioutil.ReadAll(reader)
-    if e != nil {
-      if err == nil {
-        err = e
-      }
-      break
-    }
-    if int64(len(b)) > maxFormSize {
-      err = errors.New("spdy: POST too large")
-      return
-    }
-    vs, e = url.ParseQuery(string(b))
-    if err == nil {
-      err = e
-    }
-  case ct == "multipart/form-data":
-    // handled by ParseMultipartForm (which is calling us, or should be)
-    // TODO(bradfitz): there are too many possible
-    // orders to call too many functions here.
-    // Clean this up and write more tests.
-    // request_test.go contains the start of this,
-    // in TestRequestMultipartCallOrder.
-  }
-  return
+	if r.Body == nil {
+		err = errors.New("missing form body")
+		return
+	}
+	ct := r.Header.Get("Content-Type")
+	ct, _, err = mime.ParseMediaType(ct)
+	switch {
+	case ct == "application/x-www-form-urlencoded":
+		var reader io.Reader = r.Body
+		maxFormSize := int64(1<<63 - 1)
+		if _, ok := r.Body.(*maxBytesReader); !ok {
+			maxFormSize = int64(10 << 20) // 10 MB is a lot of text.
+			reader = io.LimitReader(r.Body, maxFormSize+1)
+		}
+		b, e := ioutil.ReadAll(reader)
+		if e != nil {
+			if err == nil {
+				err = e
+			}
+			break
+		}
+		if int64(len(b)) > maxFormSize {
+			err = errors.New("spdy: POST too large")
+			return
+		}
+		vs, e = url.ParseQuery(string(b))
+		if err == nil {
+			err = e
+		}
+	case ct == "multipart/form-data":
+		// handled by ParseMultipartForm (which is calling us, or should be)
+		// TODO(bradfitz): there are too many possible
+		// orders to call too many functions here.
+		// Clean this up and write more tests.
+		// request_test.go contains the start of this,
+		// in TestRequestMultipartCallOrder.
+	}
+	return
 }

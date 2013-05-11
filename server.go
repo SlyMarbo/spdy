@@ -1,65 +1,65 @@
 package spdy
 
 import (
-  "crypto/tls"
-  "errors"
-  "fmt"
-  "net/http"
-  "net/url"
-  "path"
-  "strings"
-  "sync"
-  "time"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"path"
+	"strings"
+	"sync"
+	"time"
 )
 
 type Handler interface {
-  ServeSPDY(ResponseWriter, *Request)
+	ServeSPDY(ResponseWriter, *Request)
 }
 
 type ResponseWriter interface {
-  // Header returns the header map that will be sent by WriteHeader
+	// Header returns the header map that will be sent by WriteHeader
 	// and WriteHeaders.
-  Header() Header
+	Header() Header
 
-  // Ping immediately returns a channel on which a single boolean will
-  // sent when the ping completes, which can be used as some measure of
-  // the network's current performance. The boolean will be true if
-  // the ping was replied to, and false otherwise.
-  Ping() <-chan bool
+	// Ping immediately returns a channel on which a single boolean will
+	// sent when the ping completes, which can be used as some measure of
+	// the network's current performance. The boolean will be true if
+	// the ping was replied to, and false otherwise.
+	Ping() <-chan bool
 
-  // Push returns a PushWriter, which can be used immediately to send
-  // server pushes, and takes a string giving the name for the
-  // resource being pushed.
-  Push(string) (PushWriter, error)
+	// Push returns a PushWriter, which can be used immediately to send
+	// server pushes, and takes a string giving the name for the
+	// resource being pushed.
+	Push(string) (PushWriter, error)
 
-  // Settings returns any settings presented by the client. Note that
-  // the client can send settings at any time, so successive calls to
-  // Settings may give different output.
-  Settings() []*Setting
+	// Settings returns any settings presented by the client. Note that
+	// the client can send settings at any time, so successive calls to
+	// Settings may give different output.
+	Settings() []*Setting
 
-  // Write writes the data to the connection as part of an HTTP/SPDY
-  // reply. If WriteHeader has not yet been called, Write calls
-  // WriteHeader(http.StatusOK) before writing the data. If the Header
-  // does not contain a Content-Type line, Write adds a Content-Type
-  // set to the result of passing the initial 512 bytes of written
-  // data to DetectContentType.
-  Write([]byte) (int, error)
+	// Write writes the data to the connection as part of an HTTP/SPDY
+	// reply. If WriteHeader has not yet been called, Write calls
+	// WriteHeader(http.StatusOK) before writing the data. If the Header
+	// does not contain a Content-Type line, Write adds a Content-Type
+	// set to the result of passing the initial 512 bytes of written
+	// data to DetectContentType.
+	Write([]byte) (int, error)
 
-  // WriteHeader sends a SPDY response with the status code provided.
-  // If WriteHeader is not called explicitly, the first call to Write
-  // will Trigger an implicit WriteHeader(http.StatusOK). Thus
-  // explicit calls to WriteHeader are mainly used to send error codes.
-  WriteHeader(int)
-	
+	// WriteHeader sends a SPDY response with the status code provided.
+	// If WriteHeader is not called explicitly, the first call to Write
+	// will Trigger an implicit WriteHeader(http.StatusOK). Thus
+	// explicit calls to WriteHeader are mainly used to send error codes.
+	WriteHeader(int)
+
 	// WriteHeaders is used to send new changes to the Header. This is
 	// called implicitly by WriteHeader and Write, so it's rarely
 	// necessary to call manually.
 	WriteHeaders()
 
-  // WriteSettings sends the provided settings to the client. Note that
-  // any settings to be sent unconditionally to all clients can be set
-  // in Server.GlobalSettings.
-  WriteSettings(...*Setting)
+	// WriteSettings sends the provided settings to the client. Note that
+	// any settings to be sent unconditionally to all clients can be set
+	// in Server.GlobalSettings.
+	WriteSettings(...*Setting)
 }
 
 // PushWriter is used for server pushes. The methods provided by
@@ -67,21 +67,21 @@ type ResponseWriter interface {
 // a ResponseWriter will always be available in situations where
 // a PushWriter will be used.
 type PushWriter interface {
-  // Close is used to complete a server push. This closes the underlying
-  // stream and signals to the recipient that the push is complete. The
-  // equivalent action in a ResponseWriter is to return from the handler.
-  // Any calls to Write after calling Close will have no effect.
-  Close()
+	// Close is used to complete a server push. This closes the underlying
+	// stream and signals to the recipient that the push is complete. The
+	// equivalent action in a ResponseWriter is to return from the handler.
+	// Any calls to Write after calling Close will have no effect.
+	Close()
 
-  // Header returns the header map that will be sent with the push.
-  Header() Header
+	// Header returns the header map that will be sent with the push.
+	Header() Header
 
-  // Write writes the data to the connection as part of a SPDY server
-  // push. If the Header does not contain a Content-Type line, Write
-  // adds a Content-Type set to the result of passing the initial 512
-  // bytes of written data to DetectContentType.
-  Write([]byte) (int, error)
-	
+	// Write writes the data to the connection as part of a SPDY server
+	// push. If the Header does not contain a Content-Type line, Write
+	// adds a Content-Type set to the result of passing the initial 512
+	// bytes of written data to DetectContentType.
+	Write([]byte) (int, error)
+
 	// WriteHeaders is used to send new changes to the Header. This is
 	// called implicitly by Write, so it's rarely necessary to call
 	// manually.
@@ -97,7 +97,7 @@ type HandlerFunc func(ResponseWriter, *Request)
 
 // ServeSPDY calls f(w, r).
 func (f HandlerFunc) ServeSPDY(w ResponseWriter, r *Request) {
-  f(w, r)
+	f(w, r)
 }
 
 // Helper handlers.
@@ -105,20 +105,20 @@ func (f HandlerFunc) ServeSPDY(w ResponseWriter, r *Request) {
 // Error replies to the request with the specified error message and
 // HTTP code.
 func Error(w ResponseWriter, error string, code int) {
-  w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-  w.WriteHeader(code)
-  fmt.Fprintln(w, error)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(code)
+	fmt.Fprintln(w, error)
 }
 
 // NotFound replies to the request with an HTTP 404 not found error.
 func NotFound(w ResponseWriter, _ *Request) {
-  Error(w, "404 page not found", http.StatusNotFound)
+	Error(w, "404 page not found", http.StatusNotFound)
 }
 
 // NotFoundHandler returns a simple request handler that replies to
 // each request with a ''404 page not found'' reply.
 func NotFoundHandler() Handler {
-  return HandlerFunc(NotFound)
+	return HandlerFunc(NotFound)
 }
 
 // StripPrefix returns a handler that serves SPDY requests by removing
@@ -126,107 +126,107 @@ func NotFoundHandler() Handler {
 // handler h. StripPrefix handles a request for a path that doesn't
 // begin with prefix by replying with an HTTP 404 not found error.
 func StripPrefix(prefix string, h Handler) Handler {
-  if prefix == "" {
-    return h
-  }
-  return HandlerFunc(func(w ResponseWriter, r *Request) {
-    if p := strings.TrimPrefix(r.URL.Path, prefix); len(p) < len(r.URL.Path) {
-      r.URL.Path = p
-      h.ServeSPDY(w, r)
-    } else {
-      NotFound(w, r)
-    }
-  })
+	if prefix == "" {
+		return h
+	}
+	return HandlerFunc(func(w ResponseWriter, r *Request) {
+		if p := strings.TrimPrefix(r.URL.Path, prefix); len(p) < len(r.URL.Path) {
+			r.URL.Path = p
+			h.ServeSPDY(w, r)
+		} else {
+			NotFound(w, r)
+		}
+	})
 }
 
 // Redirect replies to the request with a redirect to url,
 // which may be a path relative to the request path.
 func Redirect(w ResponseWriter, r *Request, urlStr string, code int) {
-  if u, err := url.Parse(urlStr); err == nil {
-    // If url was relative, make absolute by
-    // combining with request path.
-    // The browser would probably do this for us,
-    // but doing it ourselves is more reliable.
+	if u, err := url.Parse(urlStr); err == nil {
+		// If url was relative, make absolute by
+		// combining with request path.
+		// The browser would probably do this for us,
+		// but doing it ourselves is more reliable.
 
-    // NOTE(rsc): RFC 2616 says that the Location
-    // line must be an absolute URI, like
-    // "http://www.google.com/redirect/",
-    // not a path like "/redirect/".
-    // Unfortunately, we don't know what to
-    // put in the host name section to get the
-    // client to connect to us again, so we can't
-    // know the right absolute URI to send back.
-    // Because of this problem, no one pays attention
-    // to the RFC; they all send back just a new path.
-    // So do we.
-    oldpath := r.URL.Path
-    if oldpath == "" { // should not happen, but avoid a crash if it does
-      oldpath = "/"
-    }
-    if u.Scheme == "" {
-      // no leading http://server
-      if urlStr == "" || urlStr[0] != '/' {
-        // make relative path absolute
-        olddir, _ := path.Split(oldpath)
-        urlStr = olddir + urlStr
-      }
+		// NOTE(rsc): RFC 2616 says that the Location
+		// line must be an absolute URI, like
+		// "http://www.google.com/redirect/",
+		// not a path like "/redirect/".
+		// Unfortunately, we don't know what to
+		// put in the host name section to get the
+		// client to connect to us again, so we can't
+		// know the right absolute URI to send back.
+		// Because of this problem, no one pays attention
+		// to the RFC; they all send back just a new path.
+		// So do we.
+		oldpath := r.URL.Path
+		if oldpath == "" { // should not happen, but avoid a crash if it does
+			oldpath = "/"
+		}
+		if u.Scheme == "" {
+			// no leading http://server
+			if urlStr == "" || urlStr[0] != '/' {
+				// make relative path absolute
+				olddir, _ := path.Split(oldpath)
+				urlStr = olddir + urlStr
+			}
 
-      var query string
-      if i := strings.Index(urlStr, "?"); i != -1 {
-        urlStr, query = urlStr[:i], urlStr[i:]
-      }
+			var query string
+			if i := strings.Index(urlStr, "?"); i != -1 {
+				urlStr, query = urlStr[:i], urlStr[i:]
+			}
 
-      // clean up but preserve trailing slash
-      trailing := strings.HasSuffix(urlStr, "/")
-      urlStr = path.Clean(urlStr)
-      if trailing && !strings.HasSuffix(urlStr, "/") {
-        urlStr += "/"
-      }
-      urlStr += query
-    }
-  }
+			// clean up but preserve trailing slash
+			trailing := strings.HasSuffix(urlStr, "/")
+			urlStr = path.Clean(urlStr)
+			if trailing && !strings.HasSuffix(urlStr, "/") {
+				urlStr += "/"
+			}
+			urlStr += query
+		}
+	}
 
-  w.Header().Set("Location", urlStr)
-  w.WriteHeader(code)
+	w.Header().Set("Location", urlStr)
+	w.WriteHeader(code)
 
-  // RFC2616 recommends that a short note "SHOULD" be included in the
-  // response because older user agents may not understand 301/307.
-  // Shouldn't send the response for POST or HEAD; that leaves GET.
-  if r.Method == "GET" {
-    note := "<a href=\"" + htmlEscape(urlStr) + "\">" + http.StatusText(code) + "</a>.\n"
-    fmt.Fprintln(w, note)
-  }
+	// RFC2616 recommends that a short note "SHOULD" be included in the
+	// response because older user agents may not understand 301/307.
+	// Shouldn't send the response for POST or HEAD; that leaves GET.
+	if r.Method == "GET" {
+		note := "<a href=\"" + htmlEscape(urlStr) + "\">" + http.StatusText(code) + "</a>.\n"
+		fmt.Fprintln(w, note)
+	}
 }
 
 var htmlReplacer = strings.NewReplacer(
-  "&", "&amp;",
-  "<", "&lt;",
-  ">", "&gt;",
-  // "&#34;" is shorter than "&quot;".
-  `"`, "&#34;",
-  // "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
-  "'", "&#39;",
+	"&", "&amp;",
+	"<", "&lt;",
+	">", "&gt;",
+	// "&#34;" is shorter than "&quot;".
+	`"`, "&#34;",
+	// "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
+	"'", "&#39;",
 )
 
 func htmlEscape(s string) string {
-  return htmlReplacer.Replace(s)
+	return htmlReplacer.Replace(s)
 }
 
 // Redirect to a fixed URL.
 type redirectHandler struct {
-  url  string
-  code int
+	url  string
+	code int
 }
 
 func (rh *redirectHandler) ServeSPDY(w ResponseWriter, r *Request) {
-  Redirect(w, r, rh.url, rh.code)
+	Redirect(w, r, rh.url, rh.code)
 }
 
 // RedirectHandler returns a request handler that redirects each
 // request it receives to the given URL, using the given status
 // code.
 func RedirectHandler(url string, code int) Handler {
-  return &redirectHandler{url, code}
+	return &redirectHandler{url, code}
 }
 
 // ServeMux is a SPDY request multiplexer. It matches the URL of each
@@ -251,20 +251,20 @@ func RedirectHandler(url string, code int) Handler {
 // redirecting any request containing . or .. elements to an
 // equivalent .- and ..-free URL.
 type ServeMux struct {
-  sync.RWMutex
-  m     map[string]muxEntry
-  hosts bool // whether any patterns contain hostnames.
+	sync.RWMutex
+	m     map[string]muxEntry
+	hosts bool // whether any patterns contain hostnames.
 }
 
 type muxEntry struct {
-  explicit bool
-  h        Handler
-  pattern  string
+	explicit bool
+	h        Handler
+	pattern  string
 }
 
 // NewServeMux allocates and returns a new ServeMux.
 func NewServeMux() *ServeMux {
-  return &ServeMux{m: make(map[string]muxEntry)}
+	return &ServeMux{m: make(map[string]muxEntry)}
 }
 
 // DefaultServeMux is the default ServeMux used by Serve and ServeFunc.
@@ -272,49 +272,49 @@ var DefaultServeMux = NewServeMux()
 
 // Does path match pattern?
 func pathMatch(pattern, path string) bool {
-  n := len(pattern)
-  if n == 0 {
-    // Should not happen.
-    return false
-  }
-  if pattern[n-1] != '/' {
-    return pattern == path
-  }
-  return len(path) >= n && path[:n] == pattern
+	n := len(pattern)
+	if n == 0 {
+		// Should not happen.
+		return false
+	}
+	if pattern[n-1] != '/' {
+		return pattern == path
+	}
+	return len(path) >= n && path[:n] == pattern
 }
 
 // Return the canonical path for p, eliminating . and .. elements.
 func cleanPath(p string) string {
-  if p == "" {
-    return "/"
-  }
-  if p[0] != '/' {
-    p = "/" + p
-  }
-  np := path.Clean(p)
-  // path.Clean removes trailing slash except for root;
-  // put the trailing slash back if necessary.
-  if p[len(p)-1] == '/' && np != "/" {
-    np += "/"
-  }
-  return np
+	if p == "" {
+		return "/"
+	}
+	if p[0] != '/' {
+		p = "/" + p
+	}
+	np := path.Clean(p)
+	// path.Clean removes trailing slash except for root;
+	// put the trailing slash back if necessary.
+	if p[len(p)-1] == '/' && np != "/" {
+		np += "/"
+	}
+	return np
 }
 
 // Find a handler on a handler map given a path string.
 // The most-specific (longest) pattern wins.
 func (mux *ServeMux) match(path string) (h Handler, pattern string) {
-  var n = 0
-  for k, v := range mux.m {
-    if !pathMatch(k, path) {
-      continue
-    }
-    if h == nil || len(k) > n {
-      n = len(k)
-      h = v.h
-      pattern = v.pattern
-    }
-  }
-  return
+	var n = 0
+	for k, v := range mux.m {
+		if !pathMatch(k, path) {
+			continue
+		}
+		if h == nil || len(k) > n {
+			n = len(k)
+			h = v.h
+			pattern = v.pattern
+		}
+	}
+	return
 }
 
 // Handler returns the handler to use for the given request,
@@ -332,164 +332,164 @@ func (mux *ServeMux) match(path string) (h Handler, pattern string) {
 // request, Handler returns a ''page not found'' handler
 // and an empty pattern.
 func (mux *ServeMux) Handler(r *Request) (h Handler, pattern string) {
-  if r.Method != "CONNECT" {
-    if p := cleanPath(r.URL.Path); p != r.URL.Path {
-      _, pattern = mux.handler(r.Host, p)
-      return RedirectHandler(p, http.StatusMovedPermanently), pattern
-    }
-  }
+	if r.Method != "CONNECT" {
+		if p := cleanPath(r.URL.Path); p != r.URL.Path {
+			_, pattern = mux.handler(r.Host, p)
+			return RedirectHandler(p, http.StatusMovedPermanently), pattern
+		}
+	}
 
-  return mux.handler(r.Host, r.URL.Path)
+	return mux.handler(r.Host, r.URL.Path)
 }
 
 // handler is the main implementation of Handler.
 // The path is known to be in canonical form, except for
 // CONNECT methods.
 func (mux *ServeMux) handler(host, path string) (h Handler, pattern string) {
-  mux.RLock()
-  defer mux.RUnlock()
+	mux.RLock()
+	defer mux.RUnlock()
 
-  // Host-specific pattern takes precedence over generic ones.
-  if mux.hosts {
-    h, pattern = mux.match(host + path)
-  }
-  if h == nil {
-    h, pattern = mux.match(path)
-  }
-  if h == nil {
-    h, pattern = NotFoundHandler(), ""
-  }
-  return
+	// Host-specific pattern takes precedence over generic ones.
+	if mux.hosts {
+		h, pattern = mux.match(host + path)
+	}
+	if h == nil {
+		h, pattern = mux.match(path)
+	}
+	if h == nil {
+		h, pattern = NotFoundHandler(), ""
+	}
+	return
 }
 
 // ServeSPDY dispatches the request to the handler whose
 // pattern most closely matches the request URL.
 func (mux *ServeMux) ServeSPDY(w ResponseWriter, r *Request) {
-  if r.RequestURI == "*" {
-    w.Header().Set("Connection", "close")
-    w.WriteHeader(http.StatusBadRequest)
-    return
-  }
-  h, _ := mux.Handler(r)
-  h.ServeSPDY(w, r)
+	if r.RequestURI == "*" {
+		w.Header().Set("Connection", "close")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	h, _ := mux.Handler(r)
+	h.ServeSPDY(w, r)
 }
 
 // Handle registers the handler for the given pattern.
 // If a handler already exists for pattern, Handle panics.
 func (mux *ServeMux) Handle(pattern string, handler Handler) {
-  mux.Lock()
-  defer mux.Unlock()
+	mux.Lock()
+	defer mux.Unlock()
 
-  if pattern == "" {
-    panic("spdy: invalid pattern " + pattern)
-  }
-  if handler == nil {
-    panic("spdy: nil handler")
-  }
-  if mux.m[pattern].explicit {
-    panic("spdy: multiple registrations for " + pattern)
-  }
+	if pattern == "" {
+		panic("spdy: invalid pattern " + pattern)
+	}
+	if handler == nil {
+		panic("spdy: nil handler")
+	}
+	if mux.m[pattern].explicit {
+		panic("spdy: multiple registrations for " + pattern)
+	}
 
-  mux.m[pattern] = muxEntry{
-    explicit: true,
-    h:        handler,
-    pattern:  pattern,
-  }
+	mux.m[pattern] = muxEntry{
+		explicit: true,
+		h:        handler,
+		pattern:  pattern,
+	}
 
-  if pattern[0] != '/' {
-    mux.hosts = true
-  }
+	if pattern[0] != '/' {
+		mux.hosts = true
+	}
 
-  // Helpful behaviour:
-  // If attern is /tree/, insert an implicit permanent redirect
-  // for /tree. It can be overriden by an explicit registration.
-  n := len(pattern)
-  if n > 0 && pattern[n-1] == '/' && !mux.m[pattern[:n-1]].explicit {
-    // If pattern contains a host name, strip it and use remaining
-    // path for redirect.
-    path := pattern
-    if pattern[0] != '/' {
-      // In pattern, at least the last character is a '/', so
-      // strings.Index can't be -1.
-      path = pattern[strings.Index(pattern, "/"):]
-    }
-    mux.m[pattern[:n-1]] = muxEntry{
-      h:       RedirectHandler(path, http.StatusMovedPermanently),
-      pattern: pattern,
-    }
-  }
+	// Helpful behaviour:
+	// If attern is /tree/, insert an implicit permanent redirect
+	// for /tree. It can be overriden by an explicit registration.
+	n := len(pattern)
+	if n > 0 && pattern[n-1] == '/' && !mux.m[pattern[:n-1]].explicit {
+		// If pattern contains a host name, strip it and use remaining
+		// path for redirect.
+		path := pattern
+		if pattern[0] != '/' {
+			// In pattern, at least the last character is a '/', so
+			// strings.Index can't be -1.
+			path = pattern[strings.Index(pattern, "/"):]
+		}
+		mux.m[pattern[:n-1]] = muxEntry{
+			h:       RedirectHandler(path, http.StatusMovedPermanently),
+			pattern: pattern,
+		}
+	}
 }
 
 // HandleFunc registers the handler function for the given pattern.
 func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
-  mux.Handle(pattern, HandlerFunc(handler))
+	mux.Handle(pattern, HandlerFunc(handler))
 }
 
 func Handle(pattern string, handler Handler) {
-  DefaultServeMux.Handle(pattern, handler)
+	DefaultServeMux.Handle(pattern, handler)
 }
 
 func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
-  DefaultServeMux.HandleFunc(pattern, handler)
+	DefaultServeMux.HandleFunc(pattern, handler)
 }
 
 type Server struct {
-  Addr           string        // TCP address to listen on, ":http" if empty
-  Handler        Handler       // handler to invoke, spdy.DefaultServeMux if nil
-  ReadTimeout    time.Duration // maximum duration before timing out read of the request
-  WriteTimeout   time.Duration // maximum duration before timing out write of the response
-  TLSConfig      *tls.Config   // optional TLS config, used by ListenAndServeTLS
-  GlobalSettings []*Setting    // SPDY settings to be sent to all clients automatically.
+	Addr           string        // TCP address to listen on, ":http" if empty
+	Handler        Handler       // handler to invoke, spdy.DefaultServeMux if nil
+	ReadTimeout    time.Duration // maximum duration before timing out read of the request
+	WriteTimeout   time.Duration // maximum duration before timing out write of the response
+	TLSConfig      *tls.Config   // optional TLS config, used by ListenAndServeTLS
+	GlobalSettings []*Setting    // SPDY settings to be sent to all clients automatically.
 }
 
 func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
-  server := &http.Server{
-    Addr: srv.Addr,
-    TLSConfig: &tls.Config{
-      NextProtos: []string{
-        "spdy/3",
-        //"spdy/2",
-      },
-    },
-    TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-      //"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-      //	acceptSPDYv2(srv, tlsConn, nil)
-      //},
-      "spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-        acceptSPDYv3(srv, tlsConn, nil)
-      },
-    },
-  }
+	server := &http.Server{
+		Addr: srv.Addr,
+		TLSConfig: &tls.Config{
+			NextProtos: []string{
+				"spdy/3",
+				//"spdy/2",
+			},
+		},
+		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
+			//"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+			//	acceptSPDYv2(srv, tlsConn, nil)
+			//},
+			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+				acceptSPDYv3(srv, tlsConn, nil)
+			},
+		},
+	}
 
-  return server.ListenAndServeTLS(certFile, keyFile)
+	return server.ListenAndServeTLS(certFile, keyFile)
 }
 
 func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Handler) error {
-  srv := &Server{Handler: handler}
-  server := &http.Server{
-    Addr: addr,
-    TLSConfig: &tls.Config{
-      NextProtos: []string{
-        "spdy/3",
-        //"spdy/2",
-      },
-    },
-    TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-      //"spdy/2": acceptDefaultSPDYv2,
-      "spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-        acceptSPDYv3(srv, tlsConn, nil)
-      },
-    },
-  }
+	srv := &Server{Handler: handler}
+	server := &http.Server{
+		Addr: addr,
+		TLSConfig: &tls.Config{
+			NextProtos: []string{
+				"spdy/3",
+				//"spdy/2",
+			},
+		},
+		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
+			//"spdy/2": acceptDefaultSPDYv2,
+			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+				acceptSPDYv3(srv, tlsConn, nil)
+			},
+		},
+	}
 
-  return server.ListenAndServeTLS(certFile, keyFile)
+	return server.ListenAndServeTLS(certFile, keyFile)
 }
 
 // Errors introduced by the HTTP server.
 var (
-  ErrWriteAfterFlush = errors.New("Conn.Write called after Flush")
-  ErrBodyNotAllowed  = errors.New("spdy: request method or response status code does not allow body")
-  ErrHijacked        = errors.New("Conn has been hijacked")
-  ErrContentLength   = errors.New("Conn.Write wrote more than the declared Content-Length")
-  ErrCancelled       = errors.New("spdy: Stream has been cancelled.")
+	ErrWriteAfterFlush = errors.New("Conn.Write called after Flush")
+	ErrBodyNotAllowed  = errors.New("spdy: request method or response status code does not allow body")
+	ErrHijacked        = errors.New("Conn has been hijacked")
+	ErrContentLength   = errors.New("Conn.Write wrote more than the declared Content-Length")
+	ErrCancelled       = errors.New("spdy: Stream has been cancelled.")
 )
