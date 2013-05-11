@@ -52,7 +52,7 @@ func (conn *serverConnection) readFrames() {
   for {
 		if conn.numInvalidStreamIDs > MaxInvalidStreamIDs {
 			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
-			stop := new(StreamErrorFrame)
+			stop := new(RstStreamFrame)
 	    stop.version = uint16(conn.version)
 	    stop.StatusCode = RST_STREAM_PROTOCOL_ERROR
 	    conn.WriteFrame(stop)
