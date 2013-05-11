@@ -9,7 +9,7 @@ type pushStream struct {
   streamID    uint32
   flow        *flowControl
   origin      Stream
-  state       StreamState
+  state       *StreamState
   output      chan<- Frame
   headers     Header
   headersSent bool
@@ -31,14 +31,14 @@ func (p *pushStream) Close() {
 
   p.output <- stop
 
-  p.state = STATE_CLOSED
+  p.state.CloseHere()
 }
 
 func (p *pushStream) Header() Header {
   return p.headers
 }
 
-func (p *pushStream) State() StreamState {
+func (p *pushStream) State() *StreamState {
   return p.state
 }
 
@@ -47,12 +47,12 @@ func (p *pushStream) StreamID() uint32 {
 }
 
 func (p *pushStream) Write(inputData []byte) (int, error) {
-  if p.state == STATE_CLOSED || p.state == STATE_HALF_CLOSED_HERE {
+  if p.state.ClosedHere() {
     return 0, errors.New("Error: Stream already closed.")
   }
 
   state := p.origin.State()
-  if p.origin == nil || state == STATE_CLOSED || state == STATE_HALF_CLOSED_HERE {
+  if p.origin == nil || state.ClosedHere() {
     return 0, errors.New("Error: Origin stream is closed.")
   }
 

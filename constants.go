@@ -1,5 +1,9 @@
 package spdy
 
+import (
+	"sync"
+)
+
 const SPDY_VERSION = 3
 
 var DebugMode = false
@@ -78,13 +82,74 @@ const (
 )
 
 // Stream state
-type StreamState uint8
+type StreamState struct {
+	sync.RWMutex
+	s uint8
+}
+
+func (s *StreamState) Open() bool {
+	s.RLock()
+	defer s.RUnlock()
+	return s.s == STATE_OPEN
+}
+
+func (s *StreamState) Closed() bool {
+	s.RLock()
+	defer s.RUnlock()
+	return s.s == STATE_CLOSED
+}
+
+func (s *StreamState) ClosedThere() bool {
+	s.RLock()
+	defer s.RUnlock()
+	return s.s == STATE_CLOSED || s.s == STATE_HALF_CLOSED_THERE
+}
+
+func (s *StreamState) OpenThere() bool {
+	return !s.ClosedThere()
+}
+
+func (s *StreamState) ClosedHere() bool {
+	s.RLock()
+	defer s.RUnlock()
+	return s.s == STATE_CLOSED || s.s == STATE_HALF_CLOSED_HERE
+}
+
+func (s *StreamState) OpenHere() bool {
+	return !s.ClosedHere()
+}
+
+func (s *StreamState) Close() {
+	s.Lock()
+	s.s = STATE_CLOSED
+	s.Unlock()
+}
+
+func (s *StreamState) CloseHere() {
+	s.Lock()
+	if s.s == STATE_OPEN {
+		s.s = STATE_HALF_CLOSED_HERE
+	} else if s.s == STATE_HALF_CLOSED_THERE {
+		s.s = STATE_CLOSED
+	}
+	s.Unlock()
+}
+
+func (s *StreamState) CloseThere() {
+	s.Lock()
+	if s.s == STATE_OPEN {
+		s.s = STATE_HALF_CLOSED_THERE
+	} else if s.s == STATE_HALF_CLOSED_HERE {
+		s.s = STATE_CLOSED
+	}
+	s.Unlock()
+}
 
 const (
-  STATE_CLOSED StreamState = iota
+  STATE_OPEN uint8 = iota
   STATE_HALF_CLOSED_HERE
   STATE_HALF_CLOSED_THERE
-  STATE_OPEN
+  STATE_CLOSED
 )
 
 // Stream priority values.

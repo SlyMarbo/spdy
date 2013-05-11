@@ -15,7 +15,7 @@ type responseStream struct {
   streamID       uint32
   flow           *flowControl
   requestBody    *bytes.Buffer
-  state          StreamState
+  state          *StreamState
   input          <-chan Frame
   output         chan<- Frame
   request        *Request
@@ -50,7 +50,7 @@ func (s *responseStream) Settings() []*Setting {
   return s.conn.receivedSettings
 }
 
-func (s *responseStream) State() StreamState {
+func (s *responseStream) State() *StreamState {
   return s.state
 }
 
@@ -59,7 +59,7 @@ func (s *responseStream) StreamID() uint32 {
 }
 
 func (s *responseStream) Write(inputData []byte) (int, error) {
-  if s.state == STATE_CLOSED || s.state == STATE_HALF_CLOSED_HERE {
+  if s.state.ClosedHere() {
     return 0, errors.New("Error: Stream already closed.")
   }
 
@@ -115,11 +115,7 @@ func (s *responseStream) WriteHeader(code int) {
   // These responses have no body, so close the stream now.
   if code == 204 || code == 304 || code/100 == 1 {
     synReply.Flags = FLAG_FIN
-    if s.state == STATE_HALF_CLOSED_THERE {
-      s.state = STATE_CLOSED
-    } else if s.state == STATE_OPEN {
-      s.state = STATE_HALF_CLOSED_HERE
-    }
+    s.state.CloseHere()
   }
 
   s.output <- synReply
@@ -239,7 +235,7 @@ func (s *responseStream) run() {
     synReply.Headers = s.headers
 
     s.output <- synReply
-  } else if s.state == STATE_OPEN || s.state == STATE_HALF_CLOSED_THERE {
+  } else if s.state.OpenHere() {
     data := new(DataFrame)
     data.StreamID = s.streamID
     data.Flags = FLAG_FIN
@@ -249,11 +245,7 @@ func (s *responseStream) run() {
   }
 
   // Clean up state.
-  if s.state == STATE_HALF_CLOSED_THERE {
-    s.state = STATE_CLOSED
-  } else if s.state == STATE_OPEN {
-    s.state = STATE_HALF_CLOSED_HERE
-  }
+  s.state.CloseHere()
   s.conn.done.Done()
 }
 

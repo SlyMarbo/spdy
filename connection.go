@@ -62,7 +62,7 @@ func (conn *serverConnection) readFrames() {
     frame, err := ReadFrame(conn.buf)
     if err != nil {
       if err == io.EOF {
-        log.Println("[DISCONNECTED]")
+				// Client has closed the TCP connection.
         return
       }
 
@@ -87,11 +87,15 @@ func (conn *serverConnection) readFrames() {
       conn.handleSynStream(frame)
 
     case *SynReplyFrame:
-      log.Println("Got SYN_REPLY")
+      panic("Got SYN_REPLY: [UNIMPLEMENTED]")
 
     case *RstStreamFrame:
       code := StatusCodeText(int(frame.StatusCode))
-      log.Printf("Received RST_STREAM on stream %d with status %q.\n", frame.StreamID, code)
+			streamID := frame.StreamID
+			if frame.StatusCode == RST_STREAM_CANCEL {
+				
+			}
+      log.Printf("Received RST_STREAM on stream %d with status %q.\n", streamID, code)
 
     /*** COMPLETE! ***/
     case *SettingsFrame:
@@ -164,7 +168,7 @@ func (conn *serverConnection) readFrames() {
       conn.handleWindowUpdateFrame(frame)
 
     case *CredentialFrame:
-      log.Println("Got CREDENTIAL")
+      panic("Got CREDENTIAL: [UNIMPLEMENTED]")
 
     /*** COMPLETE! ***/
     case *DataFrame:
@@ -223,15 +227,13 @@ func (conn *serverConnection) selectFrameToSend() (frame Frame) {
   panic("Unreachable")
 }
 
-func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Frame,
-  output chan<- Frame) *responseStream {
-
+func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Frame, output chan<- Frame) *responseStream {
   stream := new(responseStream)
   stream.conn = conn
   stream.streamID = frame.StreamID
-  stream.state = STATE_OPEN
+  stream.state = new(StreamState)
   if frame.Flags&FLAG_FIN != 0 {
-    stream.state = STATE_HALF_CLOSED_THERE
+    stream.state.CloseThere()
   }
   stream.input = input
   stream.output = output
@@ -322,7 +324,7 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
   out.conn = conn
   out.streamID = newID
   out.origin = origin
-  out.state = STATE_HALF_CLOSED_THERE
+  out.state = new(StreamState)
   out.output = conn.streamOutputs[7] // The SYN_STREAM is priority 0, but its data is less urgent.
   out.headers = make(Header)
   out.stop = false
@@ -412,7 +414,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
   conn.Unlock()
   conn.RLock()
 
-  go func() { conn.streams[frame.StreamID].run() }()
+  go conn.streams[frame.StreamID].run()
   conn.done.Add(1)
 
   return
@@ -456,12 +458,7 @@ func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
 
   // Handle flags.
   if frame.Flags&FLAG_FIN != 0 {
-    stream := conn.streams[frame.StreamID]
-    stream.Lock()
-    if stream.state == STATE_OPEN {
-      stream.state = STATE_HALF_CLOSED_THERE
-    }
-    stream.Unlock()
+    conn.streams[frame.StreamID].state.CloseThere()
   }
 }
 
@@ -512,11 +509,7 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
 
   // Handle flags.
   if frame.Flags&FLAG_FIN != 0 {
-    stream := conn.streams[frame.StreamID]
-    stream.Lock()
-    stream.state = STATE_HALF_CLOSED_THERE
-    close(conn.streamInputs[frame.StreamID])
-    stream.Unlock()
+    conn.streams[frame.StreamID].state.CloseThere()
   }
 }
 
@@ -574,6 +567,15 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
   conn.streamInputs[frame.StreamID] <- frame
 }
 
+func (conn *serverConnection) cleanup() {
+	for streamID, c := range conn.streamInputs {
+		close(c)
+		conn.streams[streamID].stop = true
+	}
+	conn.streamInputs = nil
+	conn.streams = nil
+}
+
 func (conn *serverConnection) serve() {
   defer func() {
     if err := recover(); err != nil {
@@ -592,6 +594,7 @@ func (conn *serverConnection) serve() {
     conn.streamOutputs[3] <- settings
   }
   conn.readFrames()
+	conn.cleanup()
 }
 
 func acceptDefaultSPDYv2(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
