@@ -50,6 +50,15 @@ func (conn *serverConnection) readFrames() {
   }
 
   for {
+		if conn.numInvalidStreamIDs > MaxInvalidStreamIDs {
+			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
+			stop := new(StreamErrorFrame)
+	    stop.version = uint16(conn.version)
+	    stop.StatusCode = RST_STREAM_PROTOCOL_ERROR
+	    conn.WriteFrame(stop)
+			return
+		}
+		
     frame, err := ReadFrame(conn.buf)
     if err != nil {
       if err == io.EOF {
@@ -303,8 +312,8 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
   headers.Set(":scheme", url.Scheme)
   headers.Set(":host", url.Host)
   headers.Set(":path", url.Path)
-	headers.Set(":version", "HTTP/1.1")
-	headers.Set(":status", "200")
+  headers.Set(":version", "HTTP/1.1")
+  headers.Set(":status", "200 OK")
   push.Headers = headers
   conn.WriteFrame(push)
 
@@ -366,6 +375,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 
   // Check Stream ID is odd.
   if frame.StreamID&1 == 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n",
       frame.StreamID)
     protocolError()
@@ -375,6 +385,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
   // Check Stream ID is the right number.
   if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
     conn.nextClientStreamID != 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
       frame.StreamID, conn.nextClientStreamID+2)
     protocolError()
@@ -383,6 +394,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 
   // Check Stream ID is not too large.
   if frame.StreamID > MAX_STREAM_ID {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received SYN_STREAM with Stream ID %d, which is too large.\n",
       frame.StreamID)
     protocolError()
@@ -420,6 +432,7 @@ func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
 
   // Check Stream ID is odd.
   if frame.StreamID&1 == 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n",
       frame.StreamID)
     protocolError()
@@ -429,6 +442,7 @@ func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
   // Check stream is open.
   if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
     conn.nextClientStreamID != 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received DATA with Stream ID %d, which should be %d.\n",
       frame.StreamID, conn.nextClientStreamID+2)
     protocolError()
@@ -474,6 +488,7 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
 
   // Check Stream ID is odd.
   if frame.StreamID&1 == 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n",
       frame.StreamID)
     protocolError()
@@ -483,6 +498,7 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
   // Check stream is open.
   if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
     conn.nextClientStreamID != 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n",
       frame.StreamID, conn.nextClientStreamID+2)
     protocolError()
@@ -527,6 +543,7 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 
   // Check Stream ID is odd.
   if frame.StreamID&1 == 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be odd.\n",
       frame.StreamID)
     protocolError()
@@ -536,6 +553,7 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
   // Check stream is open.
   if frame.StreamID != conn.nextClientStreamID+2 && frame.StreamID != 1 &&
     conn.nextClientStreamID != 0 {
+		conn.numInvalidStreamIDs++
     log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be %d.\n",
       frame.StreamID, conn.nextClientStreamID+2)
     protocolError()

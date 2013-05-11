@@ -88,6 +88,8 @@ type PushWriter interface {
 	WriteHeaders()
 }
 
+var MaxInvalidStreamIDs = 10
+
 // The HandlerFunc type is an adapter to allow the use of ordinary
 // functions as SPDY handlers. If f is a function with the appropriate
 // signature, HandlerFunc(f) is a Handler object that calls f.
