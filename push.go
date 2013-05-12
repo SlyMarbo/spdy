@@ -25,7 +25,7 @@ func (p *pushStream) Close() {
 	p.stop = true
 
 	stop := new(DataFrame)
-	stop.StreamID = p.streamID
+	stop.streamID = p.streamID
 	stop.Flags = FLAG_FIN
 	stop.Data = []byte{}
 
@@ -94,7 +94,7 @@ func (p *pushStream) WriteHeaders() {
 
 	headers := new(HeadersFrame)
 	headers.version = uint16(p.version)
-	headers.StreamID = p.streamID
+	headers.streamID = p.streamID
 	headers.Headers = p.headers.clone()
 	for name := range headers.Headers {
 		p.headers.Del(name)

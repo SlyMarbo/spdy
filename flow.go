@@ -128,7 +128,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
 	}
 
 	dataFrame := new(DataFrame)
-	dataFrame.StreamID = f.streamID
+	dataFrame.streamID = f.streamID
 	dataFrame.Data = data
 
 	f.output <- dataFrame
@@ -167,7 +167,7 @@ func (f *flowControl) Flush() {
 	}
 
 	dataFrame := new(DataFrame)
-	dataFrame.StreamID = f.streamID
+	dataFrame.streamID = f.streamID
 	dataFrame.Data = out
 
 	f.output <- dataFrame

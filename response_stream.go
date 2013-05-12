@@ -108,7 +108,7 @@ func (s *responseStream) WriteHeader(code int) {
 
 	synReply := new(SynReplyFrame)
 	synReply.version = uint16(s.version)
-	synReply.StreamID = s.streamID
+	synReply.streamID = s.streamID
 	synReply.Headers = s.headers
 	s.headers = make(Header)
 
@@ -128,7 +128,7 @@ func (s *responseStream) WriteHeaders() {
 
 	headers := new(HeadersFrame)
 	headers.version = uint16(s.version)
-	headers.StreamID = s.streamID
+	headers.streamID = s.streamID
 	headers.Headers = s.headers.clone()
 	for name := range headers.Headers {
 		s.headers.Del(name)
@@ -168,7 +168,7 @@ func (s *responseStream) receiveFrame(frame Frame) {
 		if err != nil {
 			reply := new(RstStreamFrame)
 			reply.version = uint16(s.version)
-			reply.StreamID = s.streamID
+			reply.streamID = s.streamID
 			reply.StatusCode = RST_STREAM_FLOW_CONTROL_ERROR
 			s.output <- reply
 			return
@@ -231,13 +231,13 @@ func (s *responseStream) run() {
 		synReply := new(SynReplyFrame)
 		synReply.version = uint16(s.version)
 		synReply.Flags = FLAG_FIN
-		synReply.StreamID = s.streamID
+		synReply.streamID = s.streamID
 		synReply.Headers = s.headers
 
 		s.output <- synReply
 	} else if s.state.OpenHere() {
 		data := new(DataFrame)
-		data.StreamID = s.streamID
+		data.streamID = s.streamID
 		data.Flags = FLAG_FIN
 		data.Data = []byte{}
 
