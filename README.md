@@ -2,6 +2,15 @@ spdy
 ====
 
 My implementation of SPDY/v3 (work in progress)
+So far, servers are mostly ready, but the client code hasn't been started.
+
+To-do:
+ - Implement handling of SYN_REPLY frames.
+ - Complete RST_STREAM handling for all status codes.
+ - Finish GOAWAY handling.
+ - Implement handling of CREDENTIAL frames.
+ 
+Note that this implementation supports SPDY/3, but not SPDY/2.
 
 Servers
 -------

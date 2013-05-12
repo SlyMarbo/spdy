@@ -14,14 +14,16 @@ import (
 	"time"
 )
 
+// serverConnection represents a SPDY session at the server
+// end. This performs the overall connection management and
+// co-ordination between 
 type serverConnection struct {
 	sync.RWMutex
-	remoteAddr          string // network address of remote side
+	remoteAddr          string
 	server              *Server
 	conn                *tls.Conn
-	buf                 *bufio.Reader
+	buf                 *bufio.Reader // buffered reader for the connection.
 	tlsState            *tls.ConnectionState
-	tlsConfig           *tls.Config
 	streams             map[uint32]*responseStream
 	streamInputs        map[uint32]chan<- Frame
 	streamOutputs       [8]chan Frame
@@ -32,11 +34,11 @@ type serverConnection struct {
 	receivedSettings    []*Setting
 	nextServerStreamID  uint32 // even
 	nextClientStreamID  uint32 // odd
-	initialWindowSize   uint32
-	goaway              bool
-	version             int
-	numInvalidStreamIDs int
-	done                *sync.WaitGroup
+	initialWindowSize   uint32 // transport window
+	goaway              bool // goaway has been sent/received.
+	version             int // SPDY version.
+	numInvalidStreamIDs int // number of invalid Stream IDs received.
+	done                *sync.WaitGroup // WaitGroup for active streams.
 }
 
 func (conn *serverConnection) readFrames() {
@@ -51,12 +53,8 @@ func (conn *serverConnection) readFrames() {
 
 	for {
 		if conn.numInvalidStreamIDs > MaxInvalidStreamIDs {
-			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
-			stop := new(RstStreamFrame)
-			stop.version = uint16(conn.version)
-			stop.StatusCode = RST_STREAM_PROTOCOL_ERROR
-			conn.WriteFrame(stop)
-			return
+			log.Println("Error: Too many invalid stream IDs received. Ending connection.")
+			conn.PROTOCOL_ERROR(0)
 		}
 
 		frame, err := ReadFrame(conn.buf)
@@ -90,12 +88,17 @@ func (conn *serverConnection) readFrames() {
 			panic("Got SYN_REPLY: [UNIMPLEMENTED]")
 
 		case *RstStreamFrame:
-			code := StatusCodeText(int(frame.StatusCode))
-			streamID := frame.StreamID
-			if frame.StatusCode == RST_STREAM_CANCEL {
-
+			switch frame.StatusCode {
+			case RST_STREAM_PROTOCOL_ERROR: fallthrough
+			case RST_STREAM_INTERNAL_ERROR: fallthrough
+			case RST_STREAM_FRAME_TOO_LARGE: fallthrough
+			case RST_STREAM_UNSUPPORTED_VERSION:
+				
+				code := StatusCodeText(int(frame.StatusCode))
+				log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID)
+				return
 			}
-			log.Printf("Received RST_STREAM on stream %d with status %q.\n", streamID, code)
+			conn.handleRstStream(frame)
 
 		/*** COMPLETE! ***/
 		case *SettingsFrame:
@@ -367,21 +370,12 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 		return
 	}
 
-	protocolError := func() {
-		reply := new(RstStreamFrame)
-		reply.version = SPDY_VERSION
-		reply.StreamID = frame.StreamID
-		reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-		conn.WriteFrame(reply)
-	}
-
 	// Check Stream ID is odd.
 	if frame.StreamID&1 == 0 {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n",
 			frame.StreamID)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Check Stream ID is the right number.
@@ -390,8 +384,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n",
 			frame.StreamID, conn.nextClientStreamID+2)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Check Stream ID is not too large.
@@ -399,8 +392,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which is too large.\n",
 			frame.StreamID)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Stream ID is fine.
@@ -420,25 +412,75 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	return
 }
 
-func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
+func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 	conn.RLock()
 	defer func() { conn.RUnlock() }()
 
-	protocolError := func() {
+	if conn.checkFrameVersion(frame) {
 		reply := new(RstStreamFrame)
 		reply.version = SPDY_VERSION
 		reply.StreamID = frame.StreamID
-		reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+		reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
 		conn.WriteFrame(reply)
+		return
 	}
+	
+	streamID := frame.StreamID
+	
+	switch frame.StatusCode {
+	case RST_STREAM_INVALID_STREAM:
+		log.Printf("Error: Received INVALID_STREAM for stream ID %d.\n", streamID)
+		conn.numInvalidStreamIDs++
+		return
+		
+	case RST_STREAM_REFUSED_STREAM:
+		conn.closeStream(streamID)
+		return
+		
+	case RST_STREAM_CANCEL:
+		if streamID&1 == 0 {
+			log.Printf("Error: Received RST_STREAM with Stream ID %d, which should be odd.\n", streamID)
+			conn.PROTOCOL_ERROR(streamID)
+		}
+		conn.closeStream(streamID)
+		return
+		
+	case RST_STREAM_FLOW_CONTROL_ERROR:
+		log.Printf("Error: Received FLOW_CONTROL_ERROR for stream ID %d.\n", streamID)
+		conn.numInvalidStreamIDs++
+		return
+		
+	case RST_STREAM_STREAM_IN_USE:
+		log.Printf("Error: Received STREAM_IN_USE for stream ID %d.\n", streamID)
+		conn.numInvalidStreamIDs++
+		return
+		
+	case RST_STREAM_STREAM_ALREADY_CLOSED:
+		log.Printf("Error: Received STREAM_ALREADY_CLOSED for stream ID %d.\n", streamID)
+		conn.numInvalidStreamIDs++
+		return
+		
+	case RST_STREAM_INVALID_CREDENTIALS:
+		log.Printf("Error: Received INVALID_CREDENTIALS for stream ID %d.\n", streamID)
+		conn.numInvalidStreamIDs++
+		return
+		
+	default:
+		log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.StatusCode)
+		conn.PROTOCOL_ERROR(streamID)
+	}
+}
+
+func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
 
 	// Check Stream ID is odd.
 	if frame.StreamID&1 == 0 {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n",
 			frame.StreamID)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Check stream is open.
@@ -447,8 +489,7 @@ func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received DATA with Stream ID %d, which should be %d.\n",
 			frame.StreamID, conn.nextClientStreamID+2)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Stream ID is fine.
@@ -475,21 +516,12 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
 		return
 	}
 
-	protocolError := func() {
-		reply := new(RstStreamFrame)
-		reply.version = SPDY_VERSION
-		reply.StreamID = frame.StreamID
-		reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-		conn.WriteFrame(reply)
-	}
-
 	// Check Stream ID is odd.
 	if frame.StreamID&1 == 0 {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n",
 			frame.StreamID)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Check stream is open.
@@ -498,8 +530,7 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n",
 			frame.StreamID, conn.nextClientStreamID+2)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Stream ID is fine.
@@ -526,21 +557,12 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 		return
 	}
 
-	protocolError := func() {
-		reply := new(RstStreamFrame)
-		reply.version = SPDY_VERSION
-		reply.StreamID = frame.StreamID
-		reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-		conn.WriteFrame(reply)
-	}
-
 	// Check Stream ID is odd.
 	if frame.StreamID&1 == 0 {
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be odd.\n",
 			frame.StreamID)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Check stream is open.
@@ -549,8 +571,7 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 		conn.numInvalidStreamIDs++
 		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be %d.\n",
 			frame.StreamID, conn.nextClientStreamID+2)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Stream ID is fine.
@@ -559,12 +580,34 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 	if frame.DeltaWindowSize > MAX_DELTA_WINDOW_SIZE || frame.DeltaWindowSize < 1 {
 		log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n",
 			frame.DeltaWindowSize)
-		protocolError()
-		return
+		conn.PROTOCOL_ERROR(frame.StreamID)
 	}
 
 	// Send data to stream.
 	conn.streamInputs[frame.StreamID] <- frame
+}
+
+func (conn *serverConnection) closeStream(streamID uint32) {
+	if streamID == 0 {
+		log.Println("Error: Tried to close stream 0.")
+		return
+	}
+	
+	conn.streams[streamID].stop = true
+	conn.streams[streamID].state.Close()
+	close(conn.streamInputs[streamID])
+	delete(conn.streams, streamID)
+}
+
+func (conn *serverConnection) PROTOCOL_ERROR(streamID uint32) {
+	reply := new(RstStreamFrame)
+	reply.version = uint16(conn.version)
+	reply.StreamID = streamID
+	reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+	conn.WriteFrame(reply)
+	time.Sleep(100 * time.Millisecond)
+	conn.cleanup()
+	runtime.Goexit()
 }
 
 func (conn *serverConnection) cleanup() {
@@ -606,7 +649,6 @@ func acceptDefaultSPDYv2(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
 func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
 	conn := newConn(tlsConn)
 	conn.server = server
-	conn.tlsConfig = server.TLSConfig
 	conn.version = 2
 
 	conn.serve()
@@ -621,7 +663,6 @@ func acceptDefaultSPDYv3(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
 func acceptSPDYv3(server *Server, tlsConn *tls.Conn, _ http.Handler) {
 	conn := newConn(tlsConn)
 	conn.server = server
-	conn.tlsConfig = server.TLSConfig
 	conn.version = 3
 
 	conn.serve()
