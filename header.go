@@ -13,6 +13,7 @@ import (
 // A Header represents the key-value pairs in an HTTP header.
 type Header map[string][]string
 
+// String pretty-prints the Header content.
 func (h Header) String() string {
 	buf := new(bytes.Buffer)
 	buf.WriteString(fmt.Sprintf("Headers {\n\t\t\t"))
@@ -32,6 +33,8 @@ func (h Header) String() string {
 	return buf.String()
 }
 
+// Parse decompresses the data and parses the resulting
+// data into the spdy.Header.
 func (h Header) Parse(data []byte, dec *Decompressor) error {
 	header, err := dec.Decompress(3, data)
 	if err != nil {
@@ -46,6 +49,9 @@ func (h Header) Parse(data []byte, dec *Decompressor) error {
 	return nil
 }
 
+// Bytes returns the headers in
+// SPDY name/value header block
+// format.
 func (h Header) Bytes() []byte {
 	h.Del("Connection")
 	h.Del("Keep-Alive")
@@ -107,6 +113,8 @@ func (h Header) Bytes() []byte {
 	return out
 }
 
+// Compressed returns the binary data of the headers
+// once they have been compressed.
 func (h Header) Compressed(com *Compressor) ([]byte, error) {
 	return com.Compress(3, h.Bytes())
 }

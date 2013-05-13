@@ -123,7 +123,7 @@ func (s *responseStream) WriteHeader(code int) {
 	synReply.Headers = s.headers.clone()
 
 	// Clear the headers that have been sent.
-	for name := range headers.Headers {
+	for name := range synReply.Headers {
 		s.headers.Del(name)
 	}
 

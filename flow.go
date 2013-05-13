@@ -5,6 +5,9 @@ import (
 	"fmt"
 )
 
+// flowControl is used by Streams to ensure that
+// they abide by SPDY's flow control rules. For
+// versions of SPDY before 3, this has no effect.
 type flowControl struct {
 	stream         *responseStream
 	push           *pushStream
@@ -18,7 +21,16 @@ type flowControl struct {
 	constrained    bool
 }
 
+// AddFlowControl initialises flow control for
+// the Stream. If the Stream is running at an
+// older SPDY version than SPDY/3, the flow
+// control has no effect. Multiple calls to
+// AddFlowControl are safe.
 func (s *responseStream) AddFlowControl() {
+	if s.flow != nil {
+		return
+	}
+
 	flow := new(flowControl)
 	initialWindow := s.conn.initialWindowSize
 	if s.version == 3 {
@@ -33,7 +45,16 @@ func (s *responseStream) AddFlowControl() {
 	s.flow = flow
 }
 
+// AddFlowControl initialises flow control for
+// the Stream. If the Stream is running at an
+// older SPDY version than SPDY/3, the flow
+// control has no effect. Multiple calls to
+// AddFlowControl are safe.
 func (p *pushStream) AddFlowControl() {
+	if p.flow != nil {
+		return
+	}
+
 	flow := new(flowControl)
 	initialWindow := p.conn.initialWindowSize
 	if p.version == 3 {
@@ -48,18 +69,35 @@ func (p *pushStream) AddFlowControl() {
 	p.flow = flow
 }
 
+// Active indicates whether flow control
+// is currently in effect. By default,
+// this is true for SPDY version 3 and
+// above, and false for version 1 or 2.
 func (f *flowControl) Active() bool {
 	return f.active
 }
 
+// Activate can be used to manually
+// activate flow control. This is
+// not recommended.
 func (f *flowControl) Activate() {
 	f.active = true
 }
 
+// Deactivate can be used to manually
+// deactivate flow control. This is
+// not recommended.
 func (f *flowControl) Deactivate() {
 	f.active = false
 }
 
+// CheckInitialWindow is used to handle the race
+// condition where the flow control is initialised
+// before the server has received any updates to
+// the initial tranfer window sent by the client.
+//
+// The transfer window is updated retroactively,
+// if necessary.
 func (f *flowControl) CheckInitialWindow() {
 	var newWindow uint32
 	if f.stream != nil {
@@ -81,6 +119,8 @@ func (f *flowControl) CheckInitialWindow() {
 	}
 }
 
+// UpdateWindow is called when an UPDATE_WINDOW frame is received,
+// and performs the growing of the transfer window.
 func (f *flowControl) UpdateWindow(deltaWindowSize uint32) error {
 	if int64(deltaWindowSize)+f.transferWindow > MAX_TRANSFER_WINDOW_SIZE {
 		return errors.New("Error: WINDOW_UPDATE delta window size overflows transfer window size.")
@@ -94,6 +134,10 @@ func (f *flowControl) UpdateWindow(deltaWindowSize uint32) error {
 	return nil
 }
 
+// Write is used to send data to the connection. This
+// takes care of the windowing. Although data may be
+// buffered, rather than actually sent, this is not
+// visible to the caller.
 func (f *flowControl) Write(data []byte) (int, error) {
 	l := len(data)
 	if l == 0 {
@@ -135,6 +179,11 @@ func (f *flowControl) Write(data []byte) (int, error) {
 	return l, nil
 }
 
+// Flush is used to send buffered data to
+// the connection, if the transfer window
+// will allow. Flush does not guarantee
+// that any or all buffered data will be
+// sent with a single flush.
 func (f *flowControl) Flush() {
 	f.CheckInitialWindow()
 	if !f.active || !f.constrained || f.transferWindow == 0 {
@@ -173,6 +222,10 @@ func (f *flowControl) Flush() {
 	f.output <- dataFrame
 }
 
+// Paused indicates whether there is data buffered.
+// A Stream should not be closed until after the
+// last data has been sent and then Paused returns
+// false.
 func (f *flowControl) Paused() bool {
 	f.CheckInitialWindow()
 	return f.active && f.constrained

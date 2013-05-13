@@ -146,6 +146,9 @@ type Request struct {
 	TLS *tls.ConnectionState
 }
 
+// spdyRequestToHttpRequest is a simple helper function for
+// turning a spdy.Request into an http.Request to enable
+// use of net/http capabilities, like http.ServeFile.
 func spdyRequestToHttpRequest(req *Request) *http.Request {
 	out := new(http.Request)
 	out.Method = req.Method

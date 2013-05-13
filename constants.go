@@ -6,7 +6,17 @@ import (
 
 const SPDY_VERSION = 3
 
+// DebugMode, if enabled, will log
+// debug information specific to
+// the protocol's inner workings,
+// such as the details of every
+// frame received.
 var DebugMode = false
+
+// MaxBenignErrors is the maximum
+// number of minor errors each
+// connection will allow without
+// ending the session.
 var MaxBenignErrors = 10
 
 // Control types
@@ -66,10 +76,18 @@ var statusCodeText = map[int]string{
 	RST_STREAM_FRAME_TOO_LARGE:       "FRAME_TOO_LARGE",
 }
 
+// StatusCodeText returns the text for
+// the STREAM_ERROR status code given.
+// The empty string will be returned
+// for unknown status codes.
 func StatusCodeText(code int) string {
 	return statusCodeText[code]
 }
 
+// StatusCodeIsFatal returns a bool
+// indicating whether receiving the
+// given status code would end the
+// connection.
 func StatusCodeIsFatal(code int) bool {
 	switch code {
 	case RST_STREAM_PROTOCOL_ERROR:

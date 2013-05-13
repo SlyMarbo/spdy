@@ -8,13 +8,19 @@ import (
 	"io"
 )
 
+// Connection represents a SPDY
+// session. This co-ordinates
+// and manages SPDY Streams.
 type Connection interface {
 	Ping() <-chan bool
 	Push(string, Stream) (PushWriter, error)
 	WriteFrame(Frame)
 }
 
+// Stream represents a SPDY
+// stream.
 type Stream interface {
+	AddFlowControl()
 	Connection() Connection
 	Header() Header
 	State() *StreamState
@@ -25,6 +31,7 @@ type Stream interface {
 	Version() uint16
 }
 
+// Frame represents a SPDY frame.
 type Frame interface {
 	Bytes() ([]byte, error)
 	Parse(*bufio.Reader) error
@@ -36,6 +43,7 @@ type Frame interface {
 	Version() uint16
 }
 
+// ReadRequest reads and parses a frame from reader.
 func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
 	start, err := reader.Peek(4)
 	if err != nil {

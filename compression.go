@@ -20,6 +20,8 @@ type Decompressor struct {
 	out io.ReadCloser
 }
 
+// Decompress uses zlib decompression to decompress the provided
+// data, according to the SPDY specification of the given version.
 func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err error) {
 	d.m.Lock()
 	defer d.m.Unlock()
@@ -124,12 +126,18 @@ func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err
 	return headers, nil
 }
 
+// Compressor is used to compress name/value header blocks.
+// Compressors retain their state, so a single Compressor
+// should be used for each direction of a particular
+// connection.
 type Compressor struct {
 	m   sync.Mutex
 	buf *bytes.Buffer
 	w   *zlib.Writer
 }
 
+// Compress uses zlib compression to compress the provided
+// data, according to the SPDY specification of the given version.
 func (c *Compressor) Compress(version int, data []byte) ([]byte, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
