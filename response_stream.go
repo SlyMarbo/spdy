@@ -9,6 +9,9 @@ import (
 	"sync"
 )
 
+// responseStream is a structure that implements
+// the Stream and ResponseWriter interfaces. This
+// is used for responding to client requests.
 type responseStream struct {
 	sync.RWMutex
 	conn           *serverConnection
@@ -58,26 +61,33 @@ func (s *responseStream) StreamID() uint32 {
 	return s.streamID
 }
 
+// Write is the main method with which data is sent.
 func (s *responseStream) Write(inputData []byte) (int, error) {
 	if s.state.ClosedHere() {
 		return 0, errors.New("Error: Stream already closed.")
 	}
 
+	// Check any frames received since last call.
 	s.processInput()
 	if s.stop {
 		return 0, ErrCancelled
 	}
 
+	// Send any new headers.
 	s.WriteHeaders()
 
-	// Dereference the pointer.
+	// Copy the data locally to avoid any pointer issues.
 	data := make([]byte, len(inputData))
 	copy(data, inputData)
 
+	// Default to 200 response.
 	if !s.wroteHeader {
 		s.WriteHeader(http.StatusOK)
 	}
 
+	// Chunk the response if necessary.
+	// Data is sent to the flow control to
+	// ensure that the protocol is followed.
 	written := 0
 	for len(data) > MAX_DATA_SIZE {
 		n, err := s.flow.Write(data[:MAX_DATA_SIZE])
@@ -94,6 +104,7 @@ func (s *responseStream) Write(inputData []byte) (int, error) {
 	return written, err
 }
 
+// WriteHeader is used to set the HTTP status code.
 func (s *responseStream) WriteHeader(code int) {
 	if s.wroteHeader {
 		log.Println("spdy: Error: Multiple calls to ResponseWriter.WriteHeader.")
@@ -109,8 +120,12 @@ func (s *responseStream) WriteHeader(code int) {
 	synReply := new(SynReplyFrame)
 	synReply.version = uint16(s.version)
 	synReply.streamID = s.streamID
-	synReply.Headers = s.headers
-	s.headers = make(Header)
+	synReply.Headers = s.headers.clone()
+
+	// Clear the headers that have been sent.
+	for name := range headers.Headers {
+		s.headers.Del(name)
+	}
 
 	// These responses have no body, so close the stream now.
 	if code == 204 || code == 304 || code/100 == 1 {
@@ -121,6 +136,7 @@ func (s *responseStream) WriteHeader(code int) {
 	s.output <- synReply
 }
 
+// WriteHeaders is used to flush HTTP headers.
 func (s *responseStream) WriteHeaders() {
 	if len(s.headers) == 0 {
 		return
@@ -130,9 +146,12 @@ func (s *responseStream) WriteHeaders() {
 	headers.version = uint16(s.version)
 	headers.streamID = s.streamID
 	headers.Headers = s.headers.clone()
+
+	// Clear the headers that have been sent.
 	for name := range headers.Headers {
 		s.headers.Del(name)
 	}
+
 	s.output <- headers
 }
 
@@ -151,6 +170,7 @@ func (s *responseStream) Version() uint16 {
 	return uint16(s.version)
 }
 
+// receiveFrame is used to process an inbound frame.
 func (s *responseStream) receiveFrame(frame Frame) {
 	if frame == nil {
 		panic("Nil frame received in receiveFrame.")
@@ -179,6 +199,9 @@ func (s *responseStream) receiveFrame(frame Frame) {
 	}
 }
 
+// wait blocks until a frame is received
+// or the input channel is closed. If a
+// frame is received, it is processed.
 func (s *responseStream) wait() {
 	frame := <-s.input
 	if frame == nil {
@@ -187,6 +210,9 @@ func (s *responseStream) wait() {
 	s.receiveFrame(frame)
 }
 
+// processInput processes any frames currently
+// queued in the input channel, but does not
+// wait once the channel has been cleared.
 func (s *responseStream) processInput() {
 	var frame Frame
 	var ok bool
@@ -205,6 +231,11 @@ func (s *responseStream) processInput() {
 	}
 }
 
+// run is the main control path of
+// the stream. It is prepared, the
+// registered handler is called,
+// and then the stream is cleaned
+// up and closed.
 func (s *responseStream) run() {
 
 	// Make sure Request is prepared.
@@ -224,7 +255,13 @@ func (s *responseStream) run() {
 		s.flow.Flush()
 	}
 
-	if !s.wroteHeader {
+	// Close the stream with a SYN_REPLY if
+	// none has been sent, or an empty DATA
+	// frame, if a SYN_REPLY has been sent
+	// already.
+	// If the stream is already closed at
+	// this end, then nothing happens.
+	if s.state.OpenHere() && !s.wroteHeader {
 		s.headers.Set(":status", "200")
 		s.headers.Set(":version", "HTTP/1.1")
 

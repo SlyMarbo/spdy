@@ -1,7 +1,8 @@
 spdy
 ====
 
-My implementation of SPDY/v3 (work in progress)
+My implementation of SPDY/v3 (work in progress).
+
 So far, servers are mostly ready, but the client code hasn't been started.
 
 To-do:

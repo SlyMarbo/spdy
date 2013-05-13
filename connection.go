@@ -1,44 +1,44 @@
 package spdy
 
 import (
-  "bufio"
-  "crypto/tls"
-  "errors"
-  "fmt"
-  "io"
-  "log"
-  "net/http"
-  "net/url"
-  "runtime"
-  "sync"
-  "time"
+	"bufio"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"runtime"
+	"sync"
+	"time"
 )
 
 // serverConnection represents a SPDY session at the server
 // end. This performs the overall connection management and
 // co-ordination between
 type serverConnection struct {
-  sync.RWMutex
-  remoteAddr         string
-  server             *Server
-  conn               *tls.Conn
-  buf                *bufio.Reader // buffered reader for the connection.
-  tlsState           *tls.ConnectionState
-  streams            map[uint32]*responseStream
-  streamInputs       map[uint32]chan<- Frame
-  dataPriority       [8]chan Frame
-  pings              map[uint32]chan<- bool
-  pingID             uint32
-  compressor         *Compressor
-  decompressor       *Decompressor
-  receivedSettings   []*Setting
-  nextServerStreamID uint32          // even
-  nextClientStreamID uint32          // odd
-  initialWindowSize  uint32          // transport window
-  goaway             bool            // goaway has been sent/received.
-  version            int             // SPDY version.
-  numBenignErrors    int             // number of non-serious errors encountered.
-  done               *sync.WaitGroup // WaitGroup for active streams.
+	sync.RWMutex
+	remoteAddr         string
+	server             *Server
+	conn               *tls.Conn
+	buf                *bufio.Reader // buffered reader for the connection.
+	tlsState           *tls.ConnectionState
+	streams            map[uint32]*responseStream
+	streamInputs       map[uint32]chan<- Frame
+	dataPriority       [8]chan Frame
+	pings              map[uint32]chan<- bool
+	pingID             uint32
+	compressor         *Compressor
+	decompressor       *Decompressor
+	receivedSettings   []*Setting
+	nextServerStreamID uint32          // even
+	nextClientStreamID uint32          // odd
+	initialWindowSize  uint32          // transport window
+	goaway             bool            // goaway has been sent/received.
+	version            int             // SPDY version.
+	numBenignErrors    int             // number of non-serious errors encountered.
+	done               *sync.WaitGroup // WaitGroup for active streams.
 }
 
 // readFrames is the main processing loop, where frames
@@ -47,253 +47,253 @@ type serverConnection struct {
 // process for this connection.
 func (conn *serverConnection) readFrames() {
 
-  // Add timeouts if requested by the server.
-  if d := conn.server.ReadTimeout; d != 0 {
-    conn.conn.SetReadDeadline(time.Now().Add(d))
-  }
-  if d := conn.server.WriteTimeout; d != 0 {
-    defer func() {
-      conn.conn.SetWriteDeadline(time.Now().Add(d))
-    }()
-  }
+	// Add timeouts if requested by the server.
+	if d := conn.server.ReadTimeout; d != 0 {
+		conn.conn.SetReadDeadline(time.Now().Add(d))
+	}
+	if d := conn.server.WriteTimeout; d != 0 {
+		defer func() {
+			conn.conn.SetWriteDeadline(time.Now().Add(d))
+		}()
+	}
 
-  // Main loop.
-  for {
+	// Main loop.
+	for {
 
-    // This is the mechanism for handling too many benign errors.
-    // Default MaxBenignErrors is 10.
-    if conn.numBenignErrors > MaxBenignErrors {
-      log.Println("Error: Too many invalid stream IDs received. Ending connection.")
-      conn.PROTOCOL_ERROR(0)
-    }
+		// This is the mechanism for handling too many benign errors.
+		// Default MaxBenignErrors is 10.
+		if conn.numBenignErrors > MaxBenignErrors {
+			log.Println("Error: Too many invalid stream IDs received. Ending connection.")
+			conn.PROTOCOL_ERROR(0)
+		}
 
-    // ReadFrame takes care of the frame parsing for us.
-    frame, err := ReadFrame(conn.buf)
-    if err != nil {
-      if err == io.EOF {
-        // Client has closed the TCP connection.
-        return
-      }
+		// ReadFrame takes care of the frame parsing for us.
+		frame, err := ReadFrame(conn.buf)
+		if err != nil {
+			if err == io.EOF {
+				// Client has closed the TCP connection.
+				return
+			}
 
-      // TODO: handle error
-      panic(err)
-    }
+			// TODO: handle error
+			panic(err)
+		}
 
-    // Decompress the frame's headers, if there are any.
-    err = frame.ReadHeaders(conn.decompressor)
-    if err != nil {
-      panic(err)
-    }
+		// Decompress the frame's headers, if there are any.
+		err = frame.ReadHeaders(conn.decompressor)
+		if err != nil {
+			panic(err)
+		}
 
-    // TODO: replace this with a proper logging library.
-    if DebugMode {
-      fmt.Println("Received Frame:")
-      fmt.Println(frame)
-    }
+		// TODO: replace this with a proper logging library.
+		if DebugMode {
+			fmt.Println("Received Frame:")
+			fmt.Println(frame)
+		}
 
-    // Make sure the received frame uses an appropriate
-    // SPDY version.
-    if !conn.validFrameVersion(frame) {
-      reply := new(RstStreamFrame)
-      reply.version = SPDY_VERSION
-      reply.streamID = frame.StreamID()
-      reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
-      conn.WriteFrame(reply)
-      continue
-    }
+		// Make sure the received frame uses an appropriate
+		// SPDY version.
+		if !conn.validFrameVersion(frame) {
+			reply := new(RstStreamFrame)
+			reply.version = SPDY_VERSION
+			reply.streamID = frame.StreamID()
+			reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
+			conn.WriteFrame(reply)
+			continue
+		}
 
-  FrameHandling:
-    // This is the main frame handling section.
-    switch frame := frame.(type) {
+	FrameHandling:
+		// This is the main frame handling section.
+		switch frame := frame.(type) {
 
-    case *SynStreamFrame:
-      conn.handleSynStream(frame)
+		case *SynStreamFrame:
+			conn.handleSynStream(frame)
 
-    /*** [UNIMPLEMENTED] ***/
-    case *SynReplyFrame:
-      panic("Got SYN_REPLY: [UNIMPLEMENTED]")
+		/*** [UNIMPLEMENTED] ***/
+		case *SynReplyFrame:
+			panic("Got SYN_REPLY: [UNIMPLEMENTED]")
 
-    case *RstStreamFrame:
-      if StatusCodeIsFatal(int(frame.StatusCode)) {
-        code := StatusCodeText(int(frame.StatusCode))
-        log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID)
-        return
-      }
-      conn.handleRstStream(frame)
+		case *RstStreamFrame:
+			if StatusCodeIsFatal(int(frame.StatusCode)) {
+				code := StatusCodeText(int(frame.StatusCode))
+				log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID)
+				return
+			}
+			conn.handleRstStream(frame)
 
-    case *SettingsFrame:
-      if conn.receivedSettings == nil {
-        conn.receivedSettings = frame.Settings
-      } else {
-        // TODO: do settings in a map.
-        for _, new := range frame.Settings {
-          for i, old := range conn.receivedSettings {
-            if new.ID == old.ID {
-              conn.receivedSettings[i] = new
-            }
-          }
-          conn.receivedSettings = append(conn.receivedSettings, new)
-        }
-      }
-      for _, setting := range frame.Settings {
-        if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE && conn.version > 2 {
-          log.Printf("Initial window size is %d.\n", setting.Value)
-          conn.initialWindowSize = setting.Value
-        }
-      }
+		case *SettingsFrame:
+			if conn.receivedSettings == nil {
+				conn.receivedSettings = frame.Settings
+			} else {
+				// TODO: do settings in a map.
+				for _, new := range frame.Settings {
+					for i, old := range conn.receivedSettings {
+						if new.ID == old.ID {
+							conn.receivedSettings[i] = new
+						}
+					}
+					conn.receivedSettings = append(conn.receivedSettings, new)
+				}
+			}
+			for _, setting := range frame.Settings {
+				if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE && conn.version > 2 {
+					log.Printf("Initial window size is %d.\n", setting.Value)
+					conn.initialWindowSize = setting.Value
+				}
+			}
 
-    case *PingFrame:
-      // Check whether Ping ID is server-sent.
-      if frame.PingID&1 == 0 {
-        if conn.pings[frame.PingID] == nil {
-          log.Printf("Warning: Ignored PING with Ping ID %d, which hasn't been requested.\n",
-            frame.PingID)
-          conn.numBenignErrors++
-          break FrameHandling
-        }
-        conn.pings[frame.PingID] <- true
-        close(conn.pings[frame.PingID])
-        delete(conn.pings, frame.PingID)
-      } else {
-        // TODO: Print to the log in DebugMode only.
-        log.Println("Received PING. Replying...")
-        conn.WriteFrame(frame)
-      }
+		case *PingFrame:
+			// Check whether Ping ID is server-sent.
+			if frame.PingID&1 == 0 {
+				if conn.pings[frame.PingID] == nil {
+					log.Printf("Warning: Ignored PING with Ping ID %d, which hasn't been requested.\n",
+						frame.PingID)
+					conn.numBenignErrors++
+					break FrameHandling
+				}
+				conn.pings[frame.PingID] <- true
+				close(conn.pings[frame.PingID])
+				delete(conn.pings, frame.PingID)
+			} else {
+				// TODO: Print to the log in DebugMode only.
+				log.Println("Received PING. Replying...")
+				conn.WriteFrame(frame)
+			}
 
-    /*** [INCOMPLETE] ***/
-    case *GoawayFrame:
+		/*** [INCOMPLETE] ***/
+		case *GoawayFrame:
 
-      // TODO: inform push streams that they haven't been processed if
-      // the last good stream ID is less than their ID.
-      conn.goaway = true
+			// TODO: inform push streams that they haven't been processed if
+			// the last good stream ID is less than their ID.
+			conn.goaway = true
 
-    case *HeadersFrame:
-      conn.handleHeadersFrame(frame)
+		case *HeadersFrame:
+			conn.handleHeadersFrame(frame)
 
-    case *WindowUpdateFrame:
-      conn.handleWindowUpdateFrame(frame)
+		case *WindowUpdateFrame:
+			conn.handleWindowUpdateFrame(frame)
 
-    /*** [UNIMPLEMENTED] ***/
-    case *CredentialFrame:
-      panic("Got CREDENTIAL: [UNIMPLEMENTED]")
+		/*** [UNIMPLEMENTED] ***/
+		case *CredentialFrame:
+			panic("Got CREDENTIAL: [UNIMPLEMENTED]")
 
-    case *DataFrame:
-      conn.handleDataFrame(frame)
+		case *DataFrame:
+			conn.handleDataFrame(frame)
 
-    default:
-      panic(fmt.Sprintf("unexpected frame type %T", frame))
-    }
-  }
+		default:
+			panic(fmt.Sprintf("unexpected frame type %T", frame))
+		}
+	}
 }
 
 // send is run in a separate goroutine. It's used
 // to ensure clear interleaving of frames and to
 // provide assurances of priority and structure.
 func (conn *serverConnection) send() {
-  for {
-    frame := conn.selectFrameToSend()
+	for {
+		frame := conn.selectFrameToSend()
 
-    // Compress any name/value header blocks.
-    err := frame.WriteHeaders(conn.compressor)
-    if err != nil {
-      panic(err)
-    }
+		// Compress any name/value header blocks.
+		err := frame.WriteHeaders(conn.compressor)
+		if err != nil {
+			panic(err)
+		}
 
-    // Leave the specifics of writing to the
-    // connection up to the frame.
-    err = frame.WriteTo(conn.conn)
-    if err != nil {
-      panic(err)
-    }
-  }
+		// Leave the specifics of writing to the
+		// connection up to the frame.
+		err = frame.WriteTo(conn.conn)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 // selectFrameToSend follows the specification's guidance
 // on frame priority, sending frames with higher priority
 // (a smaller number) first.
 func (conn *serverConnection) selectFrameToSend() (frame Frame) {
-  // Try in priority order first.
-  for i := 0; i < 8; i++ {
-    select {
-    case frame = <-conn.dataPriority[i]:
-      return frame
-    default:
-    }
-  }
+	// Try in priority order first.
+	for i := 0; i < 8; i++ {
+		select {
+		case frame = <-conn.dataPriority[i]:
+			return frame
+		default:
+		}
+	}
 
-  // Wait for any frame.
-  select {
-  case frame = <-conn.dataPriority[0]:
-    return frame
-  case frame = <-conn.dataPriority[1]:
-    return frame
-  case frame = <-conn.dataPriority[2]:
-    return frame
-  case frame = <-conn.dataPriority[3]:
-    return frame
-  case frame = <-conn.dataPriority[4]:
-    return frame
-  case frame = <-conn.dataPriority[5]:
-    return frame
-  case frame = <-conn.dataPriority[6]:
-    return frame
-  case frame = <-conn.dataPriority[7]:
-    return frame
-  }
+	// Wait for any frame.
+	select {
+	case frame = <-conn.dataPriority[0]:
+		return frame
+	case frame = <-conn.dataPriority[1]:
+		return frame
+	case frame = <-conn.dataPriority[2]:
+		return frame
+	case frame = <-conn.dataPriority[3]:
+		return frame
+	case frame = <-conn.dataPriority[4]:
+		return frame
+	case frame = <-conn.dataPriority[5]:
+		return frame
+	case frame = <-conn.dataPriority[6]:
+		return frame
+	case frame = <-conn.dataPriority[7]:
+		return frame
+	}
 }
 
 // newStream is used to create a new responseStream from a SYN_STREAM frame.
 func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Frame, output chan<- Frame) *responseStream {
-  stream := new(responseStream)
-  stream.conn = conn
-  stream.streamID = frame.streamID
-  stream.state = new(StreamState)
-  stream.input = input
-  stream.output = output
-  stream.handler = DefaultServeMux
-  stream.certificates = make([]Certificate, 1)
-  stream.headers = make(Header)
-  stream.settings = make([]*Setting, 1)
-  stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
-  stream.version = conn.version
+	stream := new(responseStream)
+	stream.conn = conn
+	stream.streamID = frame.streamID
+	stream.state = new(StreamState)
+	stream.input = input
+	stream.output = output
+	stream.handler = DefaultServeMux
+	stream.certificates = make([]Certificate, 1)
+	stream.headers = make(Header)
+	stream.settings = make([]*Setting, 1)
+	stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
+	stream.version = conn.version
 
-  if frame.Flags&FLAG_FIN != 0 {
-    stream.state.CloseThere()
-  }
+	if frame.Flags&FLAG_FIN != 0 {
+		stream.state.CloseThere()
+	}
 
-  headers := frame.Headers
-  rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
-  url, err := url.Parse(rawUrl)
-  if err != nil {
-    panic(err) // TODO: handle the error properly.
-  }
+	headers := frame.Headers
+	rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
+	url, err := url.Parse(rawUrl)
+	if err != nil {
+		panic(err) // TODO: handle the error properly.
+	}
 
-  vers := headers.Get(":version")
-  major, minor, ok := http.ParseHTTPVersion(vers)
-  if !ok {
-    panic("Invalid HTTP version: " + headers.Get(":version"))
-  }
+	vers := headers.Get(":version")
+	major, minor, ok := http.ParseHTTPVersion(vers)
+	if !ok {
+		panic("Invalid HTTP version: " + headers.Get(":version"))
+	}
 
-  stream.request = &Request{
-    Method:     headers.Get(":method"),
-    URL:        url,
-    Proto:      vers,
-    ProtoMajor: major,
-    ProtoMinor: minor,
-    Priority:   int(frame.Priority),
-    RemoteAddr: conn.remoteAddr,
-    Header:     headers,
-    Host:       url.Host,
-    RequestURI: url.Path,
-    TLS:        conn.tlsState,
-  }
+	stream.request = &Request{
+		Method:     headers.Get(":method"),
+		URL:        url,
+		Proto:      vers,
+		ProtoMajor: major,
+		ProtoMinor: minor,
+		Priority:   int(frame.Priority),
+		RemoteAddr: conn.remoteAddr,
+		Header:     headers,
+		Host:       url.Host,
+		RequestURI: url.Path,
+		TLS:        conn.tlsState,
+	}
 
-  return stream
+	return stream
 }
 
 // Internally-sent frames have high priority.
 func (conn *serverConnection) WriteFrame(frame Frame) {
-  conn.dataPriority[0] <- frame
+	conn.dataPriority[0] <- frame
 }
 
 // Ping is used to send a SPDY ping to the client.
@@ -302,17 +302,17 @@ func (conn *serverConnection) WriteFrame(frame Frame) {
 // is a fault in the connection, the channel is
 // closed.
 func (conn *serverConnection) Ping() <-chan bool {
-  conn.Lock()
-  defer conn.Unlock()
+	conn.Lock()
+	defer conn.Unlock()
 
-  conn.pingID += 2
-  ping := new(PingFrame)
-  ping.version = uint16(conn.version)
-  ping.PingID = conn.pingID
-  conn.dataPriority[0] <- ping
-  c := make(chan bool, 1)
-  conn.pings[conn.pingID] = c
-  return c
+	conn.pingID += 2
+	ping := new(PingFrame)
+	ping.version = uint16(conn.version)
+	ping.PingID = conn.pingID
+	conn.dataPriority[0] <- ping
+	c := make(chan bool, 1)
+	conn.pings[conn.pingID] = c
+	return c
 }
 
 // Push is used to create a server push. A SYN_STREAM is created and sent,
@@ -328,47 +328,47 @@ func (conn *serverConnection) Ping() <-chan bool {
 // these two factors, the SYN_STREAM is sent at priority 0 (max), but its
 // data is sent at priority 7 (min).
 func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, error) {
-  conn.Lock()
-  defer conn.Unlock()
-  conn.nextServerStreamID += 2
-  newID := conn.nextServerStreamID
+	conn.Lock()
+	defer conn.Unlock()
+	conn.nextServerStreamID += 2
+	newID := conn.nextServerStreamID
 
-  // Send the SYN_STREAM.
-  push := new(SynStreamFrame)
-  push.version = uint16(conn.version)
-  push.Flags = FLAG_UNIDIRECTIONAL
-  push.streamID = newID
-  push.AssocStreamID = origin.StreamID()
-  push.Priority = 0
-  url, err := url.Parse(resource)
-  if err != nil {
-    return nil, err
-  }
-  if url.Scheme == "" || url.Host == "" || url.Path == "" {
-    return nil, errors.New("Error: Incomplete path provided to resource.")
-  }
-  headers := make(Header)
-  headers.Set(":scheme", url.Scheme)
-  headers.Set(":host", url.Host)
-  headers.Set(":path", url.Path)
-  headers.Set(":version", "HTTP/1.1")
-  headers.Set(":status", "200 OK")
-  push.Headers = headers
-  conn.WriteFrame(push)
+	// Send the SYN_STREAM.
+	push := new(SynStreamFrame)
+	push.version = uint16(conn.version)
+	push.Flags = FLAG_UNIDIRECTIONAL
+	push.streamID = newID
+	push.AssocStreamID = origin.StreamID()
+	push.Priority = 0
+	url, err := url.Parse(resource)
+	if err != nil {
+		return nil, err
+	}
+	if url.Scheme == "" || url.Host == "" || url.Path == "" {
+		return nil, errors.New("Error: Incomplete path provided to resource.")
+	}
+	headers := make(Header)
+	headers.Set(":scheme", url.Scheme)
+	headers.Set(":host", url.Host)
+	headers.Set(":path", url.Path)
+	headers.Set(":version", "HTTP/1.1")
+	headers.Set(":status", "200 OK")
+	push.Headers = headers
+	conn.WriteFrame(push)
 
-  // Create the pushStream.
-  out := new(pushStream)
-  out.conn = conn
-  out.streamID = newID
-  out.origin = origin
-  out.state = new(StreamState)
-  out.output = conn.dataPriority[7]
-  out.headers = make(Header)
-  out.stop = false
-  out.version = conn.version
-  out.AddFlowControl()
+	// Create the pushStream.
+	out := new(pushStream)
+	out.conn = conn
+	out.streamID = newID
+	out.origin = origin
+	out.state = new(StreamState)
+	out.output = conn.dataPriority[7]
+	out.headers = make(Header)
+	out.stop = false
+	out.version = conn.version
+	out.AddFlowControl()
 
-  return out, nil
+	return out, nil
 }
 
 // validFrameVersion checks that a frame has the same SPDY
@@ -378,266 +378,266 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 // used.
 func (conn *serverConnection) validFrameVersion(frame Frame) bool {
 
-  // DATA frames have no version, so they
-  // are always valid.
-  if _, ok := frame.(*DataFrame); ok {
-    return true
-  }
+	// DATA frames have no version, so they
+	// are always valid.
+	if _, ok := frame.(*DataFrame); ok {
+		return true
+	}
 
-  // Check the version.
-  if frame.Version() != uint16(conn.version) {
-    log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
-      frame.Version(), conn.version)
-    if frame.Version() > SPDY_VERSION {
-      log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
-        frame.Version())
-    }
-    return false
-  }
-  return true
+	// Check the version.
+	if frame.Version() != uint16(conn.version) {
+		log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
+			frame.Version(), conn.version)
+		if frame.Version() > SPDY_VERSION {
+			log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
+				frame.Version())
+		}
+		return false
+	}
+	return true
 }
 
 // handleSynStream performs the processing of SYN_STREAM frames.
 func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
-  conn.RLock()
-  defer func() { conn.RUnlock() }()
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
 
-  // Check stream creation is allowed.
-  if conn.goaway {
-    return
-  }
+	// Check stream creation is allowed.
+	if conn.goaway {
+		return
+	}
 
-  sid := frame.streamID
+	sid := frame.streamID
 
-  // Check Stream ID is odd.
-  if sid&1 == 0 {
-    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n", sid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check Stream ID is odd.
+	if sid&1 == 0 {
+		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n", sid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Check Stream ID is the right number.
-  nsid := conn.nextClientStreamID + 2
-  if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n", sid, nsid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check Stream ID is the right number.
+	nsid := conn.nextClientStreamID + 2
+	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
+		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n", sid, nsid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Check Stream ID is not out of bounds.
-  if sid > MAX_STREAM_ID {
-    log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
-    conn.PROTOCOL_ERROR(sid)
-  }
+	// Check Stream ID is not out of bounds.
+	if sid > MAX_STREAM_ID {
+		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
+		conn.PROTOCOL_ERROR(sid)
+	}
 
-  // Stream ID is fine.
+	// Stream ID is fine.
 
-  // Create and start new stream.
-  conn.RUnlock()
-  conn.Lock()
-  input := make(chan Frame)
-  conn.streamInputs[sid] = input
-  conn.streams[sid] = conn.newStream(frame, input, conn.dataPriority[frame.Priority])
-  conn.Unlock()
-  conn.RLock()
+	// Create and start new stream.
+	conn.RUnlock()
+	conn.Lock()
+	input := make(chan Frame)
+	conn.streamInputs[sid] = input
+	conn.streams[sid] = conn.newStream(frame, input, conn.dataPriority[frame.Priority])
+	conn.Unlock()
+	conn.RLock()
 
-  go conn.streams[sid].run()
-  conn.done.Add(1)
+	go conn.streams[sid].run()
+	conn.done.Add(1)
 
-  return
+	return
 }
 
 // handleRstStream performs the processing of RST_STREAM frames.
 func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
-  conn.RLock()
-  defer func() { conn.RUnlock() }()
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
 
-  sid := frame.streamID
+	sid := frame.streamID
 
-  switch frame.StatusCode {
-  case RST_STREAM_INVALID_STREAM:
-    log.Printf("Error: Received INVALID_STREAM for stream ID %d.\n", sid)
-    conn.numBenignErrors++
-    return
+	switch frame.StatusCode {
+	case RST_STREAM_INVALID_STREAM:
+		log.Printf("Error: Received INVALID_STREAM for stream ID %d.\n", sid)
+		conn.numBenignErrors++
+		return
 
-  case RST_STREAM_REFUSED_STREAM:
-    conn.closeStream(sid)
-    return
+	case RST_STREAM_REFUSED_STREAM:
+		conn.closeStream(sid)
+		return
 
-  case RST_STREAM_CANCEL:
-    if sid&1 == 0 {
-      log.Printf("Error: Received RST_STREAM with Stream ID %d, which should be odd.\n", sid)
-      conn.numBenignErrors++
-      return
-    }
-    conn.closeStream(sid)
-    return
+	case RST_STREAM_CANCEL:
+		if sid&1 == 0 {
+			log.Printf("Error: Received RST_STREAM with Stream ID %d, which should be odd.\n", sid)
+			conn.numBenignErrors++
+			return
+		}
+		conn.closeStream(sid)
+		return
 
-  case RST_STREAM_FLOW_CONTROL_ERROR:
-    log.Printf("Error: Received FLOW_CONTROL_ERROR for stream ID %d.\n", sid)
-    conn.numBenignErrors++
-    return
+	case RST_STREAM_FLOW_CONTROL_ERROR:
+		log.Printf("Error: Received FLOW_CONTROL_ERROR for stream ID %d.\n", sid)
+		conn.numBenignErrors++
+		return
 
-  case RST_STREAM_STREAM_IN_USE:
-    log.Printf("Error: Received STREAM_IN_USE for stream ID %d.\n", sid)
-    conn.numBenignErrors++
-    return
+	case RST_STREAM_STREAM_IN_USE:
+		log.Printf("Error: Received STREAM_IN_USE for stream ID %d.\n", sid)
+		conn.numBenignErrors++
+		return
 
-  case RST_STREAM_STREAM_ALREADY_CLOSED:
-    log.Printf("Error: Received STREAM_ALREADY_CLOSED for stream ID %d.\n", sid)
-    conn.numBenignErrors++
-    return
+	case RST_STREAM_STREAM_ALREADY_CLOSED:
+		log.Printf("Error: Received STREAM_ALREADY_CLOSED for stream ID %d.\n", sid)
+		conn.numBenignErrors++
+		return
 
-  case RST_STREAM_INVALID_CREDENTIALS:
-    log.Printf("Error: Received INVALID_CREDENTIALS for stream ID %d.\n", sid)
-    conn.numBenignErrors++
-    return
+	case RST_STREAM_INVALID_CREDENTIALS:
+		log.Printf("Error: Received INVALID_CREDENTIALS for stream ID %d.\n", sid)
+		conn.numBenignErrors++
+		return
 
-  default:
-    log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.StatusCode)
-    conn.PROTOCOL_ERROR(sid)
-  }
+	default:
+		log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.StatusCode)
+		conn.PROTOCOL_ERROR(sid)
+	}
 }
 
 // handleDataFrame performs the processing of DATA frames.
 func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
-  conn.RLock()
-  defer func() { conn.RUnlock() }()
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
 
-  sid := frame.streamID
+	sid := frame.streamID
 
-  // Check Stream ID is odd.
-  if sid&1 == 0 {
-    log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n", sid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check Stream ID is odd.
+	if sid&1 == 0 {
+		log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n", sid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Check stream is open.
-  nsid := conn.nextClientStreamID + 2
-  if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-    log.Printf("Error: Received DATA with Stream ID %d, which should be %d.\n", sid, nsid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check stream is open.
+	nsid := conn.nextClientStreamID + 2
+	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
+		log.Printf("Error: Received DATA with Stream ID %d, which should be %d.\n", sid, nsid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Stream ID is fine.
+	// Stream ID is fine.
 
-  // Send data to stream.
-  conn.streamInputs[sid] <- frame
+	// Send data to stream.
+	conn.streamInputs[sid] <- frame
 
-  // Handle flags.
-  if frame.Flags&FLAG_FIN != 0 {
-    conn.streams[sid].state.CloseThere()
-  }
+	// Handle flags.
+	if frame.Flags&FLAG_FIN != 0 {
+		conn.streams[sid].state.CloseThere()
+	}
 }
 
 // handleHeadersFrame performs the processing of HEADERS frames.
 func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
-  conn.RLock()
-  defer func() { conn.RUnlock() }()
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
 
-  sid := frame.streamID
+	sid := frame.streamID
 
-  // Check Stream ID is odd.
-  if sid&1 == 0 {
-    log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n", sid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check Stream ID is odd.
+	if sid&1 == 0 {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n", sid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Check stream is open.
-  nsid := conn.nextClientStreamID + 2
-  if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-    log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check stream is open.
+	nsid := conn.nextClientStreamID + 2
+	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Stream ID is fine.
+	// Stream ID is fine.
 
-  // Send headers to stream.
-  conn.streamInputs[sid] <- frame
+	// Send headers to stream.
+	conn.streamInputs[sid] <- frame
 
-  // Handle flags.
-  if frame.Flags&FLAG_FIN != 0 {
-    conn.streams[sid].state.CloseThere()
-  }
+	// Handle flags.
+	if frame.Flags&FLAG_FIN != 0 {
+		conn.streams[sid].state.CloseThere()
+	}
 }
 
 // handleWindowUpdateFrame performs the processing of WINDOW_UPDATE frames.
 func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) {
-  conn.RLock()
-  defer func() { conn.RUnlock() }()
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
 
-  sid := frame.streamID
+	sid := frame.streamID
 
-  // Check Stream ID is odd.
-  if sid&1 == 0 {
-    log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be odd.\n", sid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check Stream ID is odd.
+	if sid&1 == 0 {
+		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be odd.\n", sid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Check stream is open.
-  nsid := conn.nextClientStreamID + 2
-  if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-    log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be %d.\n", sid, nsid)
-    conn.numBenignErrors++
-    return
-  }
+	// Check stream is open.
+	nsid := conn.nextClientStreamID + 2
+	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
+		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be %d.\n", sid, nsid)
+		conn.numBenignErrors++
+		return
+	}
 
-  // Stream ID is fine.
+	// Stream ID is fine.
 
-  // Check delta window size is valid.
-  delta := frame.DeltaWindowSize
-  if delta > MAX_DELTA_WINDOW_SIZE || delta < 1 {
-    log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n", delta)
-    conn.PROTOCOL_ERROR(sid)
-  }
+	// Check delta window size is valid.
+	delta := frame.DeltaWindowSize
+	if delta > MAX_DELTA_WINDOW_SIZE || delta < 1 {
+		log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n", delta)
+		conn.PROTOCOL_ERROR(sid)
+	}
 
-  // Send update to stream.
-  conn.streamInputs[sid] <- frame
+	// Send update to stream.
+	conn.streamInputs[sid] <- frame
 }
 
 // closeStream closes the provided stream safely.
 func (conn *serverConnection) closeStream(streamID uint32) {
-  if streamID == 0 {
-    log.Println("Error: Tried to close stream 0.")
-    return
-  }
+	if streamID == 0 {
+		log.Println("Error: Tried to close stream 0.")
+		return
+	}
 
-  conn.streams[streamID].stop = true
-  conn.streams[streamID].state.Close()
-  close(conn.streamInputs[streamID])
-  delete(conn.streams, streamID)
+	conn.streams[streamID].stop = true
+	conn.streams[streamID].state.Close()
+	close(conn.streamInputs[streamID])
+	delete(conn.streams, streamID)
 }
 
 // PROTOCOL_ERROR informs the client that a protocol error has
 // occurred, stops all running streams, and ends the connection.
 func (conn *serverConnection) PROTOCOL_ERROR(streamID uint32) {
-  reply := new(RstStreamFrame)
-  reply.version = uint16(conn.version)
-  reply.streamID = streamID
-  reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
-  conn.WriteFrame(reply)
+	reply := new(RstStreamFrame)
+	reply.version = uint16(conn.version)
+	reply.streamID = streamID
+	reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
+	conn.WriteFrame(reply)
 
-  // Leave time for the message to be sent and received.
-  time.Sleep(100 * time.Millisecond)
-  conn.cleanup()
-  runtime.Goexit()
+	// Leave time for the message to be sent and received.
+	time.Sleep(100 * time.Millisecond)
+	conn.cleanup()
+	runtime.Goexit()
 }
 
 // cleanup is used to end any running streams and
 // aid garbage collection before the connection
 // is closed.
 func (conn *serverConnection) cleanup() {
-  for streamID, c := range conn.streamInputs {
-    close(c)
-    conn.streams[streamID].stop = true
-  }
-  conn.streamInputs = nil
-  conn.streams = nil
+	for streamID, c := range conn.streamInputs {
+		close(c)
+		conn.streams[streamID].stop = true
+	}
+	conn.streamInputs = nil
+	conn.streams = nil
 }
 
 // serve prepares and executes the frame reading
@@ -645,95 +645,95 @@ func (conn *serverConnection) cleanup() {
 // global settings set by the server are sent to
 // the new client.
 func (conn *serverConnection) serve() {
-  defer func() {
-    if err := recover(); err != nil {
-      const size = 4096
-      buf := make([]byte, size)
-      buf = buf[:runtime.Stack(buf, false)]
-      log.Printf("spdy: panic serving %v: %v\n%s", conn.remoteAddr, err, buf)
-    }
-  }()
+	defer func() {
+		if err := recover(); err != nil {
+			const size = 4096
+			buf := make([]byte, size)
+			buf = buf[:runtime.Stack(buf, false)]
+			log.Printf("spdy: panic serving %v: %v\n%s", conn.remoteAddr, err, buf)
+		}
+	}()
 
-  // Start the send loop.
-  go conn.send()
+	// Start the send loop.
+	go conn.send()
 
-  // Send any global settings.
-  if conn.server.GlobalSettings != nil {
-    settings := new(SettingsFrame)
-    settings.version = uint16(conn.version)
-    settings.Settings = conn.server.GlobalSettings
-    conn.dataPriority[3] <- settings
-  }
+	// Send any global settings.
+	if conn.server.GlobalSettings != nil {
+		settings := new(SettingsFrame)
+		settings.version = uint16(conn.version)
+		settings.Settings = conn.server.GlobalSettings
+		conn.dataPriority[3] <- settings
+	}
 
-  // Enter the main loop.
-  conn.readFrames()
+	// Enter the main loop.
+	conn.readFrames()
 
-  // Cleanup before the connection closes.
-  conn.cleanup()
+	// Cleanup before the connection closes.
+	conn.cleanup()
 }
 
 // acceptDefaultSPDYv2 is used in starting a SPDY/2 connection from
 // an HTTP server supporting NPN.
 func acceptDefaultSPDYv2(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-  server := new(Server)
-  server.TLSConfig = srv.TLSConfig
-  acceptSPDYv2(server, tlsConn, nil)
+	server := new(Server)
+	server.TLSConfig = srv.TLSConfig
+	acceptSPDYv2(server, tlsConn, nil)
 }
 
 // acceptSPDYv2 is used in starting a SPDY/2 connection from an HTTP
 // server supporting NPN. This is called manually from within a
 // closure which stores the SPDY server.
 func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
-  conn := newConn(tlsConn)
-  conn.server = server
-  conn.version = 2
+	conn := newConn(tlsConn)
+	conn.server = server
+	conn.version = 2
 
-  conn.serve()
+	conn.serve()
 }
 
 // acceptDefaultSPDYv3 is used in starting a SPDY/3 connection from
 // an HTTP server supporting NPN.
 func acceptDefaultSPDYv3(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-  server := new(Server)
-  server.TLSConfig = srv.TLSConfig
-  acceptSPDYv3(server, tlsConn, nil)
+	server := new(Server)
+	server.TLSConfig = srv.TLSConfig
+	acceptSPDYv3(server, tlsConn, nil)
 }
 
 // acceptSPDYv3 is used in starting a SPDY/3 connection from an HTTP
 // server supporting NPN. This is called manually from within a
 // closure which stores the SPDY server.
 func acceptSPDYv3(server *Server, tlsConn *tls.Conn, _ http.Handler) {
-  conn := newConn(tlsConn)
-  conn.server = server
-  conn.version = 3
+	conn := newConn(tlsConn)
+	conn.server = server
+	conn.version = 3
 
-  conn.serve()
+	conn.serve()
 }
 
 // newConn is used to create and initialise a server connection.
 func newConn(tlsConn *tls.Conn) *serverConnection {
-  conn := new(serverConnection)
-  conn.remoteAddr = tlsConn.RemoteAddr().String()
-  conn.conn = tlsConn
-  conn.buf = bufio.NewReader(tlsConn)
-  conn.tlsState = new(tls.ConnectionState)
-  *conn.tlsState = tlsConn.ConnectionState()
-  conn.compressor = new(Compressor)
-  conn.decompressor = new(Decompressor)
-  conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
-  conn.streams = make(map[uint32]*responseStream)
-  conn.streamInputs = make(map[uint32]chan<- Frame)
-  conn.dataPriority = [8]chan Frame{}
-  conn.dataPriority[0] = make(chan Frame)
-  conn.dataPriority[1] = make(chan Frame)
-  conn.dataPriority[2] = make(chan Frame)
-  conn.dataPriority[3] = make(chan Frame)
-  conn.dataPriority[4] = make(chan Frame)
-  conn.dataPriority[5] = make(chan Frame)
-  conn.dataPriority[6] = make(chan Frame)
-  conn.dataPriority[7] = make(chan Frame)
-  conn.pings = make(map[uint32]chan<- bool)
-  conn.done = new(sync.WaitGroup)
+	conn := new(serverConnection)
+	conn.remoteAddr = tlsConn.RemoteAddr().String()
+	conn.conn = tlsConn
+	conn.buf = bufio.NewReader(tlsConn)
+	conn.tlsState = new(tls.ConnectionState)
+	*conn.tlsState = tlsConn.ConnectionState()
+	conn.compressor = new(Compressor)
+	conn.decompressor = new(Decompressor)
+	conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
+	conn.streams = make(map[uint32]*responseStream)
+	conn.streamInputs = make(map[uint32]chan<- Frame)
+	conn.dataPriority = [8]chan Frame{}
+	conn.dataPriority[0] = make(chan Frame)
+	conn.dataPriority[1] = make(chan Frame)
+	conn.dataPriority[2] = make(chan Frame)
+	conn.dataPriority[3] = make(chan Frame)
+	conn.dataPriority[4] = make(chan Frame)
+	conn.dataPriority[5] = make(chan Frame)
+	conn.dataPriority[6] = make(chan Frame)
+	conn.dataPriority[7] = make(chan Frame)
+	conn.pings = make(map[uint32]chan<- bool)
+	conn.done = new(sync.WaitGroup)
 
-  return conn
+	return conn
 }
