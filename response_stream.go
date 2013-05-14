@@ -50,7 +50,11 @@ func (s *responseStream) Push(resource string) (PushWriter, error) {
 }
 
 func (s *responseStream) Settings() []*Setting {
-	return s.conn.receivedSettings
+	out := make([]*Setting, 0, len(s.conn.receivedSettings))
+	for _, val := range s.conn.receivedSettings {
+		out = append(out, val)
+	}
+	return out
 }
 
 func (s *responseStream) State() *StreamState {

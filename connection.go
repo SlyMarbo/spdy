@@ -31,7 +31,7 @@ type serverConnection struct {
 	pingID             uint32
 	compressor         *Compressor
 	decompressor       *Decompressor
-	receivedSettings   []*Setting
+	receivedSettings   map[uint32]*Setting
 	nextServerStreamID uint32          // even
 	nextClientStreamID uint32          // odd
 	initialWindowSize  uint32          // transport window
@@ -122,20 +122,8 @@ func (conn *serverConnection) readFrames() {
 			conn.handleRstStream(frame)
 
 		case *SettingsFrame:
-			if conn.receivedSettings == nil {
-				conn.receivedSettings = frame.Settings
-			} else {
-				// TODO: do settings in a map.
-				for _, new := range frame.Settings {
-					for i, old := range conn.receivedSettings {
-						if new.ID == old.ID {
-							conn.receivedSettings[i] = new
-						}
-					}
-					conn.receivedSettings = append(conn.receivedSettings, new)
-				}
-			}
 			for _, setting := range frame.Settings {
+				conn.receivedSettings[setting.ID] = setting
 				if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE && conn.version > 2 {
 					log.Printf("Initial window size is %d.\n", setting.Value)
 					conn.initialWindowSize = setting.Value
@@ -723,6 +711,7 @@ func newConn(tlsConn *tls.Conn) *serverConnection {
 	conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
 	conn.streams = make(map[uint32]*responseStream)
 	conn.streamInputs = make(map[uint32]chan<- Frame)
+	conn.receivedSettings = make(map[uint32]*Setting)
 	conn.dataPriority = [8]chan Frame{}
 	conn.dataPriority[0] = make(chan Frame)
 	conn.dataPriority[1] = make(chan Frame)

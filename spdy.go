@@ -707,17 +707,6 @@ type Setting struct {
 	Value uint32
 }
 
-func (frame *Setting) String() string {
-	buf := new(bytes.Buffer)
-
-	buf.WriteString("SETTING {\n\t\t\t")
-	buf.WriteString(fmt.Sprintf("Flags:         %d\n\t\t\t", frame.Flags))
-	buf.WriteString(fmt.Sprintf("ID:            %d\n\t\t\t", frame.ID))
-	buf.WriteString(fmt.Sprintf("Value:         %d\n\t\t}\n", frame.Value))
-
-	return buf.String()
-}
-
 func (s *Setting) Bytes() []byte {
 	out := make([]byte, 8)
 
@@ -731,6 +720,17 @@ func (s *Setting) Bytes() []byte {
 	out[7] = byte(s.Value)
 
 	return out
+}
+
+func (frame *Setting) String() string {
+	buf := new(bytes.Buffer)
+
+	buf.WriteString("SETTING {\n\t\t\t")
+	buf.WriteString(fmt.Sprintf("Flags:         %d\n\t\t\t", frame.Flags))
+	buf.WriteString(fmt.Sprintf("ID:            %d\n\t\t\t", frame.ID))
+	buf.WriteString(fmt.Sprintf("Value:         %d\n\t\t}\n", frame.Value))
+
+	return buf.String()
 }
 
 /************

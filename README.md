@@ -9,7 +9,6 @@ To-do:
  - Implement handling of SYN_REPLY frames.
  - Finish GOAWAY handling.
  - Implement handling of CREDENTIAL frames.
- - Change received settings to use a map.
  
 Note that this implementation supports SPDY/3, but not SPDY/2.
 
