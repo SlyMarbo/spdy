@@ -61,6 +61,10 @@ func (s *responseStream) State() *StreamState {
 	return s.state
 }
 
+func (s *responseStream) Stop() {
+	s.stop = true
+}
+
 func (s *responseStream) StreamID() uint32 {
 	return s.streamID
 }

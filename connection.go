@@ -24,7 +24,7 @@ type serverConnection struct {
 	conn               *tls.Conn
 	buf                *bufio.Reader // buffered reader for the connection.
 	tlsState           *tls.ConnectionState
-	streams            map[uint32]*responseStream
+	streams            map[uint32]Stream
 	streamInputs       map[uint32]chan<- Frame
 	dataPriority       [8]chan Frame
 	pings              map[uint32]chan<- bool
@@ -316,6 +316,10 @@ func (conn *serverConnection) Ping() <-chan bool {
 // these two factors, the SYN_STREAM is sent at priority 0 (max), but its
 // data is sent at priority 7 (min).
 func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, error) {
+	if conn.goaway {
+		return nil, errors.New("Error: GOAWAY received, so push could not be sent.")
+	}
+
 	conn.Lock()
 	defer conn.Unlock()
 	conn.nextServerStreamID += 2
@@ -425,11 +429,12 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.Lock()
 	input := make(chan Frame)
 	conn.streamInputs[sid] = input
-	conn.streams[sid] = conn.newStream(frame, input, conn.dataPriority[frame.Priority])
+	nextStream := conn.newStream(frame, input, conn.dataPriority[frame.Priority])
+	conn.streams[sid] = nextStream
 	conn.Unlock()
 	conn.RLock()
 
-	go conn.streams[sid].run()
+	go nextStream.run()
 	conn.done.Add(1)
 
 	return
@@ -516,7 +521,7 @@ func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
 
 	// Handle flags.
 	if frame.Flags&FLAG_FIN != 0 {
-		conn.streams[sid].state.CloseThere()
+		conn.streams[sid].State().CloseThere()
 	}
 }
 
@@ -549,7 +554,7 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
 
 	// Handle flags.
 	if frame.Flags&FLAG_FIN != 0 {
-		conn.streams[sid].state.CloseThere()
+		conn.streams[sid].State().CloseThere()
 	}
 }
 
@@ -595,8 +600,8 @@ func (conn *serverConnection) closeStream(streamID uint32) {
 		return
 	}
 
-	conn.streams[streamID].stop = true
-	conn.streams[streamID].state.Close()
+	conn.streams[streamID].Stop()
+	conn.streams[streamID].State().Close()
 	close(conn.streamInputs[streamID])
 	delete(conn.streams, streamID)
 }
@@ -622,7 +627,7 @@ func (conn *serverConnection) PROTOCOL_ERROR(streamID uint32) {
 func (conn *serverConnection) cleanup() {
 	for streamID, c := range conn.streamInputs {
 		close(c)
-		conn.streams[streamID].stop = true
+		conn.streams[streamID].Stop()
 	}
 	conn.streamInputs = nil
 	conn.streams = nil
@@ -709,7 +714,7 @@ func newConn(tlsConn *tls.Conn) *serverConnection {
 	conn.compressor = new(Compressor)
 	conn.decompressor = new(Decompressor)
 	conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
-	conn.streams = make(map[uint32]*responseStream)
+	conn.streams = make(map[uint32]Stream)
 	conn.streamInputs = make(map[uint32]chan<- Frame)
 	conn.receivedSettings = make(map[uint32]*Setting)
 	conn.dataPriority = [8]chan Frame{}

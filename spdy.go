@@ -25,6 +25,7 @@ type Stream interface {
 	Connection() Connection
 	Header() Header
 	State() *StreamState
+	Stop()
 	StreamID() uint32
 	Write([]byte) (int, error)
 	WriteHeader(int)

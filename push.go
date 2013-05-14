@@ -52,6 +52,10 @@ func (p *pushStream) State() *StreamState {
 	return p.state
 }
 
+func (p *pushStream) Stop() {
+	p.stop = true
+}
+
 func (p *pushStream) StreamID() uint32 {
 	return p.streamID
 }
