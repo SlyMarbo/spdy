@@ -18,7 +18,12 @@ type pushStream struct {
 	headers     Header
 	headersSent bool
 	stop        bool
+	cancelled   bool
 	version     int
+}
+
+func (p *pushStream) Cancel() {
+	p.cancelled = true
 }
 
 func (p *pushStream) Connection() Connection {
@@ -62,6 +67,10 @@ func (p *pushStream) StreamID() uint32 {
 
 // Write is used for sending data in the push.
 func (p *pushStream) Write(inputData []byte) (int, error) {
+	if p.cancelled {
+		return 0, errors.New("Error: Client sent GOAWAY without processing server push.")
+	}
+
 	if p.state.ClosedHere() {
 		return 0, errors.New("Error: Stream already closed.")
 	}

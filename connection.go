@@ -151,8 +151,13 @@ func (conn *serverConnection) readFrames() {
 		/*** [INCOMPLETE] ***/
 		case *GoawayFrame:
 
-			// TODO: inform push streams that they haven't been processed if
-			// the last good stream ID is less than their ID.
+			lastProcessed := frame.LastGoodStreamID
+			for streamID, stream := range conn.streams {
+				if streamID&1 == 0 && streamID > lastProcessed {
+					// Stream is server-sent and has not been processed.
+					stream.Cancel()
+				}
+			}
 			conn.goaway = true
 
 		case *HeadersFrame:
@@ -359,6 +364,9 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 	out.stop = false
 	out.version = conn.version
 	out.AddFlowControl()
+
+	// Store in the connection map.
+	conn.streams[newID] = out
 
 	return out, nil
 }

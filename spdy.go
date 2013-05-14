@@ -22,6 +22,7 @@ type Connection interface {
 // stream.
 type Stream interface {
 	AddFlowControl()
+	Cancel()
 	Connection() Connection
 	Header() Header
 	State() *StreamState

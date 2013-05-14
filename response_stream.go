@@ -33,6 +33,10 @@ type responseStream struct {
 	version        int
 }
 
+func (s *responseStream) Cancel() {
+	panic("Error: Client stream cancelled. Use Stop() instead.")
+}
+
 func (s *responseStream) Connection() Connection {
 	return s.conn
 }
