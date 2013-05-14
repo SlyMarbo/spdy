@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 )
 
 // Connection represents a SPDY
@@ -582,6 +583,7 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
 	out[11] = byte(numSettings)            // Number of Entries
 
 	offset := 12
+	sort.Sort(_settingsSorter(frame.Settings))
 	for _, setting := range frame.Settings { // TODO: add checks to enforce duplicate settings rules.
 		bytes := setting.Bytes()
 		for i, b := range bytes {
@@ -699,6 +701,20 @@ func (frame *SettingsFrame) WriteTo(writer io.Writer) error {
 
 func (frame *SettingsFrame) Version() uint16 {
 	return frame.version
+}
+
+type _settingsSorter []*Setting
+
+func (s _settingsSorter) Len() int {
+	return len(s)
+}
+
+func (s _settingsSorter) Less(i, j int) bool {
+	return s[i].ID < s[j].ID
+}
+
+func (s _settingsSorter) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
 }
 
 type Setting struct {
