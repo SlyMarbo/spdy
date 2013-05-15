@@ -15,6 +15,7 @@ import (
 type Connection interface {
 	Ping() <-chan bool
 	Push(string, Stream) (PushWriter, error)
+	Request(*Request) (Stream, error)
 	WriteFrame(Frame)
 }
 
