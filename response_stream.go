@@ -192,6 +192,9 @@ func (s *responseStream) receiveFrame(frame Frame) {
 	case *DataFrame:
 		s.requestBody.Write(frame.Data)
 
+	case *SynReplyFrame:
+		s.headers.Update(frame.Headers)
+
 	case *HeadersFrame:
 		s.headers.Update(frame.Headers)
 

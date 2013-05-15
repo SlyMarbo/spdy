@@ -109,9 +109,8 @@ func (conn *serverConnection) readFrames() {
 		case *SynStreamFrame:
 			conn.handleSynStream(frame)
 
-		/*** [UNIMPLEMENTED] ***/
 		case *SynReplyFrame:
-			panic("Got SYN_REPLY: [UNIMPLEMENTED]")
+			conn.handleSynReply(frame)
 
 		case *RstStreamFrame:
 			if StatusCodeIsFatal(int(frame.StatusCode)) {
@@ -452,6 +451,39 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.done.Add(1)
 
 	return
+}
+
+// handleSynReply performs the processing of SYN_REPLY frames.
+func (conn *serverConnection) handleSynReply(frame *SynReplyFrame) {
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
+
+	sid := frame.streamID
+
+	// Check Stream ID is odd.
+	if sid&1 == 0 {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n", sid)
+		conn.numBenignErrors++
+		return
+	}
+
+	// Check stream is open.
+	nsid := conn.nextClientStreamID + 2
+	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
+		conn.numBenignErrors++
+		return
+	}
+
+	// Stream ID is fine.
+
+	// Send headers to stream.
+	conn.streamInputs[sid] <- frame
+
+	// Handle flags.
+	if frame.Flags&FLAG_FIN != 0 {
+		conn.streams[sid].State().CloseThere()
+	}
 }
 
 // handleRstStream performs the processing of RST_STREAM frames.

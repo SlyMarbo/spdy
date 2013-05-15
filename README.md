@@ -11,7 +11,6 @@ Servers
 -------
 
 To-do:
- - Implement handling of SYN_REPLY frames.
  - Implement handling of CREDENTIAL frames.
 
 Adding SPDY support to an existing server doesn't take much work.
