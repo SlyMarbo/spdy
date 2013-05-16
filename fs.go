@@ -56,9 +56,3 @@ func PushFile(wrt ResponseWriter, req *Request, name, path string) error {
 	push.Close()
 	return nil
 }
-
-func NotFound(w ResponseWriter, r *Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusNotFound)
-	w.Write([]byte("404 page not found"))
-}
