@@ -85,9 +85,6 @@ func (s *responseStream) Write(inputData []byte) (int, error) {
 		return 0, ErrCancelled
 	}
 
-	// Send any new headers.
-	s.WriteHeaders()
-
 	// Copy the data locally to avoid any pointer issues.
 	data := make([]byte, len(inputData))
 	copy(data, inputData)
@@ -96,6 +93,9 @@ func (s *responseStream) Write(inputData []byte) (int, error) {
 	if !s.wroteHeader {
 		s.WriteHeader(http.StatusOK)
 	}
+
+	// Send any new headers.
+	s.WriteHeaders()
 
 	// Chunk the response if necessary.
 	// Data is sent to the flow control to
