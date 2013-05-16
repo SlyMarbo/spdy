@@ -10,9 +10,6 @@ Note that this implementation supports SPDY/3, but not SPDY/2.
 Servers
 -------
 
-To-do:
- - Implement handling of CREDENTIAL frames.
-
 Adding SPDY support to an existing Go server doesn't take much work.
 
 Modifying a simple example server like the following:
@@ -189,5 +186,4 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 Clients
 -------
 
-To-do:
- - Work in progress...
+Work in progress...
