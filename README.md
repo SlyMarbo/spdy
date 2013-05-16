@@ -3,7 +3,7 @@ spdy
 
 My implementation of SPDY/v3 (work in progress).
 
-So far, servers are mostly ready, but the client code hasn't been started.
+So far, servers are ready, but the client code is not yet functional.
  
 Note that this implementation supports SPDY/3, but not SPDY/2.
 
@@ -13,7 +13,7 @@ Servers
 To-do:
  - Implement handling of CREDENTIAL frames.
 
-Adding SPDY support to an existing server doesn't take much work.
+Adding SPDY support to an existing Go server doesn't take much work.
 
 Modifying a simple example server like the following:
 ```go
