@@ -104,12 +104,13 @@ func (conn *clientConnection) readFrames() {
 		// This is the main frame handling section.
 		switch frame := frame.(type) {
 
+		/*** [UNIMPLEMENTED] ***/
 		case *SynStreamFrame:
-			panic("Got SYN_STREAM: [UNIMPLEMENTED]")
+			log.Println("Got SYN_STREAM: [UNIMPLEMENTED]")
 
 		/*** [UNIMPLEMENTED] ***/
 		case *SynReplyFrame:
-			panic("Got SYN_REPLY: [UNIMPLEMENTED]")
+			log.Println("Got SYN_REPLY: [UNIMPLEMENTED]")
 
 		case *RstStreamFrame:
 			if StatusCodeIsFatal(int(frame.StatusCode)) {
@@ -146,7 +147,6 @@ func (conn *clientConnection) readFrames() {
 				conn.WriteFrame(frame)
 			}
 
-		/*** [INCOMPLETE] ***/
 		case *GoawayFrame:
 
 			lastProcessed := frame.LastGoodStreamID
@@ -166,13 +166,13 @@ func (conn *clientConnection) readFrames() {
 
 		/*** [UNIMPLEMENTED] ***/
 		case *CredentialFrame:
-			panic("Got CREDENTIAL: [UNIMPLEMENTED]")
+			log.Println("Got CREDENTIAL: [UNIMPLEMENTED]")
 
 		case *DataFrame:
 			conn.handleDataFrame(frame)
 
 		default:
-			panic(fmt.Sprintf("unexpected frame type %T", frame))
+			log.Println(fmt.Sprintf("unexpected frame type %T", frame))
 		}
 	}
 }

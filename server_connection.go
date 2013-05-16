@@ -76,13 +76,15 @@ func (conn *serverConnection) readFrames() {
 			}
 
 			// TODO: handle error
-			panic(err)
+			log.Println(err)
+			return
 		}
 
 		// Decompress the frame's headers, if there are any.
 		err = frame.ReadHeaders(conn.decompressor)
 		if err != nil {
-			panic(err)
+			log.Println("Error in decompression: ", err)
+			conn.PROTOCOL_ERROR(frame.StreamID())
 		}
 
 		// TODO: replace this with a proper logging library.
@@ -147,7 +149,6 @@ func (conn *serverConnection) readFrames() {
 				conn.WriteFrame(frame)
 			}
 
-		/*** [INCOMPLETE] ***/
 		case *GoawayFrame:
 
 			lastProcessed := frame.LastGoodStreamID
@@ -167,13 +168,13 @@ func (conn *serverConnection) readFrames() {
 
 		/*** [UNIMPLEMENTED] ***/
 		case *CredentialFrame:
-			panic("Got CREDENTIAL: [UNIMPLEMENTED]")
+			log.Println("Got CREDENTIAL: [UNIMPLEMENTED]")
 
 		case *DataFrame:
 			conn.handleDataFrame(frame)
 
 		default:
-			panic(fmt.Sprintf("unexpected frame type %T", frame))
+			log.Println(fmt.Sprintf("unexpected frame type %T", frame))
 		}
 	}
 }
@@ -188,14 +189,16 @@ func (conn *serverConnection) send() {
 		// Compress any name/value header blocks.
 		err := frame.WriteHeaders(conn.compressor)
 		if err != nil {
-			panic(err)
+			log.Println(err)
+			continue
 		}
 
 		// Leave the specifics of writing to the
 		// connection up to the frame.
 		err = frame.WriteTo(conn.conn)
 		if err != nil {
-			panic(err)
+			log.Println(err)
+			continue
 		}
 	}
 }
@@ -257,13 +260,15 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 	rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
 	url, err := url.Parse(rawUrl)
 	if err != nil {
-		panic(err) // TODO: handle the error properly.
+		log.Println(err) // TODO: handle the error properly.
+		return nil
 	}
 
 	vers := headers.Get(":version")
 	major, minor, ok := http.ParseHTTPVersion(vers)
 	if !ok {
-		panic("Invalid HTTP version: " + headers.Get(":version"))
+		log.Println("Error: Invalid HTTP version: " + headers.Get(":version"))
+		return nil
 	}
 
 	stream.request = &Request{
