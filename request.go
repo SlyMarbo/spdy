@@ -146,6 +146,41 @@ type Request struct {
 	TLS *tls.ConnectionState
 }
 
+// NewRequest returns a new Request given a method, URL, and optional body.
+func NewRequest(method, urlStr string, body io.Reader, priority int) (*Request, error) {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+	rc, ok := body.(io.ReadCloser)
+	if !ok && body != nil {
+		rc = ioutil.NopCloser(body)
+	}
+	req := &Request{
+		Method:     method,
+		URL:        u,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Priority:   priority,
+		Header:     make(Header),
+		Body:       rc,
+		Host:       u.Host,
+	}
+	if body != nil {
+		switch v := body.(type) {
+		case *bytes.Buffer:
+			req.ContentLength = int64(v.Len())
+		case *bytes.Reader:
+			req.ContentLength = int64(v.Len())
+		case *strings.Reader:
+			req.ContentLength = int64(v.Len())
+		}
+	}
+
+	return req, nil
+}
+
 // spdyRequestToHttpRequest is a simple helper function for
 // turning a spdy.Request into an http.Request to enable
 // use of net/http capabilities, like http.ServeFile.
