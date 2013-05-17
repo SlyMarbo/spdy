@@ -184,7 +184,7 @@ func NewRequest(method, urlStr string, body io.Reader, priority int) (*Request, 
 // spdyRequestToHttpRequest is a simple helper function for
 // turning a spdy.Request into an http.Request to enable
 // use of net/http capabilities, like http.ServeFile.
-func spdyRequestToHttpRequest(req *Request) *http.Request {
+func spdyToHttpRequest(req *Request) *http.Request {
 	out := new(http.Request)
 	out.Method = req.Method
 	out.URL = req.URL

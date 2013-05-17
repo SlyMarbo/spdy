@@ -34,7 +34,7 @@ func (h *_httpPushWriter) WriteHeader(_ int) {
 // ServeFile replies to the request with the contents of
 // the named file or directory.
 func ServeFile(wrt ResponseWriter, req *Request, name string) {
-	r := spdyRequestToHttpRequest(req)
+	r := spdyToHttpRequest(req)
 	w := &_httpResponseWriter{wrt}
 	http.ServeFile(w, r, name)
 }
@@ -50,7 +50,7 @@ func PushFile(wrt ResponseWriter, req *Request, name, path string) error {
 	if err != nil {
 		return err
 	}
-	r := spdyRequestToHttpRequest(req)
+	r := spdyToHttpRequest(req)
 	w := &_httpPushWriter{push}
 	http.ServeFile(w, r, path)
 	push.Close()
