@@ -3,12 +3,14 @@ package spdy
 import (
 	"errors"
 	"log"
+	"sync"
 )
 
 // pushStream is a structure that implements the
 // Stream and PushWriter interfaces. this is used
 // for performing server pushes.
 type pushStream struct {
+	sync.RWMutex
 	conn        *serverConnection
 	streamID    uint32
 	flow        *flowControl
@@ -23,7 +25,14 @@ type pushStream struct {
 }
 
 func (p *pushStream) Cancel() {
+	p.Lock()
 	p.cancelled = true
+	rst := new(RstStreamFrame)
+	rst.streamID = p.streamID
+	rst.version = uint16(p.version)
+	rst.StatusCode = RST_STREAM_CANCEL
+	p.output <- rst
+	p.Unlock()
 }
 
 func (p *pushStream) Connection() Connection {

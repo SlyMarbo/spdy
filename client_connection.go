@@ -204,22 +204,31 @@ func (conn *clientConnection) WriteFrame(frame Frame) {
 	conn.dataOutput <- frame
 }
 
+func (conn *clientConnection) InitialWindowSize() uint32 {
+	return conn.initialWindowSize
+}
+
 // Ping is used to send a SPDY ping to the client.
 // A channel is returned immediately, and 'true'
 // sent when the ping reply is received. If there
 // is a fault in the connection, the channel is
 // closed.
 func (conn *clientConnection) Ping() <-chan bool {
-	conn.Lock()
-	defer conn.Unlock()
-
 	ping := new(PingFrame)
 	ping.version = uint16(conn.version)
-	ping.PingID = conn.pingID
-	conn.dataOutput <- ping
-	c := make(chan bool, 1)
-	conn.pings[conn.pingID] = c
+
+	conn.Lock()
+
+	pid := conn.pingID
 	conn.pingID += 2
+	ping.PingID = pid
+	conn.dataOutput <- ping
+
+	conn.Unlock()
+
+	c := make(chan bool, 1)
+	conn.pings[pid] = c
+
 	return c
 }
 
@@ -230,7 +239,70 @@ func (conn *clientConnection) Push(resource string, origin Stream) (PushWriter, 
 }
 
 func (conn *clientConnection) Request(req *Request) (Stream, error) {
-	return nil, nil
+
+	// Prepare the SYN_STREAM.
+	syn := new(SynStreamFrame)
+	syn.version = uint16(conn.version)
+	syn.Priority = uint8(req.Priority)
+	url := req.URL
+	if url == nil || url.Scheme == "" || url.Host == "" || url.Path == "" {
+		return nil, errors.New("Error: Incomplete path provided to resource.")
+	}
+	headers := req.Header
+	headers.Set(":method", req.Method)
+	headers.Set(":path", url.Path)
+	headers.Set(":version", "HTTP/1.1")
+	headers.Set(":host", url.Host)
+	headers.Set(":scheme", url.Scheme)
+	syn.Headers = headers
+	if req.Body != nil {
+		syn.Flags = FLAG_FIN
+	}
+
+	// Send.
+	conn.Lock()
+	syn.streamID = conn.nextClientStreamID
+	input := make(chan Frame)
+	conn.streamInputs[syn.streamID] = input
+	conn.nextClientStreamID += 2
+	conn.WriteFrame(syn)
+	conn.Unlock()
+
+	// Create the request stream.
+	out := new(requestStream)
+	out.conn = conn
+	out.streamID = syn.streamID
+	out.state = new(StreamState)
+	out.input = input
+	out.output = conn.dataOutput
+	out.request = req
+	out.headers = make(Header)
+	out.stop = false
+	out.version = conn.version
+	out.AddFlowControl()
+
+	// Store in the connection map.
+	conn.streams[syn.streamID] = out
+
+	// Send the request body, if any.
+	if req.Body != nil {
+		_, err := io.Copy(out, req.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Body.Close()
+
+		// Half-close the stream.
+		data := new(DataFrame)
+		data.streamID = syn.streamID
+		data.Flags = FLAG_FIN
+		data.Data = []byte{}
+		conn.WriteFrame(data)
+	}
+	out.State().CloseHere()
+
+	return out, nil
 }
 
 // validFrameVersion checks that a frame has the same SPDY
@@ -561,6 +633,7 @@ func newClientConn(tlsConn *tls.Conn) *clientConnection {
 	conn.dataOutput = make(chan Frame)
 	conn.pings = make(map[uint32]chan<- bool)
 	conn.pingID = 1
+	conn.nextClientStreamID = 1
 	conn.done = new(sync.WaitGroup)
 
 	return conn

@@ -13,6 +13,7 @@ import (
 // session. This co-ordinates
 // and manages SPDY Streams.
 type Connection interface {
+	InitialWindowSize() uint32
 	Ping() <-chan bool
 	Push(string, Stream) (PushWriter, error)
 	Request(*Request) (Stream, error)

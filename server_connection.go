@@ -248,7 +248,6 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 	stream.handler = DefaultServeMux
 	stream.certificates = make([]Certificate, 1)
 	stream.headers = make(Header)
-	stream.settings = make([]*Setting, 1)
 	stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
 	stream.version = conn.version
 
@@ -293,22 +292,31 @@ func (conn *serverConnection) WriteFrame(frame Frame) {
 	conn.dataPriority[0] <- frame
 }
 
+func (conn *serverConnection) InitialWindowSize() uint32 {
+	return conn.initialWindowSize
+}
+
 // Ping is used to send a SPDY ping to the client.
 // A channel is returned immediately, and 'true'
 // sent when the ping reply is received. If there
 // is a fault in the connection, the channel is
 // closed.
 func (conn *serverConnection) Ping() <-chan bool {
-	conn.Lock()
-	defer conn.Unlock()
-
-	conn.pingID += 2
 	ping := new(PingFrame)
 	ping.version = uint16(conn.version)
-	ping.PingID = conn.pingID
+
+	conn.Lock()
+
+	pid := conn.pingID
+	conn.pingID += 2
+	ping.PingID = pid
 	conn.dataPriority[0] <- ping
+
+	conn.Unlock()
+
 	c := make(chan bool, 1)
-	conn.pings[conn.pingID] = c
+	conn.pings[pid] = c
+
 	return c
 }
 
@@ -329,16 +337,10 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 		return nil, errors.New("Error: GOAWAY received, so push could not be sent.")
 	}
 
-	conn.Lock()
-	defer conn.Unlock()
-	conn.nextServerStreamID += 2
-	newID := conn.nextServerStreamID
-
-	// Send the SYN_STREAM.
+	// Prepare the SYN_STREAM.
 	push := new(SynStreamFrame)
 	push.version = uint16(conn.version)
 	push.Flags = FLAG_UNIDIRECTIONAL
-	push.streamID = newID
 	push.AssocStreamID = origin.StreamID()
 	push.Priority = 0
 	url, err := url.Parse(resource)
@@ -355,7 +357,14 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 	headers.Set(":version", "HTTP/1.1")
 	headers.Set(":status", "200 OK")
 	push.Headers = headers
+
+	// Send.
+	conn.Lock()
+	conn.nextServerStreamID += 2
+	newID := conn.nextServerStreamID
+	push.streamID = newID
 	conn.WriteFrame(push)
+	conn.Unlock()
 
 	// Create the pushStream.
 	out := new(pushStream)

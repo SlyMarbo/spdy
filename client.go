@@ -13,14 +13,26 @@ import (
 	"time"
 )
 
+// Objects implementing the Receiver interface can be
+// registered to a specific request on the Client.
+//
+// Receive is passed the original request, the raw data
+// to receive and a bool indicating whether this is the
+// final batch of data. If the bool is set to true, the
+// data may be empty, but should not be nil.
+type Receiver interface {
+	Receive(*Request, []byte, bool)
+}
+
 type Client struct {
 	sync.RWMutex
-	ReadTimeout        time.Duration         // maximum duration before timing out read of the request
-	WriteTimeout       time.Duration         // maximum duration before timing out write of the response
-	TLSConfig          *tls.Config           // optional TLS config, used by ListenAndServeTLS
-	GlobalSettings     []*Setting            // SPDY settings to be sent to all clients automatically.
-	MaxTcpConnsPerHost int                   // Maximum concurrent TCP connections per host.
-	spdyConns          map[string]Connection // SPDY connections mapped to host:port.
+	ReadTimeout        time.Duration // max duration before timing out read on the request
+	WriteTimeout       time.Duration // max duration before timing out write on the response
+	TLSConfig          *tls.Config   // optional TLS config, used by ListenAndServeTLS
+	GlobalSettings     []*Setting    // SPDY settings to be sent to all servers automatically.
+	MaxTcpConnsPerHost int           // Maximum concurrent TCP connections per host.
+
+	spdyConns map[string]Connection // SPDY connections mapped to host:port.
 
 	// Jar specifies the cookie jar.
 	// If Jar is nil, cookies are not sent in requests and ignored

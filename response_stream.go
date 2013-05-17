@@ -25,7 +25,6 @@ type responseStream struct {
 	handler        *ServeMux
 	certificates   []Certificate
 	headers        Header
-	settings       []*Setting
 	unidirectional bool
 	responseCode   int
 	stop           bool
@@ -33,7 +32,7 @@ type responseStream struct {
 	version        int
 }
 
-func (s *responseStream) Cancel() {
+func (_ *responseStream) Cancel() {
 	panic("Error: Client stream cancelled. Use Stop() instead.")
 }
 
@@ -227,7 +226,8 @@ func (s *responseStream) wait() {
 
 // processInput processes any frames currently
 // queued in the input channel, but does not
-// wait once the channel has been cleared.
+// wait once the channel has been cleared, or
+// if it is empty immediately.
 func (s *responseStream) processInput() {
 	var frame Frame
 	var ok bool

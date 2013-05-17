@@ -9,8 +9,7 @@ import (
 // they abide by SPDY's flow control rules. For
 // versions of SPDY before 3, this has no effect.
 type flowControl struct {
-	stream         *responseStream
-	push           *pushStream
+	stream         Stream
 	streamID       uint32
 	output         chan<- Frame
 	active         bool
@@ -62,11 +61,35 @@ func (p *pushStream) AddFlowControl() {
 		flow.buffer = make([][]byte, 0, 10)
 		flow.initialWindow = initialWindow
 		flow.transferWindow = int64(initialWindow)
-		flow.push = p
+		flow.stream = p
 		flow.streamID = p.streamID
 		flow.output = p.output
 	}
 	p.flow = flow
+}
+
+// AddFlowControl initialises flow control for
+// the Stream. If the Stream is running at an
+// older SPDY version than SPDY/3, the flow
+// control has no effect. Multiple calls to
+// AddFlowControl are safe.
+func (r *requestStream) AddFlowControl() {
+	if r.flow != nil {
+		return
+	}
+
+	flow := new(flowControl)
+	initialWindow := r.conn.initialWindowSize
+	if r.version == 3 {
+		flow.active = true
+		flow.buffer = make([][]byte, 0, 10)
+		flow.initialWindow = initialWindow
+		flow.transferWindow = int64(initialWindow)
+		flow.stream = r
+		flow.streamID = r.streamID
+		flow.output = r.output
+	}
+	r.flow = flow
 }
 
 // Active indicates whether flow control
@@ -99,12 +122,7 @@ func (f *flowControl) Deactivate() {
 // The transfer window is updated retroactively,
 // if necessary.
 func (f *flowControl) CheckInitialWindow() {
-	var newWindow uint32
-	if f.stream != nil {
-		newWindow = f.stream.conn.initialWindowSize
-	} else {
-		newWindow = f.push.conn.initialWindowSize
-	}
+	newWindow := f.stream.Connection().InitialWindowSize()
 
 	if f.initialWindow != newWindow {
 		if f.initialWindow > newWindow {
