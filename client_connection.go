@@ -502,11 +502,11 @@ func (conn *clientConnection) cleanup() {
 	conn.streams = nil
 }
 
-// serve prepares and executes the frame reading
+// run prepares and executes the frame reading
 // loop of the connection. At this point, any
-// global settings set by the server are sent to
+// global settings set by the client are sent to
 // the new client.
-func (conn *clientConnection) serve() {
+func (conn *clientConnection) run() {
 	defer func() {
 		if err := recover(); err != nil {
 			const size = 4096
@@ -520,12 +520,22 @@ func (conn *clientConnection) serve() {
 	go conn.send()
 
 	// Send any global settings.
-	if conn.client.GlobalSettings != nil {
-		settings := new(SettingsFrame)
-		settings.version = uint16(conn.version)
-		settings.Settings = conn.client.GlobalSettings
-		conn.dataOutput <- settings
+	settings := new(SettingsFrame)
+	settings.version = uint16(conn.version)
+	settings.Settings = []*Setting{
+		&Setting{
+			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
+			Value: conn.initialWindowSize,
+		},
+		&Setting{
+			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+			Value: 1000,
+		},
 	}
+	if conn.client.GlobalSettings != nil {
+		settings.Settings = append(settings.Settings, conn.client.GlobalSettings...)
+	}
+	conn.dataOutput <- settings
 
 	// Enter the main loop.
 	conn.readFrames()
@@ -535,23 +545,23 @@ func (conn *clientConnection) serve() {
 }
 
 // newConn is used to create and initialise a server connection.
-// func newConn(tlsConn *tls.Conn) *clientConnection {
-// 	conn := new(serverConnection)
-// 	conn.remoteAddr = tlsConn.RemoteAddr().String()
-// 	conn.conn = tlsConn
-// 	conn.buf = bufio.NewReader(tlsConn)
-// 	conn.tlsState = new(tls.ConnectionState)
-// 	*conn.tlsState = tlsConn.ConnectionState()
-// 	conn.compressor = new(Compressor)
-// 	conn.decompressor = new(Decompressor)
-// 	conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
-// 	conn.streams = make(map[uint32]Stream)
-// 	conn.streamInputs = make(map[uint32]chan<- Frame)
-// 	conn.receivedSettings = make(map[uint32]*Setting)
-// 	conn.dataOutput = make(chan Frame)
-// 	conn.pings = make(map[uint32]chan<- bool)
-// 	conn.pingID = 1
-// 	conn.done = new(sync.WaitGroup)
-// 
-// 	return conn
-// }
+func newClientConn(tlsConn *tls.Conn) *clientConnection {
+	conn := new(clientConnection)
+	conn.remoteAddr = tlsConn.RemoteAddr().String()
+	conn.conn = tlsConn
+	conn.buf = bufio.NewReader(tlsConn)
+	conn.tlsState = new(tls.ConnectionState)
+	*conn.tlsState = tlsConn.ConnectionState()
+	conn.compressor = new(Compressor)
+	conn.decompressor = new(Decompressor)
+	conn.initialWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	conn.streams = make(map[uint32]Stream)
+	conn.streamInputs = make(map[uint32]chan<- Frame)
+	conn.receivedSettings = make(map[uint32]*Setting)
+	conn.dataOutput = make(chan Frame)
+	conn.pings = make(map[uint32]chan<- bool)
+	conn.pingID = 1
+	conn.done = new(sync.WaitGroup)
+
+	return conn
+}
