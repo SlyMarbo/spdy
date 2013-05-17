@@ -16,8 +16,9 @@ type Connection interface {
 	InitialWindowSize() uint32
 	Ping() <-chan bool
 	Push(string, Stream) (PushWriter, error)
-	Request(*Request) (Stream, error)
+	Request(*Request, Receiver) (Stream, error)
 	WriteFrame(Frame)
+	Version() uint16
 }
 
 // Stream represents a SPDY
@@ -27,6 +28,7 @@ type Stream interface {
 	Cancel()
 	Connection() Connection
 	Header() Header
+	Run()
 	State() *StreamState
 	Stop()
 	StreamID() uint32
@@ -163,8 +165,15 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check unused space.
@@ -215,9 +224,12 @@ func (frame *SynStreamFrame) String() string {
 	if frame.Flags&FLAG_UNIDIRECTIONAL != 0 {
 		flags += "FLAG_UNIDIRECTIONAL "
 	}
+	if flags == "" {
+		flags = "[NONE]"
+	}
 
 	buf.WriteString("SYN_STREAM {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
@@ -344,8 +356,15 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check unused space.
@@ -387,6 +406,9 @@ func (frame *SynReplyFrame) String() string {
 	flags := ""
 	if frame.Flags&FLAG_FIN != 0 {
 		flags += "FLAG_FIN "
+	}
+	if flags == "" {
+		flags = "[NONE]"
 	}
 
 	buf.WriteString("SYN_REPLY {\n\t")
@@ -501,8 +523,15 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check unused space.
@@ -625,8 +654,15 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check size.
@@ -676,6 +712,9 @@ func (frame *SettingsFrame) String() string {
 	flags := ""
 	if frame.Flags&FLAG_SETTINGS_CLEAR_SETTINGS != 0 {
 		flags += "FLAG_SETTINGS_CLEAR_SETTINGS "
+	}
+	if flags == "" {
+		flags = "[NONE]"
 	}
 
 	buf.WriteString("SETTINGS {\n\t")
@@ -806,8 +845,15 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check flags.
@@ -914,8 +960,15 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check unused space.
@@ -1036,8 +1089,15 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check unused space.
@@ -1079,6 +1139,9 @@ func (frame *HeadersFrame) String() string {
 	flags := ""
 	if frame.Flags&FLAG_FIN != 0 {
 		flags += "FLAG_FIN "
+	}
+	if flags == "" {
+		flags = "[NONE]"
 	}
 
 	buf.WriteString("HEADERS {\n\t")
@@ -1193,8 +1256,15 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check unused space.
@@ -1314,8 +1384,15 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	// Check flags.
@@ -1471,8 +1548,15 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 
 	// Read in data.
 	data := make([]byte, 8+length)
-	if _, err := reader.Read(data); err != nil {
-		return err
+	remaining := 8 + length
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
 	}
 
 	frame.streamID = bytesToUint31(data[0:4])
@@ -1497,6 +1581,9 @@ func (frame *DataFrame) String() string {
 	flags := ""
 	if frame.Flags&FLAG_FIN != 0 {
 		flags += "FLAG_FIN "
+	}
+	if flags == "" {
+		flags = "[NONE]"
 	}
 
 	buf.WriteString("DATA {\n\t")
