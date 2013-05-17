@@ -571,7 +571,7 @@ func (frame *SettingsFrame) Add(flags byte, id, value uint32) error {
 func (frame *SettingsFrame) Bytes() ([]byte, error) {
 	numSettings := uint32(len(frame.Settings))
 	length := 4 + (8 * numSettings)
-	out := make([]byte, 12, 8+length)
+	out := make([]byte, 8+length)
 
 	out[0] = 0x80 | byte(frame.version>>8) // Control bit and Version
 	out[1] = byte(frame.version)           // Version
