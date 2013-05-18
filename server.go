@@ -501,6 +501,7 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 			NextProtos: []string{
 				"spdy/3",
 				//"spdy/2",
+				"http/1.1",
 			},
 		},
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
@@ -563,6 +564,7 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Han
 			NextProtos: []string{
 				"spdy/3",
 				//"spdy/2",
+				"http/1.1",
 			},
 		},
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){

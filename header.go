@@ -16,20 +16,20 @@ type Header map[string][]string
 // String pretty-prints the Header content.
 func (h Header) String() string {
 	buf := new(bytes.Buffer)
-	buf.WriteString(fmt.Sprintf("Headers {\n\t\t\t"))
+	buf.WriteString(fmt.Sprintf("Headers {"))
 	for name, values := range h {
-		buf.WriteString(fmt.Sprintf("%-16s", name))
+		buf.WriteString(fmt.Sprintf("\n\t\t%-16s", name))
 		l := len(values) - 1
 		for i, value := range values {
-			buf.WriteString(fmt.Sprintf("%s\n\t\t\t", value))
+			buf.WriteString(fmt.Sprintf("%s", value))
 			if i < l {
 				for j := 0; j < 16; j++ {
-					buf.WriteString(" ")
+					buf.WriteString("\n\t\t ")
 				}
 			}
 		}
 	}
-	buf.WriteString(fmt.Sprintf("\n\t\t}\n"))
+	buf.WriteString(fmt.Sprintf("\n\t}\n"))
 	return buf.String()
 }
 

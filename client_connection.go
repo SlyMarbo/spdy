@@ -86,8 +86,8 @@ func (conn *clientConnection) readFrames() {
 
 		// TODO: replace this with a proper logging library.
 		if DebugMode {
-			fmt.Println("Received Frame:")
-			fmt.Println(frame)
+			log.Println("Received Frame:")
+			log.Println(frame)
 		}
 
 		// Make sure the received frame uses an appropriate
@@ -115,7 +115,7 @@ func (conn *clientConnection) readFrames() {
 		case *RstStreamFrame:
 			if StatusCodeIsFatal(int(frame.StatusCode)) {
 				code := StatusCodeText(int(frame.StatusCode))
-				log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID)
+				log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID())
 				return
 			}
 			conn.handleRstStream(frame)
@@ -188,6 +188,11 @@ func (conn *clientConnection) send() {
 		err := frame.WriteHeaders(conn.compressor)
 		if err != nil {
 			panic(err)
+		}
+		
+		if DebugMode {
+			log.Println("Sending Frame:")
+			log.Println(frame)
 		}
 
 		// Leave the specifics of writing to the
@@ -617,6 +622,7 @@ func (conn *clientConnection) cleanup() {
 }
 
 func (conn *clientConnection) start() {
+	conn.ready = true
 	// Send any global settings.
 	settings := new(SettingsFrame)
 	settings.version = conn.version
@@ -634,7 +640,6 @@ func (conn *clientConnection) start() {
 		settings.Settings = append(settings.Settings, conn.client.GlobalSettings...)
 	}
 	conn.dataOutput <- settings
-	conn.ready = true
 }
 
 // run prepares and executes the frame reading

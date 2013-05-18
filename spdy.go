@@ -412,7 +412,7 @@ func (frame *SynReplyFrame) String() string {
 	}
 
 	buf.WriteString("SYN_REPLY {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Headers:              %v\n}\n", frame.Headers))
@@ -558,7 +558,7 @@ func (frame *RstStreamFrame) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("RST_STREAM {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Status code:          %d\n}\n", frame.StatusCode))
 
@@ -718,7 +718,7 @@ func (frame *SettingsFrame) String() string {
 	}
 
 	buf.WriteString("SETTINGS {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
 	buf.WriteString(fmt.Sprintf("Settings:"))
 	for _, setting := range frame.Settings {
@@ -879,7 +879,7 @@ func (frame *PingFrame) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("PING {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Ping ID:              %d\n}\n", frame.PingID))
 
 	return buf.String()
@@ -1000,7 +1000,7 @@ func (frame *GoawayFrame) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("GOAWAY {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Last good stream ID:  %d\n\t", frame.LastGoodStreamID))
 	buf.WriteString(fmt.Sprintf("Status code:          %d\n}\n", frame.StatusCode))
 
@@ -1145,7 +1145,7 @@ func (frame *HeadersFrame) String() string {
 	}
 
 	buf.WriteString("HEADERS {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Headers:              %v\n}\n", frame.Headers))
@@ -1291,7 +1291,7 @@ func (frame *WindowUpdateFrame) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("WINDOW_UPDATE {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Delta window size:    %d\n}\n", frame.DeltaWindowSize))
 
@@ -1438,7 +1438,7 @@ func (frame *CredentialFrame) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("CREDENTIAL {\n\t")
-	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.Version))
+	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
 	buf.WriteString(fmt.Sprintf("Proof:                %v\n\t", frame.Proof))
 	buf.WriteString(fmt.Sprintf("Certificates:         %v\n}\n", frame.Certificates))

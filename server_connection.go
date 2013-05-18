@@ -117,7 +117,7 @@ func (conn *serverConnection) readFrames() {
 		case *RstStreamFrame:
 			if StatusCodeIsFatal(int(frame.StatusCode)) {
 				code := StatusCodeText(int(frame.StatusCode))
-				log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID)
+				log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID())
 				return
 			}
 			conn.handleRstStream(frame)

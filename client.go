@@ -50,10 +50,10 @@ var DefaultClient = &Client{}
 func (c *Client) dial(u *url.URL) (net.Conn, error) {
 	if c.TLSConfig == nil {
 		c.TLSConfig = &tls.Config{
-			NextProtos: []string{"http/1.1", "spdy/3"},
+			NextProtos: []string{"spdy/3", /*"spdy/2",*/ "http/1.1"},
 		}
 	} else if c.TLSConfig.NextProtos == nil {
-		c.TLSConfig.NextProtos = []string{"http/1.1", "spdy/3"}
+		c.TLSConfig.NextProtos = []string{"spdy/3", /*"spdy/2",*/ "http/1.1"}
 	}
 
 	switch u.Scheme {
