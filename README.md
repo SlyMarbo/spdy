@@ -3,7 +3,7 @@ spdy
 
 My implementation of SPDY/v3 (work in progress).
 
-So far, servers are ready, but the client code is not yet functional.
+So far, servers are ready, but the client API is experimental.
  
 Note that this implementation supports SPDY/3, but not SPDY/2.
 
@@ -186,4 +186,37 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 Clients
 -------
 
-Work in progress...
+The basic client API seems to work ok with this package's servers, but gets error responses when
+requesting https://www.google.co.uk/, so I'm not happy with it. Since I can't see Google's servers'
+SPDY error logs, I don't know what's wrong yet, but I'm working hard at it.
+
+The existing client API is small, but will (in due course) mirror the net/http API.
+
+Here's a simple example that will fetch the requested page over HTTP, HTTPS, or SPDY, as necessary.
+```go
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"github.com/SlyMarbo/spdy"
+	"io"
+)
+
+func main() {
+	res, err := spdy.Get("https://example.com/")
+	if err != nil {
+		// handle the error.
+	}
+	
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, res.Body)
+	if err != nil {
+		// handle the error.
+	}
+	
+	res.Body.Close()
+	
+	fmt.Printf("Received: %s\n", buf.String())
+}
+```
