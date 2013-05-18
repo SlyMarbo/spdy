@@ -190,7 +190,7 @@ The basic client API seems to work ok with this package's servers, but gets erro
 requesting https://www.google.co.uk/, so I'm not happy with it. Since I can't see Google's servers'
 SPDY error logs, I don't know what's wrong yet, but I'm working hard at it.
 
-The existing client API is small, but will (in due course) mirror the net/http API.
+The existing client API is small, but will (in due course) mirror the `net/http` API.
 
 Here's a simple example that will fetch the requested page over HTTP, HTTPS, or SPDY, as necessary.
 ```go
