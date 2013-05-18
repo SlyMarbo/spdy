@@ -494,9 +494,8 @@ func (conn *serverConnection) handleSynReply(frame *SynReplyFrame) {
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -579,9 +578,8 @@ func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received DATA with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -612,9 +610,8 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -645,9 +642,8 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -656,9 +652,14 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 
 	// Check delta window size is valid.
 	delta := frame.DeltaWindowSize
-	if delta > MAX_DELTA_WINDOW_SIZE || delta < 1 {
+	if delta > MAX_DELTA_WINDOW_SIZE || delta < 0 {
 		log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n", delta)
 		conn.PROTOCOL_ERROR(sid)
+	}
+	
+	// Ignore empty deltas.
+	if delta == 0 {
+		return
 	}
 
 	// Send update to stream.
