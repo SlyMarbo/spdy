@@ -45,45 +45,6 @@ import (
 	"net/http"
 )
 
-func ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello, HTTP!"))
-}
-
-// Add a SPDY handler.
-func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
-	w.Write([]byte("Hello, SPDY!"))
-}
-
-func main() {
-	
-	// Register handlers.
-	http.HandleFunc("/", ServeHTTP)
-	spdy.HandleFunc("/", ServeSPDY)
-
-	// Use spdy's ListenAndServe.
-	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
-	if err != nil {
-		// handle error.
-	}
-}
-```
-
-New:
-
-SPDY now supports reuse of HTTP handlers. Although this allows you to use just one set of handlers, it means there is
-no way to use the SPDY-specific capabilities provided by `spdy.ResponseWriter`, such as server pushes, or to know which
-protocol is being used.
-
-This means that the original HTTP server above could be adapted to SPDY with just the extra import statement and one
-change, as shown here:
-```go
-package main
-
-import (
-	"github.com/SlyMarbo/spdy" // Import SPDY.
-	"net/http"
-)
-
 // This handler will now serve HTTP, HTTPS, and SPDY requests.
 func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, HTTP!"))
@@ -102,7 +63,41 @@ func main() {
 }
 ```
 
+SPDY now supports reuse of HTTP handlers, as demonstrated above. Although this allows you to use just one set of
+handlers, it means there is no way to use the SPDY-specific capabilities provided by `spdy.ResponseWriter`, such as
+server pushes, or to know which protocol is being used.
 
+Making full use of the SPDY protocol simple requires adding an extra handler:
+```go
+package main
+
+import (
+	"github.com/SlyMarbo/spdy"
+	"net/http"
+)
+
+// This now only serves HTTP/HTTPS requests.
+func ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Hello, HTTP!"))
+}
+
+// Add a SPDY handler.
+func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+	w.Write([]byte("Hello, SPDY!"))
+}
+
+func main() {
+	
+	// Register handlers.
+	http.HandleFunc("/", ServeHTTP)
+	spdy.HandleFunc("/", ServeSPDY)
+
+	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
+	if err != nil {
+		// handle error.
+	}
+}
+```
 
 A very simple file server for both SPDY and HTTPS:
 ```go
