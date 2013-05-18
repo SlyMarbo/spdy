@@ -9,15 +9,17 @@ import (
 // they abide by SPDY's flow control rules. For
 // versions of SPDY before 3, this has no effect.
 type flowControl struct {
-	stream         Stream
-	streamID       uint32
-	output         chan<- Frame
-	active         bool
-	initialWindow  uint32
-	transferWindow int64
-	sent           uint32
-	buffer         [][]byte
-	constrained    bool
+	stream              Stream
+	streamID            uint32
+	output              chan<- Frame
+	active              bool
+	initialWindow       uint32
+	transferWindow      int64
+	sent                uint32
+	buffer              [][]byte
+	constrained         bool
+	initialWindowThere  uint32
+	transferWindowThere int64
 }
 
 // AddFlowControl initialises flow control for
@@ -40,6 +42,8 @@ func (s *responseStream) AddFlowControl() {
 		flow.stream = s
 		flow.streamID = s.streamID
 		flow.output = s.output
+		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 	}
 	s.flow = flow
 }
@@ -64,6 +68,8 @@ func (p *pushStream) AddFlowControl() {
 		flow.stream = p
 		flow.streamID = p.streamID
 		flow.output = p.output
+		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 	}
 	p.flow = flow
 }
@@ -88,6 +94,8 @@ func (r *requestStream) AddFlowControl() {
 		flow.stream = r
 		flow.streamID = r.streamID
 		flow.output = r.output
+		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 	}
 	r.flow = flow
 }
@@ -134,6 +142,38 @@ func (f *flowControl) CheckInitialWindow() {
 			f.constrained = true
 		}
 		f.initialWindow = newWindow
+	}
+}
+
+// Receive is called when data is received from
+// the other endpoint. This ensures that they
+// conform to the transfer window, regrows the
+// window, and sends errors if necessary.
+func (f *flowControl) Receive(data []byte) {
+	if !f.active {
+		return
+	}
+
+	// The transfer window shouldn't already be negative.
+	if f.transferWindowThere < 0 {
+		rst := new(RstStreamFrame)
+		rst.version = f.stream.Version()
+		rst.streamID = f.streamID
+		rst.StatusCode = RST_STREAM_FLOW_CONTROL_ERROR
+		f.output <- rst
+		return
+	}
+
+	// Update the window.
+	f.transferWindowThere -= int64(len(data))
+
+	// Regrow the window if it's half-empty.
+	if f.transferWindowThere <= int64(f.initialWindowThere/2) {
+		grow := new(WindowUpdateFrame)
+		grow.version = f.stream.Version()
+		grow.streamID = f.streamID
+		grow.DeltaWindowSize = uint32(int64(f.initialWindowThere) - f.transferWindowThere)
+		f.output <- grow
 	}
 }
 

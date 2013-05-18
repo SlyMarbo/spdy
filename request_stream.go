@@ -169,6 +169,9 @@ func (s *requestStream) receiveFrame(frame Frame) {
 
 		// Give to the client.
 		s.receiver.ReceiveData(s.request, data, finish)
+		if !finish {
+			s.flow.Receive(frame.Data)
+		}
 
 	case *SynReplyFrame:
 		s.receiver.ReceiveHeaders(s.request, frame.Headers)

@@ -190,6 +190,9 @@ func (s *responseStream) receiveFrame(frame Frame) {
 	switch frame := frame.(type) {
 	case *DataFrame:
 		s.requestBody.Write(frame.Data)
+		if frame.Flags&FLAG_FIN == 0 {
+			s.flow.Receive(frame.Data)
+		}
 
 	case *SynReplyFrame:
 		s.headers.Update(frame.Headers)
