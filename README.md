@@ -5,7 +5,7 @@ My implementation of SPDY/v3 (work in progress).
 
 So far, servers are ready, but the client API is experimental.
  
-Note that this implementation supports SPDY/3, but not SPDY/2.
+Note that this implementation currently supports SPDY/3, but not SPDY/2.
 
 Servers
 -------
