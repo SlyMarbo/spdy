@@ -3,7 +3,7 @@ spdy
 
 My implementation of SPDY/v3 (work in progress).
 
-So far, servers are ready, but the client API is experimental.
+So far, servers and clients are ready, but the client API is not completely stable.
  
 Note that this implementation currently supports SPDY/3, but not SPDY/2.
 
@@ -186,11 +186,9 @@ func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 Clients
 -------
 
-The basic client API seems to work ok with this package's servers, but gets error responses when
-requesting https://www.google.co.uk/, so I'm not happy with it. Since I can't see Google's servers'
-SPDY error logs, I don't know what's wrong yet, but I'm working hard at it.
-
-The existing client API is small, but will (in due course) mirror the `net/http` API.
+The basic client API seems to work well in general, but gets a redirect loop when requesting https://twitter.com/, so
+I'm not happy with it. Since I can't see Twitter's servers' SPDY logs, I don't know what's wrong yet, but I'm working
+hard at it.
 
 Here's a simple example that will fetch the requested page over HTTP, HTTPS, or SPDY, as necessary.
 ```go
