@@ -140,16 +140,20 @@ func (h Header) Get(key string) string {
 	return textproto.MIMEHeader(h).Get(key)
 }
 
-// Update used a second set of headers to update the previous.
+// Update uses a second set of headers to update the previous.
 // New headers are added, and old headers are replaced. Headers
 // in the old set but not the new are left unmodified.
-func (h1 Header) Update(h2 Header) {
-	for name, values := range h2 {
+func (old Header) Update(update Header) {
+	if old == nil {
+		old = update.clone()
+		return
+	}
+	for name, values := range update {
 		for i, value := range values {
 			if i == 0 {
-				h1.Set(name, value)
+				old.Set(name, value)
 			} else {
-				h1.Add(name, value)
+				old.Add(name, value)
 			}
 		}
 	}

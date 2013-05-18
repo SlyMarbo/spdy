@@ -21,7 +21,7 @@ type pushStream struct {
 	headersSent bool
 	stop        bool
 	cancelled   bool
-	version     int
+	version     uint16
 }
 
 func (p *pushStream) Cancel() {
@@ -29,7 +29,7 @@ func (p *pushStream) Cancel() {
 	p.cancelled = true
 	rst := new(RstStreamFrame)
 	rst.streamID = p.streamID
-	rst.version = uint16(p.version)
+	rst.version = p.version
 	rst.StatusCode = RST_STREAM_CANCEL
 	p.output <- rst
 	p.Unlock()
@@ -134,7 +134,7 @@ func (p *pushStream) WriteHeaders() {
 	}
 
 	headers := new(HeadersFrame)
-	headers.version = uint16(p.version)
+	headers.version = p.version
 	headers.streamID = p.streamID
 	headers.Headers = p.headers.clone()
 	for name := range headers.Headers {
@@ -144,5 +144,9 @@ func (p *pushStream) WriteHeaders() {
 }
 
 func (p *pushStream) Version() uint16 {
-	return uint16(p.version)
+	return p.version
+}
+
+func (p *pushStream) Run() {
+	panic("Error: Push cannot run.")
 }

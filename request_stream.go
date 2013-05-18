@@ -22,7 +22,7 @@ type requestStream struct {
 	headers      Header
 	responseCode int
 	stop         bool
-	version      int
+	version      uint16
 }
 
 func (s *requestStream) Cancel() {
@@ -168,13 +168,13 @@ func (s *requestStream) receiveFrame(frame Frame) {
 		finish := frame.Flags&FLAG_FIN != 0
 
 		// Give to the client.
-		s.receiver.Receive(s.request, data, finish)
+		s.receiver.ReceiveData(s.request, data, finish)
 
 	case *SynReplyFrame:
-		s.headers.Update(frame.Headers)
+		s.receiver.ReceiveHeaders(s.request, frame.Headers)
 
 	case *HeadersFrame:
-		s.headers.Update(frame.Headers)
+		s.receiver.ReceiveHeaders(s.request, frame.Headers)
 
 	case *WindowUpdateFrame:
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
@@ -229,7 +229,8 @@ func (s *requestStream) processInput() {
 // the stream. Data is recieved,
 // processed, and then the stream
 // is cleaned up and closed.
-func (s *requestStream) run() {
+func (s *requestStream) Run() {
+	s.conn.done.Add(1)
 
 	// Make sure Request is prepared.
 	s.AddFlowControl()

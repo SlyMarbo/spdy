@@ -88,7 +88,7 @@ func ReadFrame(reader *bufio.Reader) (frame Frame, err error) {
 	}
 
 	err = frame.Parse(reader)
-	return
+	return frame, err
 }
 
 /******************
@@ -1540,7 +1540,7 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
-	if length < 1 {
+	if length < 1 && start[4] == 0 {
 		return &IncorrectDataLength{length, 1}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return FrameTooLarge{}
@@ -1561,8 +1561,11 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 
 	frame.streamID = bytesToUint31(data[0:4])
 	frame.Flags = data[4]
-	length = int(bytesToUint16(data[2:4]))
-	frame.Data = data[8 : 8+length]
+	if length > 0 {
+		frame.Data = data[8:]
+	} else {
+		frame.Data = []byte{}
+	}
 
 	return nil
 }

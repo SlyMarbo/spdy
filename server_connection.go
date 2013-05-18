@@ -36,7 +36,7 @@ type serverConnection struct {
 	nextClientStreamID uint32          // odd
 	initialWindowSize  uint32          // transport window
 	goaway             bool            // goaway has been sent/received.
-	version            int             // SPDY version.
+	version            uint16          // SPDY version.
 	numBenignErrors    int             // number of non-serious errors encountered.
 	done               *sync.WaitGroup // WaitGroup for active streams.
 }
@@ -126,7 +126,9 @@ func (conn *serverConnection) readFrames() {
 			for _, setting := range frame.Settings {
 				conn.receivedSettings[setting.ID] = setting
 				if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE && conn.version > 2 {
-					log.Printf("Initial window size is %d.\n", setting.Value)
+					if DebugMode {
+						log.Printf("Initial window size is %d.\n", setting.Value)
+					}
 					conn.initialWindowSize = setting.Value
 				}
 			}
@@ -303,7 +305,7 @@ func (conn *serverConnection) InitialWindowSize() uint32 {
 // closed.
 func (conn *serverConnection) Ping() <-chan bool {
 	ping := new(PingFrame)
-	ping.version = uint16(conn.version)
+	ping.version = conn.version
 
 	conn.Lock()
 
@@ -339,7 +341,7 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 
 	// Prepare the SYN_STREAM.
 	push := new(SynStreamFrame)
-	push.version = uint16(conn.version)
+	push.version = conn.version
 	push.Flags = FLAG_UNIDIRECTIONAL
 	push.AssocStreamID = origin.StreamID()
 	push.Priority = 0
@@ -386,8 +388,12 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 
 // Request is a method stub required to satisfy the Connection
 // interface. It must not be used by servers.
-func (conn *serverConnection) Request(_ *Request) (Stream, error) {
+func (conn *serverConnection) Request(_ *Request, _ Receiver) (Stream, error) {
 	return nil, errors.New("Error: Servers cannot make requests.")
+}
+
+func (conn *serverConnection) Version() uint16 {
+	return conn.version
 }
 
 // validFrameVersion checks that a frame has the same SPDY
@@ -404,7 +410,7 @@ func (conn *serverConnection) validFrameVersion(frame Frame) bool {
 	}
 
 	// Check the version.
-	if frame.Version() != uint16(conn.version) {
+	if frame.Version() != conn.version {
 		log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
 			frame.Version(), conn.version)
 		if frame.Version() > SPDY_VERSION {
@@ -461,8 +467,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.Unlock()
 	conn.RLock()
 
-	go nextStream.run()
-	conn.done.Add(1)
+	go nextStream.Run()
 
 	return
 }
@@ -670,7 +675,7 @@ func (conn *serverConnection) closeStream(streamID uint32) {
 // occurred, stops all running streams, and ends the connection.
 func (conn *serverConnection) PROTOCOL_ERROR(streamID uint32) {
 	reply := new(RstStreamFrame)
-	reply.version = uint16(conn.version)
+	reply.version = conn.version
 	reply.streamID = streamID
 	reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
 	conn.WriteFrame(reply)
@@ -713,7 +718,7 @@ func (conn *serverConnection) serve() {
 	// Send any global settings.
 	if conn.server.GlobalSettings != nil {
 		settings := new(SettingsFrame)
-		settings.version = uint16(conn.version)
+		settings.version = conn.version
 		settings.Settings = conn.server.GlobalSettings
 		conn.dataPriority[3] <- settings
 	}
