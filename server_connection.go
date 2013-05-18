@@ -48,14 +48,7 @@ type serverConnection struct {
 func (conn *serverConnection) readFrames() {
 
 	// Add timeouts if requested by the server.
-	if d := conn.server.ReadTimeout; d != 0 {
-		conn.conn.SetReadDeadline(time.Now().Add(d))
-	}
-	if d := conn.server.WriteTimeout; d != 0 {
-		defer func() {
-			conn.conn.SetWriteDeadline(time.Now().Add(d))
-		}()
-	}
+	conn.refreshTimeouts()
 
 	// Main loop.
 	for {
@@ -69,6 +62,7 @@ func (conn *serverConnection) readFrames() {
 
 		// ReadFrame takes care of the frame parsing for us.
 		frame, err := ReadFrame(conn.buf)
+		conn.refreshTimeouts()
 		if err != nil {
 			if err == io.EOF {
 				// Client has closed the TCP connection.
@@ -198,6 +192,7 @@ func (conn *serverConnection) send() {
 		// Leave the specifics of writing to the
 		// connection up to the frame.
 		err = frame.WriteTo(conn.conn)
+		conn.refreshTimeouts()
 		if err != nil {
 			log.Println(err)
 			continue
@@ -656,6 +651,16 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 
 	// Send update to stream.
 	conn.streamInputs[sid] <- frame
+}
+
+// Add timeouts if requested by the server.
+func (conn *serverConnection) refreshTimeouts() {
+	if d := conn.server.ReadTimeout; d != 0 {
+		conn.conn.SetReadDeadline(time.Now().Add(d))
+	}
+	if d := conn.server.WriteTimeout; d != 0 {
+		conn.conn.SetWriteDeadline(time.Now().Add(d))
+	}
 }
 
 // closeStream closes the provided stream safely.

@@ -1592,6 +1592,7 @@ func (frame *DataFrame) String() string {
 	buf.WriteString("DATA {\n\t")
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Length:               %d\n\t", len(frame.Data)))
 	buf.WriteString(fmt.Sprintf("Data:                 %v\n}\n", frame.Data))
 
 	return buf.String()

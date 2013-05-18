@@ -47,14 +47,7 @@ type clientConnection struct {
 func (conn *clientConnection) readFrames() {
 
 	// Add timeouts if requested by the server.
-	if d := conn.client.ReadTimeout; d != 0 {
-		conn.conn.SetReadDeadline(time.Now().Add(d))
-	}
-	if d := conn.client.WriteTimeout; d != 0 {
-		defer func() {
-			conn.conn.SetWriteDeadline(time.Now().Add(d))
-		}()
-	}
+	conn.refreshTimeouts()
 
 	// Main loop.
 	for {
@@ -68,6 +61,7 @@ func (conn *clientConnection) readFrames() {
 
 		// ReadFrame takes care of the frame parsing for us.
 		frame, err := ReadFrame(conn.buf)
+		conn.refreshTimeouts()
 		if err != nil {
 			if err == io.EOF {
 				// Client has closed the TCP connection.
@@ -198,6 +192,7 @@ func (conn *clientConnection) send() {
 		// Leave the specifics of writing to the
 		// connection up to the frame.
 		err = frame.WriteTo(conn.conn)
+		conn.refreshTimeouts()
 		if err != nil {
 			panic(err)
 		}
@@ -404,6 +399,7 @@ func (conn *clientConnection) handleSynReplyFrame(frame *SynReplyFrame) {
 	// Check Stream ID is odd.
 	if sid&1 == 0 {
 		log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n", sid)
+		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which should be odd.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -412,6 +408,8 @@ func (conn *clientConnection) handleSynReplyFrame(frame *SynReplyFrame) {
 	nsid := conn.nextClientStreamID + 2
 	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
 		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -494,9 +492,8 @@ func (conn *clientConnection) handleDataFrame(frame *DataFrame) {
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received DATA with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -510,6 +507,7 @@ func (conn *clientConnection) handleDataFrame(frame *DataFrame) {
 	if frame.Flags&FLAG_FIN != 0 {
 		conn.streams[sid].State().CloseThere()
 		close(conn.streamInputs[sid])
+		delete(conn.streamInputs, sid)
 	}
 }
 
@@ -528,9 +526,8 @@ func (conn *clientConnection) handleHeadersFrame(frame *HeadersFrame) {
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -561,9 +558,8 @@ func (conn *clientConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which should be %d.\n", sid, nsid)
+	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -581,6 +577,16 @@ func (conn *clientConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 	conn.streamInputs[sid] <- frame
 }
 
+// Add timeouts if requested by the server.
+func (conn *clientConnection) refreshTimeouts() {
+	if d := conn.client.ReadTimeout; d != 0 {
+		conn.conn.SetReadDeadline(time.Now().Add(d))
+	}
+	if d := conn.client.WriteTimeout; d != 0 {
+		conn.conn.SetWriteDeadline(time.Now().Add(d))
+	}
+}
+
 // closeStream closes the provided stream safely.
 func (conn *clientConnection) closeStream(streamID uint32) {
 	if streamID == 0 {
@@ -591,6 +597,7 @@ func (conn *clientConnection) closeStream(streamID uint32) {
 	conn.streams[streamID].Stop()
 	conn.streams[streamID].State().Close()
 	close(conn.streamInputs[streamID])
+	delete(conn.streamInputs, streamID)
 	delete(conn.streams, streamID)
 }
 

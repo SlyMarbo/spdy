@@ -2,8 +2,11 @@ package spdy
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 )
 
 type Response struct {
@@ -76,8 +79,21 @@ func (r *response) ReceiveData(_ *Request, data []byte, _ bool) {
 	r.Data.Write(data)
 }
 
+var statusRegex = regexp.MustCompile(`\A\s*(?P<code>\d+)`)
+
 func (r *response) ReceiveHeaders(_ *Request, headers Header) {
+	if r.Header == nil {
+		r.Header = make(Header)
+	}
 	r.Header.Update(headers)
+	if status := r.Header.Get(":status"); status != "" && statusRegex.MatchString(status) {
+		if matches := statusRegex.FindAllStringSubmatch(status, -1); matches != nil {
+			s, err := strconv.Atoi(matches[0][1])
+			if err == nil {
+				r.StatusCode = s
+			}
+		}
+	}
 }
 
 func (r *response) ReceiveStatus(_ *Request, code int) {
@@ -89,7 +105,7 @@ func (r *response) Response() *Response {
 		r.Data = new(bytes.Buffer)
 	}
 	out := new(Response)
-	out.Status = http.StatusText(r.StatusCode)
+	out.Status = fmt.Sprintf("%d %s", r.StatusCode, http.StatusText(r.StatusCode))
 	out.StatusCode = r.StatusCode
 	out.Proto = "HTTP/1.1"
 	out.ProtoMajor = 1
