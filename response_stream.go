@@ -29,7 +29,7 @@ type responseStream struct {
 	responseCode   int
 	stop           bool
 	wroteHeader    bool
-	version        int
+	version        uint16
 }
 
 func (_ *responseStream) Cancel() {
@@ -129,7 +129,7 @@ func (s *responseStream) WriteHeader(code int) {
 	s.headers.Set(":version", "HTTP/1.1")
 
 	synReply := new(SynReplyFrame)
-	synReply.version = uint16(s.version)
+	synReply.version = s.version
 	synReply.streamID = s.streamID
 	synReply.Headers = s.headers.clone()
 
@@ -154,7 +154,7 @@ func (s *responseStream) WriteHeaders() {
 	}
 
 	headers := new(HeadersFrame)
-	headers.version = uint16(s.version)
+	headers.version = s.version
 	headers.streamID = s.streamID
 	headers.Headers = s.headers.clone()
 
@@ -172,13 +172,13 @@ func (s *responseStream) WriteSettings(settings ...*Setting) {
 	}
 
 	frame := new(SettingsFrame)
-	frame.version = uint16(s.version)
+	frame.version = s.version
 	frame.Settings = settings
 	s.output <- frame
 }
 
 func (s *responseStream) Version() uint16 {
-	return uint16(s.version)
+	return s.version
 }
 
 // receiveFrame is used to process an inbound frame.
@@ -201,7 +201,7 @@ func (s *responseStream) receiveFrame(frame Frame) {
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
 		if err != nil {
 			reply := new(RstStreamFrame)
-			reply.version = uint16(s.version)
+			reply.version = s.version
 			reply.streamID = s.streamID
 			reply.StatusCode = RST_STREAM_FLOW_CONTROL_ERROR
 			s.output <- reply
@@ -251,7 +251,8 @@ func (s *responseStream) processInput() {
 // registered handler is called,
 // and then the stream is cleaned
 // up and closed.
-func (s *responseStream) run() {
+func (s *responseStream) Run() {
+	s.conn.done.Add(1)
 
 	// Make sure Request is prepared.
 	s.AddFlowControl()
@@ -281,7 +282,7 @@ func (s *responseStream) run() {
 		s.headers.Set(":version", "HTTP/1.1")
 
 		synReply := new(SynReplyFrame)
-		synReply.version = uint16(s.version)
+		synReply.version = s.version
 		synReply.Flags = FLAG_FIN
 		synReply.streamID = s.streamID
 		synReply.Headers = s.headers

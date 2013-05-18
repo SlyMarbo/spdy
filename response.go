@@ -1,6 +1,7 @@
 package spdy
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 )
@@ -61,6 +62,48 @@ type Response struct {
 	// Request's Body is nil (having already been consumed).
 	// This is only populated for Client requests.
 	Request *Request
+}
+
+type response struct {
+	StatusCode int
+	SPDYProto  int
+	Header     Header
+	Data       *bytes.Buffer
+	Request    *Request
+}
+
+func (r *response) ReceiveData(_ *Request, data []byte, _ bool) {
+	r.Data.Write(data)
+}
+
+func (r *response) ReceiveHeaders(_ *Request, headers Header) {
+	r.Header.Update(headers)
+}
+
+func (r *response) ReceiveStatus(_ *Request, code int) {
+	r.StatusCode = code
+}
+
+func (r *response) Response() *Response {
+	if r.Data == nil {
+		r.Data = new(bytes.Buffer)
+	}
+	out := new(Response)
+	out.Status = http.StatusText(r.StatusCode)
+	out.StatusCode = r.StatusCode
+	out.Proto = "HTTP/1.1"
+	out.ProtoMajor = 1
+	out.ProtoMinor = 1
+	out.SPDYProto = r.SPDYProto
+	out.SentOverSpdy = true
+	out.Header = r.Header
+	out.Body = &readCloserBuffer{r.Data}
+	out.ContentLength = int64(r.Data.Len())
+	out.TransferEncoding = nil
+	out.Close = false
+	out.Trailer = make(Header)
+	out.Request = r.Request
+	return out
 }
 
 func httpToSpdyResponse(res *http.Response, req *Request) *Response {

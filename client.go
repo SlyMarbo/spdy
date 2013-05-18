@@ -1,6 +1,7 @@
 package spdy
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -21,7 +22,9 @@ import (
 // final batch of data. If the bool is set to true, the
 // data may be empty, but should not be nil.
 type Receiver interface {
-	Receive(*Request, []byte, bool)
+	ReceiveData(*Request, []byte, bool)
+	ReceiveHeaders(*Request, Header)
+	ReceiveStatus(*Request, int)
 }
 
 type Client struct {
@@ -88,6 +91,9 @@ func (c *Client) do(req *Request) (*Response, error) {
 	}
 
 	c.Lock()
+	if c.spdyConns == nil {
+		c.spdyConns = make(map[string]Connection)
+	}
 	conn, ok := c.spdyConns[u.Host]
 	if !ok {
 		tcpConn, err := c.dial(req.URL)
@@ -133,16 +139,17 @@ func (c *Client) do(req *Request) (*Response, error) {
 				newConn := newClientConn(tlsConn)
 				newConn.client = c
 				newConn.version = 3
-				newConn.run()
+				go newConn.run()
 				c.spdyConns[u.Host] = newConn
 				conn = newConn
 				c.Unlock()
 
 			case "spdy/2":
+				fmt.Println("Warning: Negotiated SPDY/2.")
 				newConn := newClientConn(tlsConn)
 				newConn.client = c
 				newConn.version = 2
-				newConn.run()
+				go newConn.run()
 				c.spdyConns[u.Host] = newConn
 				conn = newConn
 				c.Unlock()
@@ -161,12 +168,23 @@ func (c *Client) do(req *Request) (*Response, error) {
 	}
 
 	// The connection has now been established.
-	stream, err := conn.Request(req)
+
+	// Prepare the response.
+	res := new(response)
+	res.SPDYProto = int(conn.Version())
+	res.Request = req
+	res.Data = new(bytes.Buffer)
+
+	// Send the request.
+	stream, err := conn.Request(req, res)
 	if err != nil {
 		return nil, err
 	}
-	_ = stream
-	return nil, nil
+
+	// Let the request run its course.
+	stream.Run()
+
+	return res.Response(), nil
 }
 
 // Do sends a SPDY request and returns a SPDY response,
@@ -203,4 +221,8 @@ func (c *Client) Get(url string) (*Response, error) {
 		return nil, err
 	}
 	return c.Do(req)
+}
+
+func Get(url string) (*Response, error) {
+	return DefaultClient.Get(url)
 }

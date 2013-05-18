@@ -34,9 +34,10 @@ type clientConnection struct {
 	nextClientStreamID uint32          // odd
 	initialWindowSize  uint32          // transport window
 	goaway             bool            // goaway has been sent/received.
-	version            int             // SPDY version.
+	version            uint16          // SPDY version.
 	numBenignErrors    int             // number of non-serious errors encountered.
 	done               *sync.WaitGroup // WaitGroup for active streams.
+	ready              bool
 }
 
 // readFrames is the main processing loop, where frames
@@ -108,9 +109,8 @@ func (conn *clientConnection) readFrames() {
 		case *SynStreamFrame:
 			log.Println("Got SYN_STREAM: [UNIMPLEMENTED]")
 
-		/*** [UNIMPLEMENTED] ***/
 		case *SynReplyFrame:
-			log.Println("Got SYN_REPLY: [UNIMPLEMENTED]")
+			conn.handleSynReplyFrame(frame)
 
 		case *RstStreamFrame:
 			if StatusCodeIsFatal(int(frame.StatusCode)) {
@@ -201,6 +201,9 @@ func (conn *clientConnection) send() {
 
 // Internally-sent frames have high priority.
 func (conn *clientConnection) WriteFrame(frame Frame) {
+	if !conn.ready {
+		conn.start()
+	}
 	conn.dataOutput <- frame
 }
 
@@ -215,7 +218,7 @@ func (conn *clientConnection) InitialWindowSize() uint32 {
 // closed.
 func (conn *clientConnection) Ping() <-chan bool {
 	ping := new(PingFrame)
-	ping.version = uint16(conn.version)
+	ping.version = conn.version
 
 	conn.Lock()
 
@@ -238,11 +241,11 @@ func (conn *clientConnection) Push(resource string, origin Stream) (PushWriter, 
 	return nil, errors.New("Error: Clients cannot send pushes.")
 }
 
-func (conn *clientConnection) Request(req *Request) (Stream, error) {
+func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error) {
 
 	// Prepare the SYN_STREAM.
 	syn := new(SynStreamFrame)
-	syn.version = uint16(conn.version)
+	syn.version = conn.version
 	syn.Priority = uint8(req.Priority)
 	url := req.URL
 	if url == nil || url.Scheme == "" || url.Host == "" || url.Path == "" {
@@ -276,6 +279,7 @@ func (conn *clientConnection) Request(req *Request) (Stream, error) {
 	out.input = input
 	out.output = conn.dataOutput
 	out.request = req
+	out.receiver = res
 	out.headers = make(Header)
 	out.stop = false
 	out.version = conn.version
@@ -305,6 +309,10 @@ func (conn *clientConnection) Request(req *Request) (Stream, error) {
 	return out, nil
 }
 
+func (conn *clientConnection) Version() uint16 {
+	return conn.version
+}
+
 // validFrameVersion checks that a frame has the same SPDY
 // version number as the rest of the connection. This library
 // does not support the mixing of different versions within a
@@ -319,7 +327,7 @@ func (conn *clientConnection) validFrameVersion(frame Frame) bool {
 	}
 
 	// Check the version.
-	if frame.Version() != uint16(conn.version) {
+	if frame.Version() != conn.version {
 		log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
 			frame.Version(), conn.version)
 		if frame.Version() > SPDY_VERSION {
@@ -379,6 +387,39 @@ func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.done.Add(1)
 
 	return
+}
+
+// handleSynReplyFrame performs the processing of SYN_REPLY frames.
+func (conn *clientConnection) handleSynReplyFrame(frame *SynReplyFrame) {
+	conn.RLock()
+	defer func() { conn.RUnlock() }()
+
+	sid := frame.streamID
+
+	// Check Stream ID is odd.
+	if sid&1 == 0 {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n", sid)
+		conn.numBenignErrors++
+		return
+	}
+
+	// Check stream is open.
+	nsid := conn.nextClientStreamID + 2
+	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
+		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
+		conn.numBenignErrors++
+		return
+	}
+
+	// Stream ID is fine.
+
+	// Send headers to stream.
+	conn.streamInputs[sid] <- frame
+
+	// Handle flags.
+	if frame.Flags&FLAG_FIN != 0 {
+		conn.streams[sid].State().CloseThere()
+	}
 }
 
 // handleRstStream performs the processing of RST_STREAM frames.
@@ -463,6 +504,7 @@ func (conn *clientConnection) handleDataFrame(frame *DataFrame) {
 	// Handle flags.
 	if frame.Flags&FLAG_FIN != 0 {
 		conn.streams[sid].State().CloseThere()
+		close(conn.streamInputs[sid])
 	}
 }
 
@@ -551,7 +593,7 @@ func (conn *clientConnection) closeStream(streamID uint32) {
 // occurred, stops all running streams, and ends the connection.
 func (conn *clientConnection) PROTOCOL_ERROR(streamID uint32) {
 	reply := new(RstStreamFrame)
-	reply.version = uint16(conn.version)
+	reply.version = conn.version
 	reply.streamID = streamID
 	reply.StatusCode = RST_STREAM_PROTOCOL_ERROR
 	conn.WriteFrame(reply)
@@ -574,6 +616,27 @@ func (conn *clientConnection) cleanup() {
 	conn.streams = nil
 }
 
+func (conn *clientConnection) start() {
+	// Send any global settings.
+	settings := new(SettingsFrame)
+	settings.version = conn.version
+	settings.Settings = []*Setting{
+		&Setting{
+			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
+			Value: conn.initialWindowSize,
+		},
+		&Setting{
+			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+			Value: 1000,
+		},
+	}
+	if conn.client.GlobalSettings != nil {
+		settings.Settings = append(settings.Settings, conn.client.GlobalSettings...)
+	}
+	conn.dataOutput <- settings
+	conn.ready = true
+}
+
 // run prepares and executes the frame reading
 // loop of the connection. At this point, any
 // global settings set by the client are sent to
@@ -590,24 +653,6 @@ func (conn *clientConnection) run() {
 
 	// Start the send loop.
 	go conn.send()
-
-	// Send any global settings.
-	settings := new(SettingsFrame)
-	settings.version = uint16(conn.version)
-	settings.Settings = []*Setting{
-		&Setting{
-			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
-			Value: conn.initialWindowSize,
-		},
-		&Setting{
-			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-			Value: 1000,
-		},
-	}
-	if conn.client.GlobalSettings != nil {
-		settings.Settings = append(settings.Settings, conn.client.GlobalSettings...)
-	}
-	conn.dataOutput <- settings
 
 	// Enter the main loop.
 	conn.readFrames()
