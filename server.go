@@ -262,6 +262,10 @@ type ServeMux struct {
 	hosts bool // whether any patterns contain hostnames.
 }
 
+func (s *ServeMux) Nil() bool {
+	return len(s.m) == 0
+}
+
 type muxEntry struct {
 	explicit bool
 	h        Handler
@@ -576,6 +580,56 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Han
 	}
 
 	return server.ListenAndServeTLS(certFile, keyFile)
+}
+
+// AddSPDYServer adds SPDY support to srv, using server to handle requests. This
+// must be called before srv begins serving.
+func AddSPDYServer(srv *http.Server, server *Server) {
+	if srv.TLSConfig == nil {
+		srv.TLSConfig = new(tls.Config)
+	}
+	if srv.TLSConfig.NextProtos == nil {
+		srv.TLSConfig.NextProtos = []string{
+			"spdy/3",
+			//"spdy/2",
+			"http/1.1",
+		}
+	} else {
+		// Collect compatible alternative protocols.
+		others := make([]string, 0, len(srv.TLSConfig.NextProtos))
+		for _, other := range srv.TLSConfig.NextProtos {
+			if !strings.Contains(other, "spdy/") && !strings.Contains(other, "http/") {
+				others = append(others, other)
+			}
+		}
+
+		// Start with spdy.
+		srv.TLSConfig.NextProtos = make([]string, 0, len(others)+3)
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, []string{
+			"spdy/3",
+			//"spdy/2",
+		}...)
+
+		// Add the others.
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, others...)
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, "http/1.1")
+	}
+	if srv.TLSNextProto == nil {
+		srv.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
+	srv.TLSNextProto["spdy/3"] = func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+		acceptSPDYv3(server, tlsConn, nil)
+	}
+	srv.TLSNextProto["spdy/2"] = func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+		acceptSPDYv2(server, tlsConn, nil)
+	}
+}
+
+// AddSPDY adds SPDY support to srv, using spdy.DefaultServeMux to handle requests.
+// This must be called before srv begins serving.
+func AddSPDY(srv *http.Server) {
+	server := &Server{Handler: DefaultServeMux}
+	AddSPDYServer(srv, server)
 }
 
 // Errors introduced by the HTTP server.
