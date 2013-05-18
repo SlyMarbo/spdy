@@ -453,6 +453,7 @@ func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
 type Server struct {
 	Addr           string        // TCP address to listen on, ":http" if empty
 	Handler        Handler       // handler to invoke, spdy.DefaultServeMux if nil
+	httpHandler    http.Handler  // handler to invoke if Handler and DefaultServeMux are nil/empty.
 	ReadTimeout    time.Duration // maximum duration before timing out read of the request
 	WriteTimeout   time.Duration // maximum duration before timing out write of the response
 	TLSConfig      *tls.Config   // optional TLS config, used by ListenAndServeTLS
@@ -509,10 +510,12 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 			},
 		},
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-			//"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+			//"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			//	srv.httpHandler = handler
 			//	acceptSPDYv2(srv, tlsConn, nil)
 			//},
-			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				srv.httpHandler = handler
 				acceptSPDYv3(srv, tlsConn, nil)
 			},
 		},
@@ -572,8 +575,12 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Han
 			},
 		},
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-			//"spdy/2": acceptDefaultSPDYv2,
-			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+			//"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			//	srv.httpHandler = handler
+			//	acceptDefaultSPDYv2,
+			//},
+			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				srv.httpHandler = handler
 				acceptSPDYv3(srv, tlsConn, nil)
 			},
 		},
@@ -617,10 +624,12 @@ func AddSPDYServer(srv *http.Server, server *Server) {
 	if srv.TLSNextProto == nil {
 		srv.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 	}
-	srv.TLSNextProto["spdy/3"] = func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+	srv.TLSNextProto["spdy/3"] = func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+		server.httpHandler = handler
 		acceptSPDYv3(server, tlsConn, nil)
 	}
-	srv.TLSNextProto["spdy/2"] = func(_ *http.Server, tlsConn *tls.Conn, _ http.Handler) {
+	srv.TLSNextProto["spdy/2"] = func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+		server.httpHandler = handler
 		acceptSPDYv2(server, tlsConn, nil)
 	}
 }

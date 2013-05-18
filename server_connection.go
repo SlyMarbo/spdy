@@ -254,7 +254,6 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 	stream.state = new(StreamState)
 	stream.input = input
 	stream.output = output
-	stream.handler = DefaultServeMux
 	stream.certificates = make([]Certificate, 1)
 	stream.headers = make(Header)
 	stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
@@ -470,6 +469,14 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	input := make(chan Frame)
 	conn.streamInputs[sid] = input
 	nextStream := conn.newStream(frame, input, conn.dataPriority[frame.Priority])
+	nextStream.handler = conn.server.Handler
+	if nextStream.handler == nil {
+		nextStream.handler = DefaultServeMux
+	}
+	nextStream.httpHandler = conn.server.httpHandler
+	if nextStream.httpHandler == nil {
+		nextStream.httpHandler = http.DefaultServeMux
+	}
 	conn.streams[sid] = nextStream
 	conn.Unlock()
 	conn.RLock()

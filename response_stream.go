@@ -22,7 +22,8 @@ type responseStream struct {
 	input          <-chan Frame
 	output         chan<- Frame
 	request        *Request
-	handler        *ServeMux
+	handler        Handler
+	httpHandler    http.Handler
 	certificates   []Certificate
 	headers        Header
 	unidirectional bool
@@ -266,7 +267,14 @@ func (s *responseStream) Run() {
 	/***************
 	 *** HANDLER ***
 	 ***************/
-	s.handler.ServeSPDY(s, s.request)
+	mux, ok := s.handler.(*ServeMux)
+	if s.handler == nil || (ok && mux.Nil()) {
+		r := spdyToHttpRequest(s.request)
+		w := &_httpResponseWriter{s}
+		s.httpHandler.ServeHTTP(w, r)
+	} else {
+		s.handler.ServeSPDY(s, s.request)
+	}
 
 	// Make sure any queued data has been sent.
 	for s.flow.Paused() {
