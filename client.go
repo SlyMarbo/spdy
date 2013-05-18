@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -24,7 +25,6 @@ import (
 type Receiver interface {
 	ReceiveData(*Request, []byte, bool)
 	ReceiveHeaders(*Request, Header)
-	ReceiveStatus(*Request, int)
 }
 
 type Client struct {
@@ -36,6 +36,19 @@ type Client struct {
 	MaxTcpConnsPerHost int           // Maximum concurrent TCP connections per host.
 
 	spdyConns map[string]Connection // SPDY connections mapped to host:port.
+
+	// CheckRedirect specifies the policy for handling redirects.
+	// If CheckRedirect is not nil, the client calls it before
+	// following an HTTP redirect. The arguments req and via are
+	// the upcoming request and the requests made already, oldest
+	// first. If CheckRedirect returns an error, the Client's Get
+	// method returns both the previous Response and
+	// CheckRedirect's error (wrapped in a url.Error) instead of
+	// issuing the Request req.
+	//
+	// If CheckRedirect is nil, the Client uses its default policy,
+	// which is to stop after 10 consecutive requests.
+	CheckRedirect func(req *Request, via []*Request) error
 
 	// Jar specifies the cookie jar.
 	// If Jar is nil, cookies are not sent in requests and ignored
@@ -67,9 +80,17 @@ func (c *Client) dial(u *url.URL) (net.Conn, error) {
 }
 
 func (c *Client) doHTTP(conn net.Conn, req *Request) (*Response, error) {
+	if DebugMode {
+		log.Printf("Requesting %q over HTTP.\n", req.URL.String())
+	}
+
 	httpConn := httputil.NewClientConn(conn, nil)
 	httpReq := spdyToHttpRequest(req)
 	httpRes, err := httpConn.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	err = httpConn.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -83,10 +104,9 @@ func (c *Client) do(req *Request) (*Response, error) {
 		switch u.Scheme {
 		case "http":
 			u.Host += ":80"
+
 		case "https":
 			u.Host += ":443"
-		default:
-			return nil, errors.New(fmt.Sprintf("Error: URL has invalid scheme %q.", u.Scheme))
 		}
 	}
 
@@ -95,7 +115,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 		c.spdyConns = make(map[string]Connection)
 	}
 	conn, ok := c.spdyConns[u.Host]
-	if !ok {
+	if !ok || u.Scheme == "http" {
 		tcpConn, err := c.dial(req.URL)
 		if err != nil {
 			c.Unlock()
@@ -169,6 +189,10 @@ func (c *Client) do(req *Request) (*Response, error) {
 
 	// The connection has now been established.
 
+	if DebugMode {
+		log.Printf("Requesting %q over SPDY.\n", u.String())
+	}
+
 	// Prepare the response.
 	res := new(response)
 	res.SPDYProto = int(conn.Version())
@@ -187,6 +211,95 @@ func (c *Client) do(req *Request) (*Response, error) {
 	return res.Response(), nil
 }
 
+func (c *Client) doFollowingRedirects(ireq *Request, shouldRedirect func(int) bool) (res *Response, err error) {
+	var base *url.URL
+	redirectChecker := c.CheckRedirect
+	if redirectChecker == nil {
+		redirectChecker = defaultCheckRedirect
+	}
+	var via []*Request
+
+	if ireq.URL == nil {
+		return nil, errors.New("spdy: nil Request.URL")
+	}
+
+	req := ireq
+	urlStr := "" // next relative or absolute URL to fetch (after first request)
+	redirectFailed := false
+	for redirect := 0; ; redirect++ {
+		if redirect != 0 {
+			req = new(Request)
+			req.Method = ireq.Method
+			if ireq.Method == "POST" || ireq.Method == "PUT" {
+				req.Method = "GET"
+			}
+			req.Header = make(Header)
+			req.URL, err = base.Parse(urlStr)
+			if err != nil {
+				break
+			}
+			u := req.URL
+			if !strings.Contains(u.Host, ":") {
+				switch u.Scheme {
+				case "http":
+					u.Host += ":80"
+				case "https":
+					u.Host += ":443"
+				}
+			}
+			if len(via) > 0 {
+				// Add the Referer header.
+				lastReq := via[len(via)-1]
+				if lastReq.URL.Scheme != "https" {
+					req.Header.Set("Referer", lastReq.URL.String())
+				}
+
+				err = redirectChecker(req, via)
+				if err != nil {
+					redirectFailed = true
+					break
+				}
+			}
+		}
+
+		urlStr = req.URL.String()
+		if res, err = c.do(req); err != nil {
+			break
+		}
+
+		if shouldRedirect(res.StatusCode) {
+			res.Body.Close()
+			if urlStr = res.Header.Get("Location"); urlStr == "" {
+				err = errors.New(fmt.Sprintf("%d response missing Location header", res.StatusCode))
+				break
+			}
+			base = req.URL
+			via = append(via, req)
+			continue
+		}
+		return res, err
+	}
+
+	method := ireq.Method
+	urlErr := &url.Error{
+		Op:  method[0:1] + strings.ToLower(method[1:]),
+		URL: urlStr,
+		Err: err,
+	}
+
+	if redirectFailed {
+		// Special case for Go 1 compatibility: return both the response
+		// and an error if the CheckRedirect function failed.
+		// See http://golang.org/issue/3795
+		return res, urlErr
+	}
+
+	if res != nil {
+		res.Body.Close()
+	}
+	return nil, urlErr
+}
+
 // Do sends a SPDY request and returns a SPDY response,
 // following policiy (e.g. redirects, cookies, auth) as
 // configured on the client.
@@ -197,6 +310,30 @@ func (c *Client) do(req *Request) (*Response, error) {
 // Response.SentOverSpdy.
 func (c *Client) Do(req *Request) (*Response, error) {
 	return c.do(req)
+}
+
+// True if the specified HTTP status code is one for
+// which the Get utility should automatically redirect.
+func shouldRedirectGet(statusCode int) bool {
+	switch statusCode {
+	case http.StatusMovedPermanently, http.StatusFound,
+		http.StatusSeeOther, http.StatusTemporaryRedirect:
+		return true
+	}
+	return false
+}
+
+func defaultCheckRedirect(req *Request, via []*Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	str := req.URL.String()
+	for _, viareq := range via {
+		if str == viareq.URL.String() {
+			return errors.New("encountered redirect loop")
+		}
+	}
+	return nil
 }
 
 // Get issues a GET to the specified URL. If the response
@@ -220,7 +357,7 @@ func (c *Client) Get(url string) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.Do(req)
+	return c.doFollowingRedirects(req, shouldRedirectGet)
 }
 
 func Get(url string) (*Response, error) {

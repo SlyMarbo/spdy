@@ -183,7 +183,7 @@ func (conn *clientConnection) send() {
 		if err != nil {
 			panic(err)
 		}
-		
+
 		if DebugMode {
 			log.Println("Sending Frame:")
 			log.Println(frame)
@@ -258,7 +258,38 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 	headers.Set(":host", url.Host)
 	headers.Set(":scheme", url.Scheme)
 	syn.Headers = headers
+
+	// Prepare the request body, if any.
+	body := make([]*DataFrame, 0, 10)
 	if req.Body != nil {
+		buf := make([]byte, 32*1024)
+		n, err := req.Body.Read(buf)
+		if err != nil {
+			return nil, err
+		}
+		total := n
+		for n > 0 {
+			data := new(DataFrame)
+			data.streamID = syn.streamID
+			data.Data = make([]byte, n)
+			copy(data.Data, buf[:n])
+			body = append(body, data)
+			n, err = req.Body.Read(buf)
+			if err != nil && err != io.EOF {
+				return nil, err
+			}
+			total += n
+		}
+
+		// Half-close the stream.
+		if len(body) == 0 {
+			syn.Flags = FLAG_FIN
+		} else {
+			syn.Headers.Set("Content-Length", fmt.Sprint(total))
+			body[len(body)-1].Flags = FLAG_FIN
+		}
+		req.Body.Close()
+	} else {
 		syn.Flags = FLAG_FIN
 	}
 
@@ -269,6 +300,9 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 	conn.streamInputs[syn.streamID] = input
 	conn.nextClientStreamID += 2
 	conn.WriteFrame(syn)
+	for _, frame := range body {
+		conn.WriteFrame(frame)
+	}
 	conn.Unlock()
 
 	// Create the request stream.
@@ -276,6 +310,7 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 	out.conn = conn
 	out.streamID = syn.streamID
 	out.state = new(StreamState)
+	out.state.CloseHere()
 	out.input = input
 	out.output = conn.dataOutput
 	out.request = req
@@ -287,24 +322,6 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 
 	// Store in the connection map.
 	conn.streams[syn.streamID] = out
-
-	// Send the request body, if any.
-	if req.Body != nil {
-		_, err := io.Copy(out, req.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Body.Close()
-
-		// Half-close the stream.
-		data := new(DataFrame)
-		data.streamID = syn.streamID
-		data.Flags = FLAG_FIN
-		data.Data = []byte{}
-		conn.WriteFrame(data)
-	}
-	out.State().CloseHere()
 
 	return out, nil
 }
@@ -398,16 +415,12 @@ func (conn *clientConnection) handleSynReplyFrame(frame *SynReplyFrame) {
 
 	// Check Stream ID is odd.
 	if sid&1 == 0 {
-		log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n", sid)
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which should be odd.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
 
 	// Check stream is open.
-	nsid := conn.nextClientStreamID + 2
-	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
-		log.Printf("Error: Received HEADERS with Stream ID %d, which should be %d.\n", sid, nsid)
 	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
@@ -630,6 +643,8 @@ func (conn *clientConnection) cleanup() {
 
 func (conn *clientConnection) start() {
 	conn.ready = true
+	return
+
 	// Send any global settings.
 	settings := new(SettingsFrame)
 	settings.version = conn.version
