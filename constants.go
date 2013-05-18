@@ -218,8 +218,9 @@ const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
 // DefaultPriority returns the default request
 // priority for the given target path. This is
-// currently 0 for pages, 1 for CSS, 2 for JS,
-// 3 for images. Other types default to 2.
+// currently in accordance with Google Chrome;
+// giving 0 for pages, 1 for CSS, 2 for JS, 3
+// for images. Other types default to 2.
 func DefaultPriority(path string) int {
 	u, err := url.Parse(path)
 	if err != nil {

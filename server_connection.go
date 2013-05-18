@@ -656,7 +656,7 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 		log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n", delta)
 		conn.PROTOCOL_ERROR(sid)
 	}
-	
+
 	// Ignore empty deltas.
 	if delta == 0 {
 		return

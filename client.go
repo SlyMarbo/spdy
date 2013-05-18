@@ -30,13 +30,19 @@ type Receiver interface {
 
 type Client struct {
 	sync.RWMutex
-	ReadTimeout        time.Duration // max duration before timing out read on the request
-	WriteTimeout       time.Duration // max duration before timing out write on the response
-	TLSConfig          *tls.Config   // optional TLS config, used by ListenAndServeTLS
-	GlobalSettings     []*Setting    // SPDY settings to be sent to all servers automatically.
-	MaxTcpConnsPerHost int           // Maximum concurrent TCP connections per host.
+	ReadTimeout    time.Duration // max duration before timing out read on the request
+	WriteTimeout   time.Duration // max duration before timing out write on the response
+	TLSConfig      *tls.Config   // optional TLS config, used by ListenAndServeTLS
+	GlobalSettings []*Setting    // SPDY settings to be sent to all servers automatically.
 
-	spdyConns map[string]Connection // SPDY connections mapped to host:port.
+	// Maximum concurrent non-SPDY connections per host.
+	// Changes to MaxTcpConnsPerHost are ignored after
+	// the client has made any requests.
+	MaxTcpConnsPerHost int
+
+	spdyConns map[string]Connection    // SPDY connections mapped to host:port.
+	tcpConns  map[string]chan net.Conn // Non-SPDY connections mapped to host:port.
+	connLimit map[string]chan struct{} // Used to enforce the TCP conn limit.
 
 	// CheckRedirect specifies the policy for handling redirects.
 	// If CheckRedirect is not nil, the client calls it before
@@ -62,6 +68,7 @@ var DefaultClient = &Client{}
 
 // dial makes the connection to an endpoint.
 func (c *Client) dial(u *url.URL) (net.Conn, error) {
+
 	if c.TLSConfig == nil {
 		c.TLSConfig = &tls.Config{
 			NextProtos: []string{"spdy/3", /*"spdy/2",*/ "http/1.1"},
@@ -69,6 +76,9 @@ func (c *Client) dial(u *url.URL) (net.Conn, error) {
 	} else if c.TLSConfig.NextProtos == nil {
 		c.TLSConfig.NextProtos = []string{"spdy/3", /*"spdy/2",*/ "http/1.1"}
 	}
+
+	// Wait for a connection slot to become available.
+	<-c.connLimit[u.Host]
 
 	switch u.Scheme {
 	case "http":
@@ -91,9 +101,16 @@ func (c *Client) doHTTP(conn net.Conn, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = httpConn.Close()
-	if err != nil {
-		return nil, err
+
+	if !httpRes.Close {
+		c.tcpConns[req.URL.Host] <- conn
+	} else {
+		// This connection is closing, so another can be used.
+		c.connLimit[req.URL.Host] <- struct{}{}
+		err = httpConn.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return httpToSpdyResponse(httpRes, req), nil
@@ -115,6 +132,34 @@ func (c *Client) do(req *Request) (*Response, error) {
 	if c.spdyConns == nil {
 		c.spdyConns = make(map[string]Connection)
 	}
+	if c.tcpConns == nil {
+		c.tcpConns = make(map[string]chan net.Conn)
+	}
+	if c.connLimit == nil {
+		c.connLimit = make(map[string]chan struct{})
+	}
+	if c.MaxTcpConnsPerHost == 0 {
+		c.MaxTcpConnsPerHost = 6
+	}
+	if _, ok := c.connLimit[u.Host]; !ok {
+		limitChan := make(chan struct{}, c.MaxTcpConnsPerHost)
+		c.connLimit[u.Host] = limitChan
+		for i := 0; i < c.MaxTcpConnsPerHost; i++ {
+			limitChan <- struct{}{}
+		}
+	}
+
+	if connChan, ok := c.tcpConns[u.Host]; ok {
+		select {
+		case tcpConn := <-connChan:
+			c.Unlock()
+			return c.doHTTP(tcpConn, req)
+		default:
+		}
+	} else {
+		c.tcpConns[u.Host] = make(chan net.Conn, c.MaxTcpConnsPerHost)
+	}
+
 	conn, ok := c.spdyConns[u.Host]
 	if !ok || u.Scheme == "http" {
 		tcpConn, err := c.dial(req.URL)
@@ -182,6 +227,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 			}
 		} else {
 			// TODO: add connection handling.
+
 			// Handle HTTP requests.
 			c.Unlock()
 			return c.doHTTP(tcpConn, req)
