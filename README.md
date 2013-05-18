@@ -197,10 +197,9 @@ Here's a simple example that will fetch the requested page over HTTP, HTTPS, or 
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/SlyMarbo/spdy"
-	"io"
+	"io/ioutil"
 )
 
 func main() {
@@ -209,14 +208,12 @@ func main() {
 		// handle the error.
 	}
 	
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, res.Body)
+	bytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		// handle the error.
 	}
-	
 	res.Body.Close()
 	
-	fmt.Printf("Received: %s\n", buf.String())
+	fmt.Printf("Received: %s\n", bytes)
 }
 ```
