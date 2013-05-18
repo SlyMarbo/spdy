@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -309,6 +310,12 @@ func (c *Client) doFollowingRedirects(ireq *Request, shouldRedirect func(int) bo
 // used can be determined by checking the value set for
 // Response.SentOverSpdy.
 func (c *Client) Do(req *Request) (*Response, error) {
+	if req.Method == "GET" || req.Method == "HEAD" {
+		return c.doFollowingRedirects(req, shouldRedirectGet)
+	}
+	if req.Method == "POST" || req.Method == "PUT" {
+		return c.doFollowingRedirects(req, shouldRedirectPost)
+	}
 	return c.do(req)
 }
 
@@ -318,6 +325,16 @@ func shouldRedirectGet(statusCode int) bool {
 	switch statusCode {
 	case http.StatusMovedPermanently, http.StatusFound,
 		http.StatusSeeOther, http.StatusTemporaryRedirect:
+		return true
+	}
+	return false
+}
+
+// True if the specified HTTP status code is one for which the Post utility should
+// automatically redirect.
+func shouldRedirectPost(statusCode int) bool {
+	switch statusCode {
+	case http.StatusFound, http.StatusSeeOther:
 		return true
 	}
 	return false
@@ -334,6 +351,26 @@ func defaultCheckRedirect(req *Request, via []*Request) error {
 		}
 	}
 	return nil
+}
+
+// Get issues a GET to the specified URL.  If the response is one of the following
+// redirect codes, Get follows the redirect, up to a maximum of 10 redirects:
+//
+//    301 (Moved Permanently)
+//    302 (Found)
+//    303 (See Other)
+//    307 (Temporary Redirect)
+//
+// An error is returned if there were too many redirects or if there
+// was an HTTP protocol error. A non-2xx response doesn't cause an
+// error.
+//
+// When err is nil, resp always contains a non-nil resp.Body.
+// Caller should close resp.Body when done reading from it.
+//
+// Get is a wrapper around DefaultClient.Get.
+func Get(url string) (*Response, error) {
+	return DefaultClient.Get(url)
 }
 
 // Get issues a GET to the specified URL. If the response
@@ -353,13 +390,84 @@ func defaultCheckRedirect(req *Request, via []*Request) error {
 // When err is nil, resp always contains a non-nil resp.Body.
 // Caller should close resp.Body when done reading from it.
 func (c *Client) Get(url string) (*Response, error) {
-	req, err := NewRequest("GET", url, nil, 3)
+	req, err := NewRequest("GET", url, nil, DefaultPriority(url))
 	if err != nil {
 		return nil, err
 	}
 	return c.doFollowingRedirects(req, shouldRedirectGet)
 }
 
-func Get(url string) (*Response, error) {
-	return DefaultClient.Get(url)
+// Post issues a POST to the specified URL.
+//
+// Caller should close resp.Body when done reading from it.
+//
+// Post is a wrapper around DefaultClient.Post
+func Post(url string, bodyType string, body io.Reader) (*Response, error) {
+	return DefaultClient.Post(url, bodyType, body)
 }
+
+// Post issues a POST to the specified URL.
+//
+// Caller should close resp.Body when done reading from it.
+func (c *Client) Post(url string, bodyType string, body io.Reader) (*Response, error) {
+	req, err := NewRequest("POST", url, body, DefaultPriority(url))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.doFollowingRedirects(req, shouldRedirectPost)
+}
+
+// PostForm issues a POST to the specified URL, with data's keys and
+// values URL-encoded as the request body.
+//
+// When err is nil, resp always contains a non-nil resp.Body.
+// Caller should close resp.Body when done reading from it.
+//
+// PostForm is a wrapper around DefaultClient.PostForm
+func PostForm(url string, data url.Values) (*Response, error) {
+	return DefaultClient.PostForm(url, data)
+}
+
+// PostForm issues a POST to the specified URL,
+// with data's keys and values urlencoded as the request body.
+//
+// When err is nil, resp always contains a non-nil resp.Body.
+// Caller should close resp.Body when done reading from it.
+func (c *Client) PostForm(url string, data url.Values) (resp *Response, err error) {
+	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+}
+
+// Head issues a HEAD to the specified URL.  If the response is one of the
+// following redirect codes, Head follows the redirect after calling the
+// Client's CheckRedirect function.
+//
+//    301 (Moved Permanently)
+//    302 (Found)
+//    303 (See Other)
+//    307 (Temporary Redirect)
+//
+// Head is a wrapper around DefaultClient.Head
+func Head(url string) (resp *Response, err error) {
+	return DefaultClient.Head(url)
+}
+
+// Head issues a HEAD to the specified URL.  If the response is one of the
+// following redirect codes, Head follows the redirect after calling the
+// Client's CheckRedirect function.
+//
+//    301 (Moved Permanently)
+//    302 (Found)
+//    303 (See Other)
+//    307 (Temporary Redirect)
+func (c *Client) Head(url string) (resp *Response, err error) {
+	req, err := NewRequest("HEAD", url, nil, DefaultPriority(url))
+	if err != nil {
+		return nil, err
+	}
+	return c.doFollowingRedirects(req, shouldRedirectGet)
+}
+
+// Given a string of the form "host", "host:port", or "[ipv6::address]:port",
+// return true if the string includes a port.
+func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastIndex(s, "]") }

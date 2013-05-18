@@ -2,9 +2,11 @@ package spdy
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 )
@@ -65,6 +67,35 @@ type Response struct {
 	// Request's Body is nil (having already been consumed).
 	// This is only populated for Client requests.
 	Request *Request
+}
+
+// Cookies parses and returns the cookies set in the Set-Cookie headers.
+func (r *Response) Cookies() []*Cookie {
+	return readSetCookies(r.Header)
+}
+
+var ErrNoLocation = errors.New("http: no Location header in response")
+
+// Location returns the URL of the response's "Location" header,
+// if present.  Relative redirects are resolved relative to
+// the Response's Request.  ErrNoLocation is returned if no
+// Location header is present.
+func (r *Response) Location() (*url.URL, error) {
+	lv := r.Header.Get("Location")
+	if lv == "" {
+		return nil, ErrNoLocation
+	}
+	if r.Request != nil && r.Request.URL != nil {
+		return r.Request.URL.Parse(lv)
+	}
+	return url.Parse(lv)
+}
+
+// ProtoAtLeast returns whether the HTTP protocol used
+// in the response is at least major.minor.
+func (r *Response) ProtoAtLeast(major, minor int) bool {
+	return r.ProtoMajor > major ||
+		r.ProtoMajor == major && r.ProtoMinor >= minor
 }
 
 type response struct {
