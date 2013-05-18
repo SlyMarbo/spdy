@@ -38,6 +38,8 @@ type clientConnection struct {
 	numBenignErrors    int             // number of non-serious errors encountered.
 	done               *sync.WaitGroup // WaitGroup for active streams.
 	ready              bool
+	activeStreams      uint32
+	maxActiveStreams   uint32
 }
 
 // readFrames is the main processing loop, where frames
@@ -117,9 +119,21 @@ func (conn *clientConnection) readFrames() {
 		case *SettingsFrame:
 			for _, setting := range frame.Settings {
 				conn.receivedSettings[setting.ID] = setting
-				if setting.ID == SETTINGS_INITIAL_WINDOW_SIZE && conn.version > 2 {
-					log.Printf("Initial window size is %d.\n", setting.Value)
-					conn.initialWindowSize = setting.Value
+				switch setting.ID {
+				case SETTINGS_INITIAL_WINDOW_SIZE:
+					if conn.version > 2 {
+						if DebugMode {
+							log.Printf("Initial window size is %d.\n", setting.Value)
+						}
+						conn.initialWindowSize = setting.Value
+					} else {
+						msg := "Warning: Received INITIAL_WINDOW_SIZE setting on SPDY/%d, which has no flow control.\n"
+						log.Printf(msg, conn.version)
+					}
+
+				case SETTINGS_MAX_CONCURRENT_STREAMS:
+					conn.maxActiveStreams = setting.Value
+					// TODO: enforce.
 				}
 			}
 
