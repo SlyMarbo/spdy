@@ -1,7 +1,7 @@
 spdy
 ====
 
-My implementation of SPDY/v3 (work in progress).
+My implementation of SPDY/v3 (still under very active development).
 
 So far, servers and clients are ready, but the client API is not completely stable.
  
@@ -41,7 +41,7 @@ Simply requires the following changes:
 package main
 
 import (
-	"github.com/SlyMarbo/spdy"
+	"github.com/SlyMarbo/spdy" // Import SPDY.
 	"net/http"
 )
 
@@ -59,6 +59,40 @@ func main() {
 	// Register handlers.
 	http.HandleFunc("/", ServeHTTP)
 	spdy.HandleFunc("/", ServeSPDY)
+
+	// Use spdy's ListenAndServe.
+	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
+	if err != nil {
+		// handle error.
+	}
+}
+```
+
+New:
+
+SPDY now supports reuse of HTTP handlers. Although this allows you to use just one set of handlers, it means there is
+no way to use the SPDY-specific capabilities provided by `spdy.ResponseWriter`, such as server pushes, or to know which
+protocol is being used.
+
+This means that the original HTTP server above could be adapted to SPDY with just the extra import statement and one
+change, as shown here:
+```go
+package main
+
+import (
+	"github.com/SlyMarbo/spdy" // Import SPDY.
+	"net/http"
+)
+
+// This handler will now serve HTTP, HTTPS, and SPDY requests.
+func ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Hello, HTTP!"))
+}
+
+func main() {
+	
+	// Register handler.
+	http.HandleFunc("/", ServeHTTP)
 
 	// Use spdy's ListenAndServe.
 	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
