@@ -139,6 +139,8 @@ func (conn *serverConnection) readFrames() {
 				}
 			}
 
+		case *NoopFrame:
+
 		case *PingFrame:
 			// Check whether Ping ID is server-sent.
 			if frame.PingID&1 == 0 {
@@ -199,6 +201,11 @@ func (conn *serverConnection) send() {
 		if err != nil {
 			log.Println(err)
 			continue
+		}
+
+		if DebugMode {
+			log.Println("Sending Frame:")
+			log.Println(frame)
 		}
 
 		// Leave the specifics of writing to the
@@ -264,22 +271,42 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 	}
 
 	headers := frame.Headers
-	rawUrl := headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
+	var rawUrl string
+	switch frame.version {
+	case 3:
+		rawUrl = headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
+	case 2:
+		rawUrl = headers.Get("scheme") + "://" + headers.Get("host") + headers.Get("url")
+	}
 	url, err := url.Parse(rawUrl)
 	if err != nil {
 		log.Println(err) // TODO: handle the error properly.
 		return nil
 	}
 
-	vers := headers.Get(":version")
+	var vers string
+	switch frame.version {
+	case 3:
+		vers = headers.Get(":version")
+	case 2:
+		vers = headers.Get("version")
+	}
 	major, minor, ok := http.ParseHTTPVersion(vers)
 	if !ok {
 		log.Println("Error: Invalid HTTP version: " + headers.Get(":version"))
 		return nil
 	}
 
+	var method string
+	switch frame.version {
+	case 3:
+		method = headers.Get(":method")
+	case 2:
+		method = headers.Get("method")
+	}
+
 	stream.request = &Request{
-		Method:     headers.Get(":method"),
+		Method:     method,
 		URL:        url,
 		Proto:      vers,
 		ProtoMajor: major,
@@ -358,12 +385,22 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 	if url.Scheme == "" || url.Host == "" || url.Path == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
 	}
+
 	headers := make(Header)
-	headers.Set(":scheme", url.Scheme)
-	headers.Set(":host", url.Host)
-	headers.Set(":path", url.Path)
-	headers.Set(":version", "HTTP/1.1")
-	headers.Set(":status", "200 OK")
+	switch conn.version {
+	case 3:
+		headers.Set(":scheme", url.Scheme)
+		headers.Set(":host", url.Host)
+		headers.Set(":path", url.Path)
+		headers.Set(":version", "HTTP/1.1")
+		headers.Set(":status", "200 OK")
+	case 2:
+		headers.Set("scheme", url.Scheme)
+		headers.Set("host", url.Host)
+		headers.Set("url", url.Path)
+		headers.Set("version", "HTTP/1.1")
+		headers.Set("status", "200 OK")
+	}
 	push.Headers = headers
 
 	// Send.

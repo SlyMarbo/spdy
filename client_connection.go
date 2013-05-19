@@ -137,6 +137,8 @@ func (conn *clientConnection) readFrames() {
 				}
 			}
 
+		case *NoopFrame:
+
 		case *PingFrame:
 			// Check whether Ping ID is client-sent.
 			if frame.PingID&1 != 0 {

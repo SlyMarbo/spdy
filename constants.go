@@ -8,6 +8,7 @@ import (
 )
 
 const SPDY_VERSION = 3
+const MIN_SPDY_VERSION = 2
 
 // DebugMode, if enabled, will log
 // debug information specific to
@@ -34,6 +35,7 @@ const (
 	SYN_REPLY     = 2
 	RST_STREAM    = 3
 	SETTINGS      = 4
+	NOOP          = 5
 	PING          = 6
 	GOAWAY        = 7
 	HEADERS       = 8

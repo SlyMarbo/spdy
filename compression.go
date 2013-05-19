@@ -22,7 +22,7 @@ type Decompressor struct {
 
 // Decompress uses zlib decompression to decompress the provided
 // data, according to the SPDY specification of the given version.
-func (d *Decompressor) Decompress(version int, data []byte) (headers Header, err error) {
+func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, err error) {
 	d.m.Lock()
 	defer d.m.Unlock()
 
@@ -138,7 +138,7 @@ type Compressor struct {
 
 // Compress uses zlib compression to compress the provided
 // data, according to the SPDY specification of the given version.
-func (c *Compressor) Compress(version int, data []byte) ([]byte, error) {
+func (c *Compressor) Compress(version uint16, data []byte) ([]byte, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 

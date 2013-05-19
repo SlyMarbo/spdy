@@ -132,9 +132,17 @@ func (frame *SynStreamFrame) Bytes() ([]byte, error) {
 	out[13] = byte(frame.AssocStreamID >> 16)      // Associated Stream ID
 	out[14] = byte(frame.AssocStreamID >> 8)       // Associated Stream ID
 	out[15] = byte(frame.AssocStreamID)            // Associated Stream ID
-	out[16] = ((frame.Priority & 0x7) << 5)        // Priority and unused
-	out[17] = frame.Slot                           // Slot
-	out = append(out, headers...)                  // Name/Value Header Block
+
+	switch frame.version {
+	case 3:
+		out[16] = ((frame.Priority & 0x7) << 5) // Priority and unused
+		out[17] = frame.Slot                    // Slot
+	case 2:
+		out[16] = ((frame.Priority & 0x3) << 6) // Priority and unused
+		out[17] = 0                             // Unused
+	}
+
+	out = append(out, headers...) // Name/Value Header Block
 
 	return out, nil
 }
@@ -155,10 +163,18 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), SYN_STREAM}
 	}
 
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
+	}
+
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
-	if length < 10 {
+	if version == 3 && length < 10 {
 		return &IncorrectDataLength{length, 10}
+	} else if version == 2 && length < 12 {
+		return &IncorrectDataLength{length, 12}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return FrameTooLarge{}
 	}
@@ -181,14 +197,20 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 		return &InvalidField{"Unused", 1, 0}
 	} else if (data[16] & 0x1f) != 0 {
 		return &InvalidField{"Unused", int(data[16] & 0x1f), 0}
+	} else if version == 2 && data[17] != 0 {
+		return &InvalidField{"Unused", int(data[17]), 0}
 	}
 
-	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	frame.version = version
 	frame.Flags = data[4]
 	frame.streamID = bytesToUint31(data[8:12])
 	frame.AssocStreamID = bytesToUint31(data[12:16])
-	frame.Priority = data[16] >> 5
-	frame.Slot = data[17]
+	if version == 3 {
+		frame.Priority = data[16] >> 5
+		frame.Slot = data[17]
+	} else if version == 2 {
+		frame.Priority = data[16] >> 6
+	}
 
 	frame.rawHeaders = data[18:]
 
@@ -201,7 +223,7 @@ func (frame *SynStreamFrame) ReadHeaders(decom *Decompressor) error {
 	}
 
 	headers := make(Header)
-	err := headers.Parse(frame.rawHeaders, decom)
+	err := headers.Parse(frame.rawHeaders, decom, frame.version)
 	if err != nil {
 		return err
 	}
@@ -234,14 +256,16 @@ func (frame *SynStreamFrame) String() string {
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
 	buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
-	buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
+	if frame.version > 2 {
+		buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
+	}
 	buf.WriteString(fmt.Sprintf("Headers:              %v\n}\n", frame.Headers))
 
 	return buf.String()
 }
 
 func (frame *SynStreamFrame) WriteHeaders(com *Compressor) error {
-	headers, err := frame.Headers.Compressed(com)
+	headers, err := frame.Headers.Compressed(com, frame.version)
 	if err != nil {
 		return err
 	}
@@ -275,8 +299,15 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
 	out[13] = byte(frame.AssocStreamID >> 16)      // Associated Stream ID
 	out[14] = byte(frame.AssocStreamID >> 8)       // Associated Stream ID
 	out[15] = byte(frame.AssocStreamID)            // Associated Stream ID
-	out[16] = ((frame.Priority & 0x7) << 5)        // Priority and unused
-	out[17] = frame.Slot                           // Slot
+
+	switch frame.version {
+	case 3:
+		out[16] = ((frame.Priority & 0x7) << 5) // Priority and unused
+		out[17] = frame.Slot                    // Slot
+	case 2:
+		out[16] = ((frame.Priority & 0x3) << 6) // Priority and unused
+		out[17] = 0                             // Unused
+	}
 
 	_, err := writer.Write(out)
 	if err != nil {
@@ -311,7 +342,12 @@ func (frame *SynReplyFrame) Bytes() ([]byte, error) {
 
 	headers := frame.rawHeaders
 	length := 4 + len(headers)
-	out := make([]byte, 12, 8+length)
+	start := 12
+	if frame.version == 2 {
+		length += 2
+		start += 2
+	}
+	out := make([]byte, start, 8+length)
 
 	out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
 	out[1] = byte(frame.version)             // Version
@@ -325,7 +361,8 @@ func (frame *SynReplyFrame) Bytes() ([]byte, error) {
 	out[9] = byte(frame.streamID >> 16)      // Stream ID
 	out[10] = byte(frame.streamID >> 8)      // Stream ID
 	out[11] = byte(frame.streamID)           // Stream ID
-	out = append(out, headers...)            // Name/Value Header Block
+
+	out = append(out, headers...) // Name/Value Header Block
 
 	return out, nil
 }
@@ -346,10 +383,18 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), SYN_REPLY}
 	}
 
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
+	}
+
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
-	if length < 4 {
+	if version == 3 && length < 4 {
 		return &IncorrectDataLength{length, 4}
+	} else if version == 2 && length < 8 {
+		return &IncorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return FrameTooLarge{}
 	}
@@ -370,13 +415,22 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
 		return &InvalidField{"Unused", 1, 0}
+	} else if version == 2 && data[12] != 0 {
+		return &InvalidField{"Unused", int(data[12]), 0}
+	} else if version == 2 && data[13] != 0 {
+		return &InvalidField{"Unused", int(data[13]), 0}
 	}
 
-	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	frame.version = version
 	frame.Flags = data[4]
 	frame.streamID = bytesToUint31(data[8:12])
 
-	frame.rawHeaders = data[12:]
+	offset := 12
+	if version == 2 {
+		offset += 2
+	}
+
+	frame.rawHeaders = data[offset:]
 
 	return nil
 }
@@ -387,7 +441,7 @@ func (frame *SynReplyFrame) ReadHeaders(decom *Decompressor) error {
 	}
 
 	headers := make(Header)
-	err := headers.Parse(frame.rawHeaders, decom)
+	err := headers.Parse(frame.rawHeaders, decom, frame.version)
 	if err != nil {
 		return err
 	}
@@ -421,7 +475,7 @@ func (frame *SynReplyFrame) String() string {
 }
 
 func (frame *SynReplyFrame) WriteHeaders(com *Compressor) error {
-	headers, err := frame.Headers.Compressed(com)
+	headers, err := frame.Headers.Compressed(com, frame.version)
 	if err != nil {
 		return err
 	}
@@ -437,7 +491,12 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
 
 	headers := frame.rawHeaders
 	length := 4 + len(headers)
-	out := make([]byte, 12)
+	start := 12
+	if frame.version == 2 {
+		length += 2
+		start += 2
+	}
+	out := make([]byte, start)
 
 	out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
 	out[1] = byte(frame.version)             // Version
@@ -513,6 +572,12 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), RST_STREAM}
 	}
 
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
+	}
+
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length != 8 {
@@ -539,7 +604,7 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 		return &InvalidField{"Unused", 1, 0}
 	}
 
-	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	frame.version = version
 	frame.streamID = bytesToUint31(data[8:12])
 	frame.StatusCode = bytesToUint32(data[12:16])
 
@@ -619,9 +684,22 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
 	sort.Sort(_settingsSorter(frame.Settings))
 	for _, setting := range frame.Settings { // TODO: add checks to enforce duplicate settings rules.
 		bytes := setting.Bytes()
-		for i, b := range bytes {
-			out[offset+i] = b
+
+		switch frame.version {
+		case 3:
+			for i, b := range bytes {
+				out[offset+i] = b
+			}
+		case 2:
+			out[offset] = bytes[2]
+			out[offset+1] = bytes[1]
+			out[offset+2] = bytes[0]
+			offset += 3
+			for i, b := range bytes[3:] {
+				out[offset+i] = b
+			}
 		}
+
 		offset += 8
 	}
 
@@ -642,6 +720,12 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 	// Check it's a SETTINGS.
 	if bytesToUint16(start[2:4]) != SETTINGS {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), SETTINGS}
+	}
+
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
 	}
 
 	// Get and check length.
@@ -681,7 +765,7 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 		return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 4}
 	}
 
-	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	frame.version = version
 	frame.Flags = data[4]
 	frame.Settings = make([]*Setting, numSettings)
 	offset := 12
@@ -690,6 +774,9 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 			Flags: data[offset],
 			ID:    bytesToUint24(data[offset+1 : offset+4]),
 			Value: bytesToUint32(data[offset+4 : offset+8]),
+		}
+		if version == 2 {
+			frame.Settings[i].ID = bytesToUint24Reverse(data[offset+1 : offset+4])
 		}
 
 		offset += 8
@@ -793,6 +880,89 @@ func (frame *Setting) String() string {
 }
 
 /************
+ *** NOOP ***
+ ************/
+type NoopFrame struct{}
+
+func (_ *NoopFrame) Bytes() ([]byte, error) {
+	out := make([]byte, 8)
+
+	out[0] = 0x80 // Control bit and Version
+	out[1] = 2    // Version
+	out[2] = 0    // Type
+	out[3] = 5    // Type
+	out[4] = 0    // Flags
+	out[5] = 0    // Length
+	out[6] = 0    // Length
+	out[7] = 0    // Length
+
+	return out, nil
+}
+
+func (_ *NoopFrame) Parse(reader *bufio.Reader) error {
+	// Read in data.
+	data := make([]byte, 8)
+	remaining := 8
+	in := data[:]
+	for remaining > 0 {
+		if n, err := reader.Read(in); err != nil {
+			return err
+		} else {
+			in = in[n:]
+			remaining -= n
+		}
+	}
+
+	// Check it's a control frame.
+	if data[0]&0x80 == 0 {
+		return &IncorrectFrame{DATA_FRAME, NOOP}
+	}
+
+	// Check it's a NOOP.
+	if bytesToUint16(data[2:4]) != NOOP {
+		return &IncorrectFrame{int(bytesToUint16(data[2:4])), NOOP}
+	}
+
+	// Check version and adapt accordingly.
+	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	if version != 2 {
+		return UnsupportedVersion(version)
+	}
+
+	// Get and check length.
+	length := int(bytesToUint24(data[5:8]))
+	if length != 0 {
+		return &IncorrectDataLength{length, 0}
+	}
+
+	return nil
+}
+
+func (_ *NoopFrame) ReadHeaders(_ *Decompressor) error {
+	return nil
+}
+
+func (_ *NoopFrame) StreamID() uint32 {
+	return 0
+}
+
+func (_ *NoopFrame) String() string {
+	return "NOOP {\n\tVersion: 2\n}\n"
+}
+
+func (_ *NoopFrame) WriteHeaders(_ *Compressor) error {
+	return nil
+}
+
+func (_ *NoopFrame) WriteTo(writer io.Writer) error {
+	return nil
+}
+
+func (_ *NoopFrame) Version() uint16 {
+	return 2
+}
+
+/************
  *** PING ***
  ************/
 type PingFrame struct {
@@ -835,6 +1005,12 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), PING}
 	}
 
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
+	}
+
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length != 4 {
@@ -861,7 +1037,7 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 		return &InvalidField{"Flags", int(data[4]), 0}
 	}
 
-	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	frame.version = version
 	frame.PingID = bytesToUint32(data[8:12])
 
 	return nil
@@ -912,7 +1088,11 @@ type GoawayFrame struct {
 }
 
 func (frame *GoawayFrame) Bytes() ([]byte, error) {
-	out := make([]byte, 16)
+	size := 12
+	if frame.version > 2 {
+		size += 4
+	}
+	out := make([]byte, size)
 
 	out[0] = 0x80 | byte(frame.version>>8)           // Control bit and Version
 	out[1] = byte(frame.version)                     // Version
@@ -926,10 +1106,13 @@ func (frame *GoawayFrame) Bytes() ([]byte, error) {
 	out[9] = byte(frame.LastGoodStreamID >> 16)      // Last Good Stream ID
 	out[10] = byte(frame.LastGoodStreamID >> 8)      // Last Good Stream ID
 	out[11] = byte(frame.LastGoodStreamID)           // Last Good Stream ID
-	out[12] = byte(frame.StatusCode >> 24)           // Status Code
-	out[13] = byte(frame.StatusCode >> 16)           // Status Code
-	out[14] = byte(frame.StatusCode >> 8)            // Status Code
-	out[15] = byte(frame.StatusCode)                 // Status Code
+
+	if frame.version > 2 {
+		out[12] = byte(frame.StatusCode >> 24) // Status Code
+		out[13] = byte(frame.StatusCode >> 16) // Status Code
+		out[14] = byte(frame.StatusCode >> 8)  // Status Code
+		out[15] = byte(frame.StatusCode)       // Status Code
+	}
 
 	return out, nil
 }
@@ -950,10 +1133,18 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), GOAWAY}
 	}
 
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
+	}
+
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
-	if length != 8 {
+	if version == 3 && length != 8 {
 		return &IncorrectDataLength{length, 8}
+	} else if version == 2 && length != 4 {
+		return &IncorrectDataLength{length, 4}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return FrameTooLarge{}
 	}
@@ -981,9 +1172,11 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 		return &InvalidField{"Flags", int(data[4]), 0}
 	}
 
-	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	frame.version = version
 	frame.LastGoodStreamID = bytesToUint31(data[8:12])
-	frame.StatusCode = bytesToUint32(data[12:16])
+	if version > 2 {
+		frame.StatusCode = bytesToUint32(data[12:16])
+	}
 
 	return nil
 }
@@ -1002,7 +1195,10 @@ func (frame *GoawayFrame) String() string {
 	buf.WriteString("GOAWAY {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              %d\n\t", frame.version))
 	buf.WriteString(fmt.Sprintf("Last good stream ID:  %d\n\t", frame.LastGoodStreamID))
-	buf.WriteString(fmt.Sprintf("Status code:          %d\n}\n", frame.StatusCode))
+
+	if frame.version > 2 {
+		buf.WriteString(fmt.Sprintf("Status code:          %d\n}\n", frame.StatusCode))
+	}
 
 	return buf.String()
 }
@@ -1044,7 +1240,12 @@ func (frame *HeadersFrame) Bytes() ([]byte, error) {
 
 	headers := frame.rawHeaders
 	length := 4 + len(headers)
-	out := make([]byte, 12, 8+length)
+	start := 12
+	if frame.version == 2 {
+		length += 2
+		start += 2
+	}
+	out := make([]byte, start, 8+length)
 
 	out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
 	out[1] = byte(frame.version)             // Version
@@ -1079,10 +1280,18 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), HEADERS}
 	}
 
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
+	}
+
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
-	if length < 4 {
+	if version == 3 && length < 4 {
 		return &IncorrectDataLength{length, 4}
+	} else if version == 2 && length < 8 {
+		return &IncorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return FrameTooLarge{}
 	}
@@ -1103,13 +1312,21 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
 		return &InvalidField{"Unused", 1, 0}
+	} else if version == 2 && data[12] != 0 {
+		return &InvalidField{"Unused", int(data[12]), 0}
+	} else if version == 2 && data[13] != 0 {
+		return &InvalidField{"Unused", int(data[13]), 0}
 	}
 
 	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
 	frame.Flags = data[4]
 	frame.streamID = bytesToUint31(data[8:12])
 
-	frame.rawHeaders = data[12:]
+	offset := 12
+	if version == 2 {
+		offset += 2
+	}
+	frame.rawHeaders = data[offset:]
 
 	return nil
 }
@@ -1120,7 +1337,7 @@ func (frame *HeadersFrame) ReadHeaders(decom *Decompressor) error {
 	}
 
 	headers := make(Header)
-	err := headers.Parse(frame.rawHeaders, decom)
+	err := headers.Parse(frame.rawHeaders, decom, frame.version)
 	if err != nil {
 		return err
 	}
@@ -1154,7 +1371,7 @@ func (frame *HeadersFrame) String() string {
 }
 
 func (frame *HeadersFrame) WriteHeaders(com *Compressor) error {
-	headers, err := frame.Headers.Compressed(com)
+	headers, err := frame.Headers.Compressed(com, frame.version)
 	if err != nil {
 		return err
 	}
@@ -1170,7 +1387,12 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
 
 	headers := frame.rawHeaders
 	length := 4 + len(headers)
-	out := make([]byte, 12)
+	start := 12
+	if frame.version == 2 {
+		length += 2
+		start += 2
+	}
+	out := make([]byte, start)
 
 	out[0] = 0x80 | byte(frame.version>>8)   // Control bit and Version
 	out[1] = byte(frame.version)             // Version
@@ -1246,6 +1468,12 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), WINDOW_UPDATE}
 	}
 
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
+	}
+
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length != 8 {
@@ -1272,7 +1500,12 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 		return &InvalidField{"Unused", 1, 0}
 	}
 
-	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	// Ignored in SPDY/2.
+	if version == 2 {
+		return nil
+	}
+
+	frame.version = version
 	frame.streamID = bytesToUint31(data[8:12])
 	frame.DeltaWindowSize = bytesToUint32(data[12:16]) & 0x7f
 
@@ -1303,6 +1536,10 @@ func (_ *WindowUpdateFrame) WriteHeaders(_ *Compressor) error {
 }
 
 func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
+	if frame.version == 2 {
+		return nil
+	}
+
 	bytes, err := frame.Bytes()
 	if err != nil {
 		return err
@@ -1372,6 +1609,12 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 	// Check it's a CREDENTIAL.
 	if bytesToUint16(start[2:4]) != CREDENTIAL {
 		return &IncorrectFrame{int(bytesToUint16(start[2:4])), CREDENTIAL}
+	}
+
+	// Check version and adapt accordingly.
+	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
+	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+		return UnsupportedVersion(version)
 	}
 
 	// Get and check length.
@@ -1663,6 +1906,10 @@ func bytesToUint24(b []byte) uint32 {
 	return (uint32(b[0]) << 16) + (uint32(b[1]) << 8) + uint32(b[2])
 }
 
+func bytesToUint24Reverse(b []byte) uint32 {
+	return (uint32(b[2]) << 16) + (uint32(b[1]) << 8) + uint32(b[0])
+}
+
 func bytesToUint32(b []byte) uint32 {
 	return (uint32(b[0]) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
 }
@@ -1679,6 +1926,12 @@ type IncorrectFrame struct {
 func (i *IncorrectFrame) Error() string {
 	return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", FrameName(i.expected),
 		FrameName(i.got))
+}
+
+type UnsupportedVersion uint16
+
+func (u UnsupportedVersion) Error() string {
+	return fmt.Sprintf("Error: Unsupported SPDY version: %d.\n", u)
 }
 
 type IncorrectDataLength struct {

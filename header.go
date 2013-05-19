@@ -35,8 +35,8 @@ func (h Header) String() string {
 
 // Parse decompresses the data and parses the resulting
 // data into the spdy.Header.
-func (h Header) Parse(data []byte, dec *Decompressor) error {
-	header, err := dec.Decompress(3, data)
+func (h Header) Parse(data []byte, dec *Decompressor, version uint16) error {
+	header, err := dec.Decompress(version, data)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func (h Header) Parse(data []byte, dec *Decompressor) error {
 // Bytes returns the headers in
 // SPDY name/value header block
 // format.
-func (h Header) Bytes() []byte {
+func (h Header) Bytes(version uint16) []byte {
 	h.Del("Connection")
 	h.Del("Keep-Alive")
 	h.Del("Proxy-Connection")
@@ -71,32 +71,55 @@ func (h Header) Bytes() []byte {
 	}
 
 	out := make([]byte, length)
-	out[0] = byte(num >> 24)
-	out[1] = byte(num >> 16)
-	out[2] = byte(num >> 8)
-	out[3] = byte(num)
+	switch version {
+	case 3:
+		out[0] = byte(num >> 24)
+		out[1] = byte(num >> 16)
+		out[2] = byte(num >> 8)
+		out[3] = byte(num)
+	case 2:
+		out[0] = byte(num >> 8)
+		out[1] = byte(num)
+	}
 
 	offset := 4
+	if version == 2 {
+		offset = 2
+	}
 	for name, values := range h {
 		nLen := len(name)
-		out[offset+0] = byte(nLen >> 24)
-		out[offset+1] = byte(nLen >> 16)
-		out[offset+2] = byte(nLen >> 8)
-		out[offset+3] = byte(nLen)
-
-		for i, b := range []byte(strings.ToLower(name)) {
-			out[offset+4+i] = b
+		switch version {
+		case 3:
+			out[offset+0] = byte(nLen >> 24)
+			out[offset+1] = byte(nLen >> 16)
+			out[offset+2] = byte(nLen >> 8)
+			out[offset+3] = byte(nLen)
+			offset += 4
+		case 2:
+			out[offset+0] = byte(nLen >> 8)
+			out[offset+1] = byte(nLen)
+			offset += 2
 		}
 
-		offset += (4 + nLen)
+		for i, b := range []byte(strings.ToLower(name)) {
+			out[offset+i] = b
+		}
+
+		offset += nLen
 
 		vLen := lens[name]
-		out[offset+0] = byte(vLen >> 24)
-		out[offset+1] = byte(vLen >> 16)
-		out[offset+2] = byte(vLen >> 8)
-		out[offset+3] = byte(vLen)
-
-		offset += 4
+		switch version {
+		case 3:
+			out[offset+0] = byte(vLen >> 24)
+			out[offset+1] = byte(vLen >> 16)
+			out[offset+2] = byte(vLen >> 8)
+			out[offset+3] = byte(vLen)
+			offset += 4
+		case 2:
+			out[offset+0] = byte(vLen >> 8)
+			out[offset+1] = byte(vLen)
+			offset += 2
+		}
 
 		for n, value := range values {
 			for i, b := range []byte(value) {
@@ -115,8 +138,8 @@ func (h Header) Bytes() []byte {
 
 // Compressed returns the binary data of the headers
 // once they have been compressed.
-func (h Header) Compressed(com *Compressor) ([]byte, error) {
-	return com.Compress(3, h.Bytes())
+func (h Header) Compressed(com *Compressor, version uint16) ([]byte, error) {
+	return com.Compress(version, h.Bytes(version))
 }
 
 // Add adds the key, value pair to the header.

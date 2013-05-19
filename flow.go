@@ -34,14 +34,14 @@ func (s *responseStream) AddFlowControl() {
 
 	flow := new(flowControl)
 	initialWindow := s.conn.initialWindowSize
+	flow.streamID = s.streamID
+	flow.output = s.output
 	if s.version == 3 {
 		flow.active = true
 		flow.buffer = make([][]byte, 0, 10)
 		flow.initialWindow = initialWindow
 		flow.transferWindow = int64(initialWindow)
 		flow.stream = s
-		flow.streamID = s.streamID
-		flow.output = s.output
 		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 	}
@@ -60,14 +60,14 @@ func (p *pushStream) AddFlowControl() {
 
 	flow := new(flowControl)
 	initialWindow := p.conn.initialWindowSize
+	flow.streamID = p.streamID
+	flow.output = p.output
 	if p.version == 3 {
 		flow.active = true
 		flow.buffer = make([][]byte, 0, 10)
 		flow.initialWindow = initialWindow
 		flow.transferWindow = int64(initialWindow)
 		flow.stream = p
-		flow.streamID = p.streamID
-		flow.output = p.output
 		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 	}
@@ -86,14 +86,14 @@ func (r *requestStream) AddFlowControl() {
 
 	flow := new(flowControl)
 	initialWindow := r.conn.initialWindowSize
+	flow.streamID = r.streamID
+	flow.output = r.output
 	if r.version == 3 {
 		flow.active = true
 		flow.buffer = make([][]byte, 0, 10)
 		flow.initialWindow = initialWindow
 		flow.transferWindow = int64(initialWindow)
 		flow.stream = r
-		flow.streamID = r.streamID
-		flow.output = r.output
 		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 	}
@@ -130,6 +130,10 @@ func (f *flowControl) Deactivate() {
 // The transfer window is updated retroactively,
 // if necessary.
 func (f *flowControl) CheckInitialWindow() {
+	if !f.active {
+		return
+	}
+
 	newWindow := f.stream.Connection().InitialWindowSize()
 
 	if f.initialWindow != newWindow {

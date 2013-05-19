@@ -126,8 +126,14 @@ func (s *responseStream) WriteHeader(code int) {
 	s.wroteHeader = true
 	s.responseCode = code
 
-	s.headers.Set(":status", fmt.Sprint(code))
-	s.headers.Set(":version", "HTTP/1.1")
+	switch s.version {
+	case 3:
+		s.headers.Set(":status", fmt.Sprint(code))
+		s.headers.Set(":version", "HTTP/1.1")
+	case 2:
+		s.headers.Set("status", fmt.Sprint(code))
+		s.headers.Set("version", "HTTP/1.1")
+	}
 
 	synReply := new(SynReplyFrame)
 	synReply.version = s.version
