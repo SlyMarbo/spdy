@@ -3,6 +3,7 @@ package spdy
 import (
 	"bufio"
 	"bytes"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -1573,7 +1574,7 @@ type CredentialFrame struct {
 	version      uint16
 	Slot         uint16
 	Proof        []byte
-	Certificates []Certificate
+	Certificates []*x509.Certificate
 }
 
 func (frame *CredentialFrame) Bytes() ([]byte, error) {
@@ -1581,7 +1582,7 @@ func (frame *CredentialFrame) Bytes() ([]byte, error) {
 	proofLength := len(frame.Proof)
 	certsLength := 0
 	for _, cert := range frame.Certificates {
-		certsLength += len(cert)
+		certsLength += len(cert.Raw)
 	}
 
 	length := 6 + proofLength + certsLength
@@ -1603,7 +1604,7 @@ func (frame *CredentialFrame) Bytes() ([]byte, error) {
 	out[13] = byte(proofLength)            // Proof Length
 	out = append(out, frame.Proof...)      // Proof
 	for _, cert := range frame.Certificates {
-		out = append(out, cert...) // Certificates
+		out = append(out, cert.Raw...) // Certificates
 	}
 
 	return out, nil
@@ -1673,10 +1674,14 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 		numCerts++
 	}
 
-	frame.Certificates = make([]Certificate, numCerts)
+	frame.Certificates = make([]*x509.Certificate, numCerts)
 	for i, offset := 0, 14+proofLen; offset < length; i++ {
 		length := int(bytesToUint32(data[offset : offset+4]))
-		frame.Certificates[i] = data[offset+4 : offset+4+length]
+		rawCert := data[offset+4 : offset+4+length]
+		frame.Certificates[i], err = x509.ParseCertificate(rawCert)
+		if err != nil {
+			return err
+		}
 		offset += length + 4
 	}
 
@@ -1711,7 +1716,7 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
 	proofLength := len(frame.Proof)
 	certsLength := 0
 	for _, cert := range frame.Certificates {
-		certsLength += len(cert)
+		certsLength += len(cert.Raw)
 	}
 
 	length := 6 + proofLength + certsLength
@@ -1743,7 +1748,7 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
 	}
 
 	for _, cert := range frame.Certificates {
-		_, err = writer.Write(cert)
+		_, err = writer.Write(cert.Raw)
 		if err != nil {
 			return err
 		}
@@ -1755,8 +1760,6 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
 func (frame *CredentialFrame) Version() uint16 {
 	return frame.version
 }
-
-type Certificate []byte
 
 /************
  *** DATA ***

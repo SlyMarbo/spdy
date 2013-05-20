@@ -3,6 +3,7 @@ package spdy
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +42,8 @@ type serverConnection struct {
 	done               *sync.WaitGroup // WaitGroup for active streams.
 	activeStreams      uint32
 	maxActiveStreams   uint32
+	vectorIndex        uint16
+	certificates       map[uint16][]*x509.Certificate
 }
 
 // readFrames is the main processing loop, where frames
@@ -176,8 +179,20 @@ func (conn *serverConnection) readFrames() {
 		case *WindowUpdateFrame:
 			conn.handleWindowUpdateFrame(frame)
 
-		/*** [UNIMPLEMENTED] ***/
 		case *CredentialFrame:
+			if frame.Slot >= conn.vectorIndex {
+				setting := new(SettingsFrame)
+				setting.version = conn.version
+				setting.Settings = []*Setting{
+					&Setting{
+						ID:    SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE,
+						Value: uint32(frame.Slot + 4),
+					},
+				}
+				conn.WriteFrame(setting)
+				conn.vectorIndex += 4
+			}
+			conn.certificates[frame.Slot] = frame.Certificates
 			log.Println("Got CREDENTIAL: [UNIMPLEMENTED]")
 
 		case *DataFrame:
@@ -266,7 +281,6 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 	stream.state = new(StreamState)
 	stream.input = input
 	stream.output = output
-	stream.certificates = make([]Certificate, 1)
 	stream.headers = make(Header)
 	stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
 	stream.version = conn.version
@@ -865,6 +879,11 @@ func newConn(tlsConn *tls.Conn) *serverConnection {
 	conn.dataPriority[7] = make(chan Frame)
 	conn.pings = make(map[uint32]chan<- bool)
 	conn.done = new(sync.WaitGroup)
+	conn.vectorIndex = 8
+	conn.certificates = make(map[uint16][]*x509.Certificate, 8)
+	if conn.tlsState != nil && conn.tlsState.PeerCertificates != nil {
+		conn.certificates[1] = conn.tlsState.PeerCertificates
+	}
 
 	return conn
 }

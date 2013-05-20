@@ -2,6 +2,7 @@ package spdy
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +26,16 @@ type Handler interface {
 }
 
 type ResponseWriter interface {
+	// ClientCertificates is used to retreive the client certificate
+	// chain by vector index. Any certificate chain presented in the
+	// TLS handshake is set to vector index 1. This may later be
+	// replaced by the client, and supplemented with certificates on
+	// subsequent vector indeces. For more information, see section
+	// 2.6.9 (CREDENTIAL frames) of the SDPY draft 3 specification at
+	// http://www.chromium.org/spdy/spdy-protocol/spdy-protocol-draft3.
+	// This feature is available only to SPDY/3 and later.
+	ClientCertificates(uint16) []*x509.Certificate
+
 	// Header returns the header map that will be sent by WriteHeader
 	// and WriteHeaders.
 	Header() Header

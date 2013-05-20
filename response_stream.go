@@ -2,6 +2,7 @@ package spdy
 
 import (
 	"bytes"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log"
@@ -24,7 +25,6 @@ type responseStream struct {
 	request        *Request
 	handler        Handler
 	httpHandler    http.Handler
-	certificates   []Certificate
 	headers        Header
 	unidirectional bool
 	responseCode   int
@@ -35,6 +35,10 @@ type responseStream struct {
 
 func (_ *responseStream) Cancel() {
 	panic("Error: Client stream cancelled. Use Stop() instead.")
+}
+
+func (s *responseStream) ClientCertificates(index uint16) []*x509.Certificate {
+	return s.conn.certificates[index]
 }
 
 func (s *responseStream) Connection() Connection {
