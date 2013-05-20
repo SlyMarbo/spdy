@@ -221,7 +221,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 				c.Unlock()
 
 			default:
-				msg := fmt.Sprintf("Error: Unknonwn negotiated protocol %q.", state.NegotiatedProtocol)
+				msg := fmt.Sprintf("Error: Unknown negotiated protocol %q.", state.NegotiatedProtocol)
 				c.Unlock()
 				return nil, errors.New(msg)
 			}

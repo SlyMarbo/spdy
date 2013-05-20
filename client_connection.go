@@ -210,6 +210,12 @@ func (conn *clientConnection) send() {
 		err = frame.WriteTo(conn.conn)
 		conn.refreshTimeouts()
 		if err != nil {
+			if err == io.EOF {
+				// Server has closed the TCP connection.
+				log.Println("Warning: Server has disconnected.")
+				return
+			}
+			
 			panic(err)
 		}
 	}
@@ -267,12 +273,22 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 	if url == nil || url.Scheme == "" || url.Host == "" || url.Path == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
 	}
+
 	headers := req.Header
-	headers.Set(":method", req.Method)
-	headers.Set(":path", url.Path)
-	headers.Set(":version", "HTTP/1.1")
-	headers.Set(":host", url.Host)
-	headers.Set(":scheme", url.Scheme)
+	switch conn.version {
+	case 3:
+		headers.Set(":method", req.Method)
+		headers.Set(":path", url.Path)
+		headers.Set(":version", "HTTP/1.1")
+		headers.Set(":host", url.Host)
+		headers.Set(":scheme", url.Scheme)
+	case 2:
+		headers.Set("method", req.Method)
+		headers.Set("url", url.Path)
+		headers.Set("version", "HTTP/1.1")
+		headers.Set("host", url.Host)
+		headers.Set("scheme", url.Scheme)
+	}
 	syn.Headers = headers
 
 	// Prepare the request body, if any.
@@ -659,20 +675,29 @@ func (conn *clientConnection) cleanup() {
 
 func (conn *clientConnection) start() {
 	conn.ready = true
-	return
 
 	// Send any global settings.
 	settings := new(SettingsFrame)
 	settings.version = conn.version
-	settings.Settings = []*Setting{
-		&Setting{
-			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
-			Value: conn.initialWindowSize,
-		},
-		&Setting{
-			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-			Value: 1000,
-		},
+	switch conn.version {
+	case 3:
+		settings.Settings = []*Setting{
+			&Setting{
+				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
+				Value: conn.initialWindowSize,
+			},
+			&Setting{
+				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+				Value: 1000,
+			},
+		}
+	case 2:
+		settings.Settings = []*Setting{
+			&Setting{
+				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+				Value: 1000,
+			},
+		}
 	}
 	if conn.client.GlobalSettings != nil {
 		settings.Settings = append(settings.Settings, conn.client.GlobalSettings...)

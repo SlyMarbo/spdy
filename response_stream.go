@@ -295,8 +295,14 @@ func (s *responseStream) Run() {
 	// If the stream is already closed at
 	// this end, then nothing happens.
 	if s.state.OpenHere() && !s.wroteHeader {
-		s.headers.Set(":status", "200")
-		s.headers.Set(":version", "HTTP/1.1")
+		switch s.version {
+		case 3:
+			s.headers.Set(":status", "200")
+			s.headers.Set(":version", "HTTP/1.1")
+		case 2:
+			s.headers.Set("status", "200")
+			s.headers.Set("version", "HTTP/1.1")
+		}
 
 		synReply := new(SynReplyFrame)
 		synReply.version = s.version

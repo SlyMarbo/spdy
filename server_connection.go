@@ -213,8 +213,13 @@ func (conn *serverConnection) send() {
 		err = frame.WriteTo(conn.conn)
 		conn.refreshTimeouts()
 		if err != nil {
-			log.Println(err)
-			continue
+			if err == io.EOF {
+				// Server has closed the TCP connection.
+				log.Println("Warning: Server has disconnected.")
+				return
+			}
+			
+			panic(err)
 		}
 	}
 }

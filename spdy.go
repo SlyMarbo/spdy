@@ -683,21 +683,9 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
 	offset := 12
 	sort.Sort(_settingsSorter(frame.Settings))
 	for _, setting := range frame.Settings { // TODO: add checks to enforce duplicate settings rules.
-		bytes := setting.Bytes()
-
-		switch frame.version {
-		case 3:
-			for i, b := range bytes {
-				out[offset+i] = b
-			}
-		case 2:
-			out[offset] = bytes[2]
-			out[offset+1] = bytes[1]
-			out[offset+2] = bytes[0]
-			offset += 3
-			for i, b := range bytes[3:] {
-				out[offset+i] = b
-			}
+		bytes := setting.Bytes(frame.version)
+		for i, b := range bytes {
+			out[offset+i] = b
 		}
 
 		offset += 8
@@ -770,13 +758,19 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 	frame.Settings = make([]*Setting, numSettings)
 	offset := 12
 	for i := 0; i < numSettings; i++ {
-		frame.Settings[i] = &Setting{
-			Flags: data[offset],
-			ID:    bytesToUint24(data[offset+1 : offset+4]),
-			Value: bytesToUint32(data[offset+4 : offset+8]),
-		}
-		if version == 2 {
-			frame.Settings[i].ID = bytesToUint24Reverse(data[offset+1 : offset+4])
+		switch version {
+		case 3:
+			frame.Settings[i] = &Setting{
+				Flags: data[offset],
+				ID:    bytesToUint24(data[offset+1 : offset+4]),
+				Value: bytesToUint32(data[offset+4 : offset+8]),
+			}
+		case 2:
+			frame.Settings[i] = &Setting{
+				Flags: data[offset+4],
+				ID:    bytesToUint24Reverse(data[offset+0 : offset+3]),
+				Value: bytesToUint32(data[offset+4 : offset+8]),
+			}
 		}
 
 		offset += 8
@@ -853,13 +847,22 @@ type Setting struct {
 	Value uint32
 }
 
-func (s *Setting) Bytes() []byte {
+func (s *Setting) Bytes(version uint16) []byte {
 	out := make([]byte, 8)
 
-	out[0] = s.Flags
-	out[1] = byte(s.ID >> 16)
-	out[2] = byte(s.ID >> 8)
-	out[3] = byte(s.ID)
+	switch version {
+	case 3:
+		out[0] = s.Flags
+		out[1] = byte(s.ID >> 16)
+		out[2] = byte(s.ID >> 8)
+		out[3] = byte(s.ID)
+	case 2:
+		out[0] = byte(s.ID)
+		out[1] = byte(s.ID >> 8)
+		out[2] = byte(s.ID >> 16)
+		out[3] = s.Flags
+	}
+	
 	out[4] = byte(s.Value >> 24)
 	out[5] = byte(s.Value >> 16)
 	out[6] = byte(s.Value >> 8)
