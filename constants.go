@@ -67,6 +67,51 @@ const (
 	RST_STREAM_FRAME_TOO_LARGE       = 11
 )
 
+// Settings IDs
+const (
+	SETTINGS_UPLOAD_BANDWIDTH               = 1
+	SETTINGS_DOWNLOAD_BANDWIDTH             = 2
+	SETTINGS_ROUND_TRIP_TIME                = 3
+	SETTINGS_MAX_CONCURRENT_STREAMS         = 4
+	SETTINGS_CURRENT_CWND                   = 5
+	SETTINGS_DOWNLOAD_RETRANS_RATE          = 6
+	SETTINGS_INITIAL_WINDOW_SIZE            = 7
+	SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE = 8
+)
+
+const (
+	STATE_OPEN uint8 = iota
+	STATE_HALF_CLOSED_HERE
+	STATE_HALF_CLOSED_THERE
+	STATE_CLOSED
+)
+
+// Stream priority values.
+const (
+	MAX_PRIORITY = 0
+	MIN_PRIORITY = 7
+)
+
+// HTTP time format.
+const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+
+// Maximum frame size (2 ** 24 -1).
+const MAX_FRAME_SIZE = 0xffffff
+
+const MAX_DATA_SIZE = 0xffffff
+
+// Maximum stream ID (2 ** 31 -1).
+const MAX_STREAM_ID = 0x7fffffff
+
+// Maximum number of bytes in the transfer window.
+const MAX_TRANSFER_WINDOW_SIZE = 0x80000000
+
+const DEFAULT_INITIAL_WINDOW_SIZE = 65536
+const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
+
+// Maximum delta window size field for WINDOW_UPDATE.
+const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
+
 var statusCodeText = map[int]string{
 	RST_STREAM_PROTOCOL_ERROR:        "PROTOCOL_ERROR",
 	RST_STREAM_INVALID_STREAM:        "INVALID_STREAM",
@@ -108,18 +153,6 @@ func StatusCodeIsFatal(code int) bool {
 		return false
 	}
 }
-
-// Settings IDs
-const (
-	SETTINGS_UPLOAD_BANDWIDTH               = 1
-	SETTINGS_DOWNLOAD_BANDWIDTH             = 2
-	SETTINGS_ROUND_TRIP_TIME                = 3
-	SETTINGS_MAX_CONCURRENT_STREAMS         = 4
-	SETTINGS_CURRENT_CWND                   = 5
-	SETTINGS_DOWNLOAD_RETRANS_RATE          = 6
-	SETTINGS_INITIAL_WINDOW_SIZE            = 7
-	SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE = 8
-)
 
 // Stream state
 type StreamState struct {
@@ -184,39 +217,6 @@ func (s *StreamState) CloseThere() {
 	}
 	s.Unlock()
 }
-
-const (
-	STATE_OPEN uint8 = iota
-	STATE_HALF_CLOSED_HERE
-	STATE_HALF_CLOSED_THERE
-	STATE_CLOSED
-)
-
-// Stream priority values.
-const (
-	MAX_PRIORITY = 0
-	MIN_PRIORITY = 7
-)
-
-// HTTP time format.
-const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
-
-// Maximum frame size (2 ** 24 -1).
-const MAX_FRAME_SIZE = 0xffffff
-
-const MAX_DATA_SIZE = 0xffffff
-
-// Maximum stream ID (2 ** 31 -1).
-const MAX_STREAM_ID = 0x7fffffff
-
-// Maximum number of bytes in the transfer window.
-const MAX_TRANSFER_WINDOW_SIZE = 0x80000000
-
-const DEFAULT_INITIAL_WINDOW_SIZE = 65536
-const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
-
-// Maximum delta window size field for WINDOW_UPDATE.
-const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
 // DefaultPriority returns the default request
 // priority for the given target path. This is

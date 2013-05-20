@@ -429,6 +429,13 @@ func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
 
 	// TODO: add push handling here. (Issue #15)
 
+	// For now, the push is refused.
+	rst := new(RstStreamFrame)
+	rst.version = conn.version
+	rst.streamID = sid
+	rst.StatusCode = RST_STREAM_REFUSED_STREAM
+	conn.WriteFrame(rst)
+
 	conn.Unlock()
 	conn.RLock()
 
