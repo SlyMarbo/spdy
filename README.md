@@ -1,7 +1,7 @@
 spdy
 ====
 
-My implementation of SPDY/v3 (still under very active development).
+A full-featured SPDY library for the Go language (still under very active development).
 
 So far, servers and clients are ready, but the client API is not completely stable.
  

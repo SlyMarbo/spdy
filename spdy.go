@@ -656,10 +656,16 @@ type SettingsFrame struct {
 	Settings []*Setting
 }
 
-func (frame *SettingsFrame) Add(flags byte, id, value uint32) error {
-	// TODO: Check for a matching setting.
+func (frame *SettingsFrame) Add(flags byte, id, value uint32) {
+	for _, setting := range frame.Settings {
+		if setting.ID == id {
+			setting.Flags = flags
+			setting.Value = value
+			return
+		}
+	}
 	frame.Settings = append(frame.Settings, &Setting{flags, id, value})
-	return nil
+	return
 }
 
 func (frame *SettingsFrame) Bytes() ([]byte, error) {
@@ -682,7 +688,12 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
 
 	offset := 12
 	sort.Sort(_settingsSorter(frame.Settings))
-	for _, setting := range frame.Settings { // TODO: add checks to enforce duplicate settings rules.
+	var lastID uint32
+	for _, setting := range frame.Settings {
+		if setting.ID == lastID {
+			return nil, errors.New("Error: Duplicate settings IDs found.")
+		}
+		lastID = setting.ID
 		bytes := setting.Bytes(frame.version)
 		for i, b := range bytes {
 			out[offset+i] = b
@@ -862,7 +873,7 @@ func (s *Setting) Bytes(version uint16) []byte {
 		out[2] = byte(s.ID >> 16)
 		out[3] = s.Flags
 	}
-	
+
 	out[4] = byte(s.Value >> 24)
 	out[5] = byte(s.Value >> 16)
 	out[6] = byte(s.Value >> 8)
@@ -928,7 +939,7 @@ func (_ *NoopFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 2 {
+	if version > 2 || version < MIN_SPDY_VERSION {
 		return UnsupportedVersion(version)
 	}
 
@@ -1616,7 +1627,7 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if version > SPDY_VERSION || version < 3 {
 		return UnsupportedVersion(version)
 	}
 

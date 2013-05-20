@@ -78,6 +78,7 @@ func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, 
 
 	headers = make(Header)
 	length := 0
+	bounds := MAX_FRAME_SIZE - 12 // Maximum frame size minus maximum non-headers data (SYN_STREAM)
 	for i := 0; i < numNameValuePairs; i++ {
 		var nameLength, valueLength int
 
@@ -87,7 +88,10 @@ func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, 
 		}
 		nameLength = dechunk(chunk)
 
-		// TODO: bounds check the name length.
+		if nameLength > bounds {
+			return nil, errors.New("Error: Incorrect header name length.")
+		}
+		bounds -= nameLength
 
 		name := make([]byte, nameLength)
 		if _, err = d.out.Read(name); err != nil {
@@ -102,7 +106,10 @@ func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, 
 		}
 		valueLength = dechunk(chunk)
 
-		// TODO: bounds check the value length.
+		if valueLength > bounds {
+			return nil, errors.New("Error: Incorrect header values length.")
+		}
+		bounds -= valueLength
 
 		values := make([]byte, valueLength)
 		if _, err = d.out.Read(values); err != nil {

@@ -211,7 +211,6 @@ func (c *Client) do(req *Request) (*Response, error) {
 				c.Unlock()
 
 			case "spdy/2":
-				fmt.Println("Warning: Negotiated SPDY/2.")
 				newConn := newClientConn(tlsConn)
 				newConn.client = c
 				newConn.version = 2
@@ -226,8 +225,6 @@ func (c *Client) do(req *Request) (*Response, error) {
 				return nil, errors.New(msg)
 			}
 		} else {
-			// TODO: add connection handling.
-
 			// Handle HTTP requests.
 			c.Unlock()
 			return c.doHTTP(tcpConn, req)

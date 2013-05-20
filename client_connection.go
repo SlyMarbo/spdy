@@ -66,12 +66,13 @@ func (conn *clientConnection) readFrames() {
 		conn.refreshTimeouts()
 		if err != nil {
 			if err == io.EOF {
-				// Client has closed the TCP connection.
+				// Server has closed the TCP connection.
+				log.Println("Warning: Server has disconnected.")
 				return
 			}
 
-			// TODO: handle error
-			panic(err)
+			log.Printf("Error: Client encountered read error: %q\n", err.Error())
+			return
 		}
 
 		// Decompress the frame's headers, if there are any.
@@ -80,7 +81,6 @@ func (conn *clientConnection) readFrames() {
 			panic(err)
 		}
 
-		// TODO: replace this with a proper logging library.
 		if DebugMode {
 			log.Println("Received Frame:")
 			log.Println(frame)
@@ -133,7 +133,7 @@ func (conn *clientConnection) readFrames() {
 
 				case SETTINGS_MAX_CONCURRENT_STREAMS:
 					conn.maxActiveStreams = setting.Value
-					// TODO: enforce.
+					// TODO: enforce. (Issue #7)
 				}
 			}
 
@@ -152,8 +152,9 @@ func (conn *clientConnection) readFrames() {
 				close(conn.pings[frame.PingID])
 				delete(conn.pings, frame.PingID)
 			} else {
-				// TODO: Print to the log in DebugMode only.
-				log.Println("Received PING. Replying...")
+				if DebugMode {
+					log.Println("Received PING. Replying...")
+				}
 				conn.WriteFrame(frame)
 			}
 
@@ -174,9 +175,8 @@ func (conn *clientConnection) readFrames() {
 		case *WindowUpdateFrame:
 			conn.handleWindowUpdateFrame(frame)
 
-		/*** [UNIMPLEMENTED] ***/
 		case *CredentialFrame:
-			log.Println("Got CREDENTIAL: [UNIMPLEMENTED]")
+			log.Println("Ignored unexpected CREDENTIAL.")
 
 		case *DataFrame:
 			conn.handleDataFrame(frame)
@@ -215,7 +215,7 @@ func (conn *clientConnection) send() {
 				log.Println("Warning: Server has disconnected.")
 				return
 			}
-			
+
 			panic(err)
 		}
 	}
@@ -427,7 +427,7 @@ func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.RUnlock()
 	conn.Lock()
 
-	// TODO: add handling here.
+	// TODO: add push handling here. (Issue #15)
 
 	conn.Unlock()
 	conn.RLock()

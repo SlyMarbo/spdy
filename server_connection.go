@@ -68,11 +68,11 @@ func (conn *serverConnection) readFrames() {
 		if err != nil {
 			if err == io.EOF {
 				// Client has closed the TCP connection.
+				log.Println("Warning: Client has disconnected.")
 				return
 			}
 
-			// TODO: handle error
-			log.Println(err)
+			log.Printf("Error: Server encountered read error: %q\n", err.Error())
 			return
 		}
 
@@ -83,7 +83,6 @@ func (conn *serverConnection) readFrames() {
 			conn.PROTOCOL_ERROR(frame.StreamID())
 		}
 
-		// TODO: replace this with a proper logging library.
 		if DebugMode {
 			fmt.Println("Received Frame:")
 			fmt.Println(frame)
@@ -135,7 +134,7 @@ func (conn *serverConnection) readFrames() {
 
 				case SETTINGS_MAX_CONCURRENT_STREAMS:
 					conn.maxActiveStreams = setting.Value
-					// TODO: enforce.
+					// TODO: enforce. (Issue #7)
 				}
 			}
 
@@ -154,8 +153,9 @@ func (conn *serverConnection) readFrames() {
 				close(conn.pings[frame.PingID])
 				delete(conn.pings, frame.PingID)
 			} else {
-				// TODO: Print to the log in DebugMode only.
-				log.Println("Received PING. Replying...")
+				if DebugMode {
+					log.Println("Received PING. Replying...")
+				}
 				conn.WriteFrame(frame)
 			}
 
@@ -218,7 +218,7 @@ func (conn *serverConnection) send() {
 				log.Println("Warning: Server has disconnected.")
 				return
 			}
-			
+
 			panic(err)
 		}
 	}
@@ -285,7 +285,7 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 	}
 	url, err := url.Parse(rawUrl)
 	if err != nil {
-		log.Println(err) // TODO: handle the error properly.
+		log.Println("Error: Received SYN_STREAM with invalid request URL: ", err)
 		return nil
 	}
 
@@ -509,8 +509,12 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.RUnlock()
 	conn.Lock()
 	input := make(chan Frame)
-	conn.streamInputs[sid] = input
 	nextStream := conn.newStream(frame, input, conn.dataPriority[frame.Priority])
+	if nextStream == nil {
+		conn.Unlock()
+		conn.RLock()
+		return
+	}
 	nextStream.handler = conn.server.Handler
 	if nextStream.handler == nil {
 		nextStream.handler = DefaultServeMux
@@ -519,6 +523,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	if nextStream.httpHandler == nil {
 		nextStream.httpHandler = http.DefaultServeMux
 	}
+	conn.streamInputs[sid] = input
 	conn.streams[sid] = nextStream
 	conn.Unlock()
 	conn.RLock()
