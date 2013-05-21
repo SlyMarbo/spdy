@@ -141,8 +141,12 @@ type streamLimit struct {
 	current uint32
 }
 
+// NO_STREAM_LIMIT can be used to disable the stream limit.
+const NO_STREAM_LIMIT = 0x80000000
+
 // SetLimit is used to modify the stream limit. If the
-// limit is set to 0, then the limiting is disabled.
+// limit is set to NO_STREAM_LIMIT, then the limiting
+// is disabled.
 func (s *streamLimit) SetLimit(l uint32) {
 	s.Lock()
 	s.limit = l
@@ -160,7 +164,7 @@ func (s *streamLimit) Limit() uint32 {
 func (s *streamLimit) Add() bool {
 	s.Lock()
 	defer s.Unlock()
-	if s.current >= s.limit && s.limit != 0 {
+	if s.current >= s.limit {
 		return false
 	}
 	s.current++

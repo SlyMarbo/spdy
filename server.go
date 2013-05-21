@@ -470,11 +470,19 @@ type Server struct {
 	TLSConfig      *tls.Config   // optional TLS config, used by ListenAndServeTLS
 	GlobalSettings []*Setting    // SPDY settings to be sent to all clients automatically.
 
-	// This sets the maximum number of concurrent streams the
-	// library will allow clients to create. The default value
-	// is 1000, and the limit can be disabled by setting it to
-	// 0.
-	MaxConcurrentStreams uint32
+	// This are used to control the maximum number of concurrent
+	// streams allowed.
+	maxConcurrentStreams uint32
+}
+
+// MaxConcurrentStreams sets the maximum number of concurrent
+// streams the library will allow clients to create. The
+// default value is 1000, and the limit can be disabled by
+// setting it to spdy.NO_STREAM_LIMIT. Using 0 will be treated
+// as using spdy.NO_STREAM_LIMIT, since a value of 0 would disable
+// all requests.
+func (s *Server) MaxConcurrentStreams(v uint32) {
+	s.maxConcurrentStreams = v
 }
 
 // ListenAndServeTLS listens on the TCP network address srv.Addr and

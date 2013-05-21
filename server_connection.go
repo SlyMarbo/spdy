@@ -819,7 +819,11 @@ func (conn *serverConnection) serve() {
 	}()
 
 	// Initialise max concurrent streams limit.
-	conn.clientStreamLimit.SetLimit(conn.server.MaxConcurrentStreams)
+	if conn.server.maxConcurrentStreams != 0 {
+		conn.clientStreamLimit.SetLimit(conn.server.maxConcurrentStreams)
+	} else {
+		conn.clientStreamLimit.SetLimit(NO_STREAM_LIMIT)
+	}
 
 	// Start the send loop.
 	go conn.send()
@@ -898,6 +902,7 @@ func newConn(tlsConn *tls.Conn) *serverConnection {
 	conn.done = new(sync.WaitGroup)
 	conn.clientStreamLimit = new(streamLimit)
 	conn.serverStreamLimit = new(streamLimit)
+	conn.serverStreamLimit.SetLimit(NO_STREAM_LIMIT)
 	conn.vectorIndex = 8
 	conn.certificates = make(map[uint16][]*x509.Certificate, 8)
 	if conn.tlsState != nil && conn.tlsState.PeerCertificates != nil {

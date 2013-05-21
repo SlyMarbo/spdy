@@ -778,7 +778,12 @@ func (conn *clientConnection) run() {
 	}()
 
 	// Initialise max concurrent streams limit.
-	conn.serverStreamLimit.SetLimit(conn.client.MaxConcurrentStreams)
+	if conn.client.maxConcurrentStreamsSet {
+		conn.serverStreamLimit.SetLimit(conn.client.maxConcurrentStreams)
+	} else {
+		conn.serverStreamLimit.SetLimit(NO_STREAM_LIMIT)
+	}
+	
 
 	// Initialise push receiver.
 	if conn.pushReceiver == nil {
@@ -815,6 +820,7 @@ func newClientConn(tlsConn *tls.Conn) *clientConnection {
 	conn.nextClientStreamID = 1
 	conn.clientStreamLimit = new(streamLimit)
 	conn.serverStreamLimit = new(streamLimit)
+	conn.clientStreamLimit.SetLimit(NO_STREAM_LIMIT)
 	conn.done = new(sync.WaitGroup)
 	conn.pushRequests = make(map[uint32]*Request)
 

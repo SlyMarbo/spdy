@@ -80,17 +80,26 @@ type Client struct {
 	// in responses.
 	Jar http.CookieJar
 
-	// MaxConcurrentStreams sets the maximum number of concurrent
-	// streams streams that the library will allow servers to
-	// create. The default value is 1000, and the limit can be
-	// disabled by setting it to 0.
-	MaxConcurrentStreams uint32
+	// These are used to control the maximum number of concurrent
+	// streams allowed.
+	maxConcurrentStreams uint32
+	maxConcurrentStreamsSet bool
 
 	// PushReceiver is used to receive server pushes. If left nil,
 	// pushes will be refused. The provided Request will be that
 	// sent with the server push. See Receiver for more detail on
 	// its methods.
 	PushReceiver Receiver
+}
+
+// MaxConcurrentStreams sets the maximum number of concurrent
+// streams streams that the library will allow servers to
+// create. The default value is 1000, and the limit can be
+// disabled by setting it to spdy.NO_STREAM_LIMIT. Server push
+// can be disabled by setting the limit to 0.
+func (c *Client) MaxConcurrentStreams(v uint32) {
+	c.maxConcurrentStreamsSet = true
+	c.maxConcurrentStreams = v
 }
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.
