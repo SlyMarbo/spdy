@@ -206,8 +206,21 @@ func (conn *serverConnection) readFrames() {
 // to ensure clear interleaving of frames and to
 // provide assurances of priority and structure.
 func (conn *serverConnection) send() {
+
+	// Initialise the connection by sending the connection settings.
+	settings := new(SettingsFrame)
+	settings.version = conn.version
+	settings.Settings = defaultSPDYServerSettings[conn.version]
+
+	// Add any global settings set by the server.
+	if conn.server.GlobalSettings != nil {
+		settings.Settings = append(settings.Settings, conn.server.GlobalSettings...)
+	}
+
+	frame := Frame(settings)
+
+	// Enter the normal processing loop.
 	for {
-		frame := conn.selectFrameToSend()
 
 		// Compress any name/value header blocks.
 		err := frame.WriteHeaders(conn.compressor)
@@ -236,6 +249,9 @@ func (conn *serverConnection) send() {
 			// it's best to panic.
 			panic(err)
 		}
+
+		// Select the next frame to send.
+		frame = conn.selectFrameToSend()
 	}
 }
 
@@ -806,14 +822,6 @@ func (conn *serverConnection) serve() {
 
 	// Start the send loop.
 	go conn.send()
-
-	// Send any global settings.
-	if conn.server.GlobalSettings != nil {
-		settings := new(SettingsFrame)
-		settings.version = conn.version
-		settings.Settings = conn.server.GlobalSettings
-		conn.dataPriority[3] <- settings
-	}
 
 	// Enter the main loop.
 	conn.readFrames()

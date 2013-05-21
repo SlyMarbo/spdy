@@ -271,6 +271,48 @@ func DefaultPriority(path string) int {
 	}
 }
 
+// defaultSPDYServerSettings are used in initialising the connection.
+var defaultSPDYServerSettings = map[uint16][]*Setting{
+	3: []*Setting{
+		&Setting{
+			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
+			Value: DEFAULT_INITIAL_WINDOW_SIZE,
+		},
+		&Setting{
+			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+			Value: 1000,
+		},
+	},
+
+	2: []*Setting{
+		&Setting{
+			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+			Value: 1000,
+		},
+	},
+}
+
+// defaultSPDYClientSettings are used in initialising the connection.
+var defaultSPDYClientSettings = map[uint16][]*Setting{
+	3: []*Setting{
+		&Setting{
+			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
+			Value: DEFAULT_INITIAL_CLIENT_WINDOW_SIZE,
+		},
+		&Setting{
+			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+			Value: 1000,
+		},
+	},
+
+	2: []*Setting{
+		&Setting{
+			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+			Value: 1000,
+		},
+	},
+}
+
 // Compression header for SPDY/2
 var HeaderDictionaryV2 = []byte{
 	0x6f, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x67,

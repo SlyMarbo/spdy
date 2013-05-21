@@ -37,7 +37,6 @@ type clientConnection struct {
 	version            uint16                  // SPDY version.
 	numBenignErrors    int                     // number of non-serious errors encountered.
 	done               *sync.WaitGroup         // WaitGroup for active streams.
-	ready              bool                    // whether the connection has been initialised.
 	activeStreams      uint32                  // number of currently active streams.
 	maxActiveStreams   uint32                  // limit on number of concurrently active streams (0 for no limit).
 }
@@ -189,9 +188,20 @@ func (conn *clientConnection) readFrames() {
 // to ensure clear interleaving of frames and to
 // provide assurances of priority and structure.
 func (conn *clientConnection) send() {
-	for {
-		frame := <-conn.dataOutput
 
+	// Initialise the connection by sending the connection settings.
+	settings := new(SettingsFrame)
+	settings.version = conn.version
+	settings.Settings = defaultSPDYClientSettings[conn.version]
+
+	// Add any global settings set by the server.
+	if conn.client.GlobalSettings != nil {
+		settings.Settings = append(settings.Settings, conn.client.GlobalSettings...)
+	}
+
+	frame := Frame(settings)
+
+	for {
 		// Compress any name/value header blocks.
 		err := frame.WriteHeaders(conn.compressor)
 		if err != nil {
@@ -218,14 +228,14 @@ func (conn *clientConnection) send() {
 			// it's best to panic.
 			panic(err)
 		}
+
+		// Select the next frame to send.
+		frame = <-conn.dataOutput
 	}
 }
 
 // Internally-sent frames have high priority.
 func (conn *clientConnection) WriteFrame(frame Frame) {
-	if !conn.ready {
-		conn.start()
-	}
 	conn.dataOutput <- frame
 }
 
@@ -684,45 +694,6 @@ func (conn *clientConnection) cleanup() {
 	}
 	conn.streamInputs = nil
 	conn.streams = nil
-}
-
-// start is used to initialise the connection
-// by sending the default and client-set global
-// settings to the server.
-//
-// TODO: this could be improved. (Issue #17)
-func (conn *clientConnection) start() {
-	conn.ready = true
-
-	// Send any global settings.
-	settings := new(SettingsFrame)
-	settings.version = conn.version
-	switch conn.version {
-	case 3:
-		settings.Settings = []*Setting{
-			&Setting{
-				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
-				Value: conn.initialWindowSize,
-			},
-			&Setting{
-				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-				Value: 1000,
-			},
-		}
-	case 2:
-		settings.Settings = []*Setting{
-			&Setting{
-				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-				Value: 1000,
-			},
-		}
-	}
-
-	// Add any global settings set by the client.
-	if conn.client.GlobalSettings != nil {
-		settings.Settings = append(settings.Settings, conn.client.GlobalSettings...)
-	}
-	conn.dataOutput <- settings
 }
 
 // run prepares and executes the frame reading
