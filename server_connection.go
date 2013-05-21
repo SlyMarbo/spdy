@@ -235,9 +235,8 @@ func (conn *serverConnection) send() {
 				return
 			}
 
-			// Unexpected error which prevented a write, so
-			// it's best to panic.
-			panic(err)
+			// Unexpected error which prevented a write.
+			return
 		}
 
 		// Select the next frame to send.
@@ -497,8 +496,8 @@ func (conn *serverConnection) validFrameVersion(frame Frame) bool {
 
 // handleSynStream performs the processing of SYN_STREAM frames.
 func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
-	conn.RLock()
-	defer func() { conn.RUnlock() }()
+	conn.Lock()
+	defer func() { conn.Unlock() }()
 
 	// Check stream creation is allowed.
 	if conn.goaway {
@@ -515,7 +514,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	}
 
 	// Check Stream ID is the right number.
-	nsid := conn.nextClientStreamID + 2
+	nsid := conn.nextClientStreamID
 	if sid != nsid && sid != 1 && conn.nextClientStreamID != 0 {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n", sid, nsid)
 		conn.numBenignErrors++
@@ -541,13 +540,9 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	}
 
 	// Create and start new stream.
-	conn.RUnlock()
-	conn.Lock()
 	input := make(chan Frame)
 	nextStream := conn.newStream(frame, input, conn.dataPriority[frame.Priority])
 	if nextStream == nil { // Make sure an error didn't occur when making the stream.
-		conn.Unlock()
-		conn.RLock()
 		return
 	}
 
@@ -564,8 +559,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	// Set and prepare.
 	conn.streamInputs[sid] = input
 	conn.streams[sid] = nextStream
-	conn.Unlock()
-	conn.RLock()
+	conn.nextClientStreamID = sid + 2
 
 	// Start the stream.
 	go nextStream.Run()
