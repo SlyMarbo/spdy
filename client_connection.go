@@ -783,7 +783,6 @@ func (conn *clientConnection) run() {
 	} else {
 		conn.serverStreamLimit.SetLimit(NO_STREAM_LIMIT)
 	}
-	
 
 	// Initialise push receiver.
 	if conn.pushReceiver == nil {

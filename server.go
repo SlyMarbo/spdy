@@ -668,7 +668,7 @@ func AddSPDYServer(srv *http.Server, server *Server) {
 // AddSPDY adds SPDY support to srv, using spdy.DefaultServeMux to handle requests.
 // This must be called before srv begins serving.
 func AddSPDY(srv *http.Server) {
-	server := &Server{Handler: DefaultServeMux, MaxConcurrentStreams: DEFAULT_MAX_CONCURRENT_STREAMS}
+	server := &Server{Handler: DefaultServeMux}
 	AddSPDYServer(srv, server)
 }
 

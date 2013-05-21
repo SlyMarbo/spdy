@@ -840,7 +840,6 @@ func (conn *serverConnection) serve() {
 func acceptDefaultSPDYv2(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
 	server := new(Server)
 	server.TLSConfig = srv.TLSConfig
-	server.MaxConcurrentStreams = DEFAULT_MAX_CONCURRENT_STREAMS
 	acceptSPDYv2(server, tlsConn, nil)
 }
 
@@ -860,7 +859,6 @@ func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
 func acceptDefaultSPDYv3(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
 	server := new(Server)
 	server.TLSConfig = srv.TLSConfig
-	server.MaxConcurrentStreams = DEFAULT_MAX_CONCURRENT_STREAMS
 	acceptSPDYv3(server, tlsConn, nil)
 }
 

@@ -82,7 +82,7 @@ type Client struct {
 
 	// These are used to control the maximum number of concurrent
 	// streams allowed.
-	maxConcurrentStreams uint32
+	maxConcurrentStreams    uint32
 	maxConcurrentStreamsSet bool
 
 	// PushReceiver is used to receive server pushes. If left nil,
