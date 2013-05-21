@@ -5,8 +5,7 @@ So far, servers and clients are ready, but the client API is not completely stab
  
 Note that this implementation currently supports SPDY drafts 2 and 3.
 
-Servers
--------
+		Servers
 
 Adding SPDY support to an existing Go server doesn't take much work.
 
@@ -194,8 +193,7 @@ Sending SPDY settings:
 			// ...
 		}
 
-Clients
--------
+		Clients
 
 The basic client API seems to work well in general, but gets a redirect loop when requesting https://twitter.com/, so
 I'm not happy with it. Since I can't see Twitter's servers' SPDY logs, I don't know what's wrong yet, but I'm working
