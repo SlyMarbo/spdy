@@ -18,13 +18,22 @@ import (
 // Objects implementing the Receiver interface can be
 // registered to a specific request on the Client.
 //
-// Receive is passed the original request, the raw data
+// ReceiveData is passed the original request, the data
 // to receive and a bool indicating whether this is the
 // final batch of data. If the bool is set to true, the
 // data may be empty, but should not be nil.
+//
+// ReceiveHeaders is passed the request and any sent
+// text headers. This may be called multiple times.
+//
+// ReceiveRequest is used when server pushes are sent.
+// The returned bool should inticate whether to accept
+// the push. The provided Request will be that sent by
+// the server with the push.
 type Receiver interface {
-	ReceiveData(*Request, []byte, bool)
-	ReceiveHeaders(*Request, Header)
+	ReceiveData(request *Request, data []byte, final bool)
+	ReceiveHeaders(request *Request, header Header)
+	ReceiveRequest(request *Request) bool
 }
 
 // A Client is an HTTP/SPDY client. Its zero value (DefaultClient) is
@@ -71,11 +80,17 @@ type Client struct {
 	// in responses.
 	Jar http.CookieJar
 
-	// This sets the maximum number of concurrent streams the
-	// library will allow servers to create. The default value
-	// is 1000, and the limit can be disabled by setting it to
-	// 0.
+	// MaxConcurrentStreams sets the maximum number of concurrent
+	// streams streams that the library will allow servers to
+	// create. The default value is 1000, and the limit can be
+	// disabled by setting it to 0.
 	MaxConcurrentStreams uint32
+
+	// PushReceiver is used to receive server pushes. If left nil,
+	// pushes will be refused. The provided Request will be that
+	// sent with the server push. See Receiver for more detail on
+	// its methods.
+	PushReceiver Receiver
 }
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.
@@ -246,6 +261,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 				newConn := newClientConn(tlsConn)
 				newConn.client = c
 				newConn.version = 3
+				newConn.pushReceiver = c.PushReceiver
 				go newConn.run()
 				c.spdyConns[u.Host] = newConn
 				conn = newConn
@@ -255,6 +271,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 				newConn := newClientConn(tlsConn)
 				newConn.client = c
 				newConn.version = 2
+				newConn.pushReceiver = c.PushReceiver
 				go newConn.run()
 				c.spdyConns[u.Host] = newConn
 				conn = newConn

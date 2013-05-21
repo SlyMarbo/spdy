@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"runtime"
 	"sync"
 	"time"
@@ -38,6 +40,8 @@ type clientConnection struct {
 	done               *sync.WaitGroup         // WaitGroup for active streams.
 	clientStreamLimit  *streamLimit            // Limit on streams openable by the client.
 	serverStreamLimit  *streamLimit            // Limit on streams openable by the server.
+	pushReceiver       Receiver                // Receiver used to process server pushes.
+	pushRequests       map[uint32]*Request     // map of requests sent in server pushes.
 }
 
 // readFrames is the main processing loop, where frames
@@ -402,8 +406,8 @@ func (conn *clientConnection) validFrameVersion(frame Frame) bool {
 
 // handleSynStream performs the processing of SYN_STREAM frames.
 func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
-	conn.RLock()
-	defer func() { conn.RUnlock() }()
+	conn.Lock()
+	defer func() { conn.Unlock() }()
 
 	// Check stream creation is allowed.
 	if conn.goaway {
@@ -420,7 +424,7 @@ func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
 	}
 
 	// Check Stream ID is the right number.
-	nsid := conn.nextServerStreamID + 2
+	nsid := conn.nextServerStreamID
 	if sid != nsid {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be %d.\n", sid, nsid)
 		conn.numBenignErrors++
@@ -445,21 +449,67 @@ func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
 		return
 	}
 
+	// Parse the request.
+	headers := frame.Headers
+	var rawUrl string
+	switch frame.version {
+	case 3:
+		rawUrl = headers.Get(":scheme") + "://" + headers.Get(":host") + headers.Get(":path")
+	case 2:
+		rawUrl = headers.Get("scheme") + "://" + headers.Get("host") + headers.Get("url")
+	}
+	url, err := url.Parse(rawUrl)
+	if err != nil {
+		log.Println("Error: Received SYN_STREAM with invalid request URL: ", err)
+		return
+	}
+	var vers string
+	switch frame.version {
+	case 3:
+		vers = headers.Get(":version")
+	case 2:
+		vers = headers.Get("version")
+	}
+	major, minor, ok := http.ParseHTTPVersion(vers)
+	if !ok {
+		log.Println("Error: Invalid HTTP version: " + headers.Get(":version"))
+		return
+	}
+	var method string
+	switch frame.version {
+	case 3:
+		method = headers.Get(":method")
+	case 2:
+		method = headers.Get("method")
+	}
+	request := &Request{
+		Method:     method,
+		URL:        url,
+		Proto:      vers,
+		ProtoMajor: major,
+		ProtoMinor: minor,
+		Priority:   int(frame.Priority),
+		RemoteAddr: conn.remoteAddr,
+		Header:     headers,
+		Host:       url.Host,
+		RequestURI: url.Path,
+		TLS:        conn.tlsState,
+	}
+
+	// Check whether the receiver wants this resource.
+	if !conn.pushReceiver.ReceiveRequest(request) {
+		rst := new(RstStreamFrame)
+		rst.version = conn.version
+		rst.streamID = sid
+		rst.StatusCode = RST_STREAM_REFUSED_STREAM
+		conn.WriteFrame(rst)
+		return
+	}
+
 	// Create and start new stream.
-	conn.RUnlock()
-	conn.Lock()
-
-	// TODO: add push handling here and remove refusal below. (Issue #15)
-
-	// For now, the push is refused.
-	rst := new(RstStreamFrame)
-	rst.version = conn.version
-	rst.streamID = sid
-	rst.StatusCode = RST_STREAM_REFUSED_STREAM
-	conn.WriteFrame(rst)
-
-	conn.Unlock()
-	conn.RLock()
+	conn.pushReceiver.ReceiveHeaders(request, frame.Headers)
+	conn.pushRequests[sid] = request
+	conn.nextServerStreamID = sid + 2
 
 	//go nextStream.run()
 	conn.done.Add(1)
@@ -559,10 +609,15 @@ func (conn *clientConnection) handleData(frame *DataFrame) {
 
 	sid := frame.streamID
 
-	// Check Stream ID is odd.
+	// Handle push data.
 	if sid&1 == 0 {
-		log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n", sid)
-		conn.numBenignErrors++
+		req := conn.pushRequests[sid]
+
+		// Ignore refused push data.
+		if req != nil {
+			conn.pushReceiver.ReceiveData(req, frame.Data, frame.Flags&FLAG_FIN != 0)
+		}
+
 		return
 	}
 
@@ -593,10 +648,15 @@ func (conn *clientConnection) handleHeaders(frame *HeadersFrame) {
 
 	sid := frame.streamID
 
-	// Check Stream ID is odd.
+	// Handle push headers.
 	if sid&1 == 0 {
-		log.Printf("Error: Received HEADERS with Stream ID %d, which should be odd.\n", sid)
-		conn.numBenignErrors++
+		req := conn.pushRequests[sid]
+
+		// Ignore refused push headers.
+		if req != nil {
+			conn.pushReceiver.ReceiveHeaders(req, frame.Headers)
+		}
+
 		return
 	}
 
@@ -720,6 +780,11 @@ func (conn *clientConnection) run() {
 	// Initialise max concurrent streams limit.
 	conn.serverStreamLimit.SetLimit(conn.client.MaxConcurrentStreams)
 
+	// Initialise push receiver.
+	if conn.pushReceiver == nil {
+		conn.pushReceiver = new(nilReceiver)
+	}
+
 	// Start the send loop.
 	go conn.send()
 
@@ -751,6 +816,7 @@ func newClientConn(tlsConn *tls.Conn) *clientConnection {
 	conn.clientStreamLimit = new(streamLimit)
 	conn.serverStreamLimit = new(streamLimit)
 	conn.done = new(sync.WaitGroup)
+	conn.pushRequests = make(map[uint32]*Request)
 
 	return conn
 }

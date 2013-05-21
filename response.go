@@ -128,8 +128,8 @@ func (r *response) ReceiveHeaders(req *Request, headers Header) {
 	}
 }
 
-func (r *response) ReceiveStatus(req *Request, code int) {
-	r.StatusCode = code
+func (r *response) ReceiveRequest(req *Request) bool {
+	return false
 }
 
 func (r *response) Response() *Response {
@@ -152,6 +152,20 @@ func (r *response) Response() *Response {
 	out.Trailer = make(Header)
 	out.Request = r.Request
 	return out
+}
+
+type nilReceiver struct{}
+
+func (_ nilReceiver) ReceiveData(_ *Request, _ []byte, _ bool) {
+	return
+}
+
+func (_ nilReceiver) ReceiveHeaders(req *Request, headers Header) {
+	return
+}
+
+func (_ nilReceiver) ReceiveRequest(req *Request) bool {
+	return false
 }
 
 func httpToSpdyResponse(res *http.Response, req *Request) *Response {

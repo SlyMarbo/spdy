@@ -338,7 +338,7 @@ func SupportedVersions() []int {
 func NpnStrings() []string {
 	v := SupportedVersions()
 	s := make([]string, 0, len(v)+1)
-	for v, _ := range v {
+	for _, v := range v {
 		s = append(s, fmt.Sprintf("spdy/%d", v))
 	}
 	s = append(s, "http/1.1")
@@ -365,7 +365,7 @@ func EnableSpdyVersion(v uint16) error {
 	if v > maxVersion {
 		return errors.New("Error: SPDY version too new.")
 	}
-	delete(supportedVersions, v)
+	supportedVersions[v] = struct{}{}
 	return nil
 }
 
@@ -382,7 +382,7 @@ func DisableSpdyVersion(v uint16) error {
 	if v > maxVersion {
 		return errors.New("Error: SPDY version too new.")
 	}
-	supportedVersions[v] = struct{}{}
+	delete(supportedVersions, v)
 	return nil
 }
 
@@ -438,8 +438,8 @@ func defaultSPDYClientSettings(v uint16, m uint32) []*Setting {
 	return nil
 }
 
-var log = logging.New(os.Stderr, "spdy", logging.LstdFlags|logging.Lshortfile)
-var debug = logging.New(ioutil.Discard, "spdy debug", logging.LstdFlags)
+var log = logging.New(os.Stderr, "(spdy) ", logging.LstdFlags|logging.Lshortfile)
+var debug = logging.New(ioutil.Discard, "(spdy debug) ", logging.LstdFlags)
 
 // SetLogger sets the package's error logger.
 func SetLogger(l *logging.Logger) {
@@ -448,7 +448,7 @@ func SetLogger(l *logging.Logger) {
 
 // SetLogOutput sets the output for the package's error logger.
 func SetLogOutput(w io.Writer) {
-	log = logging.New(w, "spdy", logging.LstdFlags|logging.Lshortfile)
+	log = logging.New(w, "(spdy) ", logging.LstdFlags|logging.Lshortfile)
 }
 
 // SetDebugLogger sets the package's debug info logger.
@@ -458,7 +458,7 @@ func SetDebugLogger(l *logging.Logger) {
 
 // SetDebugOutput sets the output for the package's debug info logger.
 func SetDebugOutput(w io.Writer) {
-	debug = logging.New(w, "spdy debug", logging.LstdFlags)
+	debug = logging.New(w, "(spdy debug) ", logging.LstdFlags)
 }
 
 // Compression header for SPDY/2
