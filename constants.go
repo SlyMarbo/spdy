@@ -1,8 +1,10 @@
 package spdy
 
 import (
-	"log"
+	"io/ioutil"
+	logging "log"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 )
@@ -12,13 +14,6 @@ const SPDY_VERSION = 3
 
 // Minimum (oldest) version of SPDY supported.
 const MIN_SPDY_VERSION = 2
-
-// DebugMode, if enabled, will log
-// debug information specific to
-// the protocol's inner workings,
-// such as the details of every
-// frame received.
-var DebugMode = false
 
 // MaxBenignErrors is the maximum
 // number of minor errors each
@@ -311,6 +306,17 @@ var defaultSPDYClientSettings = map[uint16][]*Setting{
 			Value: 1000,
 		},
 	},
+}
+
+var log = logging.New(os.Stderr, "spdy", logging.LstdFlags | logging.Lshortfile)
+var debug = logging.New(ioutil.Discard, "spdy debug", logging.LstdFlags | logging.Lshortfile)
+
+func SetLogger(l *logging.Logger) {
+	log = l
+}
+
+func SetDebugLogger(l *logging.Logger) {
+	debug = l
 }
 
 // Compression header for SPDY/2

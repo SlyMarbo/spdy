@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/zlib"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 )
@@ -126,9 +125,7 @@ func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, 
 		}
 	}
 
-	if DebugMode {
-		fmt.Printf("Headers decompressed from %d bytes to %d.\n", len(data), length)
-	}
+	debug.Printf("Headers decompressed from %d bytes to %d.\n", len(data), length)
 
 	return headers, nil
 }

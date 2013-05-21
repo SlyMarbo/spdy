@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -86,10 +85,8 @@ func (conn *serverConnection) readFrames() {
 			conn.PROTOCOL_ERROR(frame.StreamID())
 		}
 
-		if DebugMode {
-			fmt.Println("Received Frame:")
-			fmt.Println(frame)
-		}
+		debug.Println("Received Frame:")
+		debug.Println(frame)
 
 		// Make sure the received frame uses an appropriate
 		// SPDY version.
@@ -126,9 +123,7 @@ func (conn *serverConnection) readFrames() {
 				switch setting.ID {
 				case SETTINGS_INITIAL_WINDOW_SIZE:
 					if conn.version > 2 {
-						if DebugMode {
-							log.Printf("Initial window size is %d.\n", setting.Value)
-						}
+						debug.Printf("Initial window size is %d.\n", setting.Value)
 						conn.initialWindowSize = setting.Value
 					} else {
 						msg := "Warning: Received INITIAL_WINDOW_SIZE setting on SPDY/%d, which has no flow control.\n"
@@ -156,9 +151,7 @@ func (conn *serverConnection) readFrames() {
 				close(conn.pings[frame.PingID])
 				delete(conn.pings, frame.PingID)
 			} else {
-				if DebugMode {
-					log.Println("Received PING. Replying...")
-				}
+				debug.Println("Received PING. Replying...")
 				conn.WriteFrame(frame)
 			}
 
@@ -229,10 +222,8 @@ func (conn *serverConnection) send() {
 			continue
 		}
 
-		if DebugMode {
-			log.Println("Sending Frame:")
-			log.Println(frame)
-		}
+		debug.Println("Sending Frame:")
+		debug.Println(frame)
 
 		// Leave the specifics of writing to the
 		// connection up to the frame.

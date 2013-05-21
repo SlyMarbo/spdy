@@ -2,7 +2,6 @@ package spdy
 
 import (
 	"errors"
-	"log"
 	"sync"
 )
 

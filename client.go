@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -102,9 +101,7 @@ func (c *Client) dial(u *url.URL) (net.Conn, error) {
 
 // doHTTP is used to process an HTTP(S) request, using the TCP connection pool.
 func (c *Client) doHTTP(conn net.Conn, req *Request) (*Response, error) {
-	if DebugMode {
-		log.Printf("Requesting %q over HTTP.\n", req.URL.String())
-	}
+	debug.Printf("Requesting %q over HTTP.\n", req.URL.String())
 
 	// Create the HTTP ClientConn, which handles the
 	// HTTP details.
@@ -256,9 +253,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 
 	// The connection has now been established.
 
-	if DebugMode {
-		log.Printf("Requesting %q over SPDY.\n", u.String())
-	}
+	debug.Printf("Requesting %q over SPDY.\n", u.String())
 
 	// Prepare the response.
 	res := new(response)
