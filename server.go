@@ -521,11 +521,11 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 			},
 		},
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-			"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			"spdy/2": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv2(srv, tlsConn, nil)
 			},
-			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			"spdy/3": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv3(srv, tlsConn, nil)
 			},
@@ -586,11 +586,11 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Han
 			},
 		},
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-			"spdy/2": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			"spdy/2": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv2(srv, tlsConn, nil)
 			},
-			"spdy/3": func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			"spdy/3": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv3(srv, tlsConn, nil)
 			},
@@ -635,11 +635,11 @@ func AddSPDYServer(srv *http.Server, server *Server) {
 	if srv.TLSNextProto == nil {
 		srv.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 	}
-	srv.TLSNextProto["spdy/3"] = func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+	srv.TLSNextProto["spdy/3"] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 		server.httpHandler = handler
 		acceptSPDYv3(server, tlsConn, nil)
 	}
-	srv.TLSNextProto["spdy/2"] = func(_ *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+	srv.TLSNextProto["spdy/2"] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 		server.httpHandler = handler
 		acceptSPDYv2(server, tlsConn, nil)
 	}

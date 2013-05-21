@@ -25,14 +25,19 @@ type requestStream struct {
 	version      uint16
 }
 
+// Cancel is used to cancel a mid-air
+// request.
 func (s *requestStream) Cancel() {
 	s.Lock()
 	s.stop = true
-	rst := new(RstStreamFrame)
-	rst.streamID = s.streamID
-	rst.version = uint16(s.version)
-	rst.StatusCode = RST_STREAM_CANCEL
-	s.output <- rst
+	if s.state.OpenHere() {
+		rst := new(RstStreamFrame)
+		rst.streamID = s.streamID
+		rst.version = uint16(s.version)
+		rst.StatusCode = RST_STREAM_CANCEL
+		s.output <- rst
+	}
+	s.state.CloseHere()
 	s.Unlock()
 }
 
@@ -48,7 +53,7 @@ func (s *requestStream) Ping() <-chan bool {
 	return s.conn.Ping()
 }
 
-func (_ *requestStream) Push(_ string) (PushWriter, error) {
+func (s *requestStream) Push(string) (PushWriter, error) {
 	panic("Error: Request stream cannot push.")
 }
 
@@ -111,7 +116,7 @@ func (s *requestStream) Write(inputData []byte) (int, error) {
 }
 
 // WriteHeader is used to set the HTTP status code.
-func (_ *requestStream) WriteHeader(_ int) {
+func (s *requestStream) WriteHeader(int) {
 	panic("Error: Cannot write status code on request.")
 }
 
@@ -121,6 +126,7 @@ func (s *requestStream) WriteHeaders() {
 		return
 	}
 
+	// Create the HEADERS frame.
 	headers := new(HeadersFrame)
 	headers.version = uint16(s.version)
 	headers.streamID = s.streamID
@@ -139,6 +145,7 @@ func (s *requestStream) WriteSettings(settings ...*Setting) {
 		return
 	}
 
+	// Create the SETTINGS frame.
 	frame := new(SettingsFrame)
 	frame.version = uint16(s.version)
 	frame.Settings = settings
@@ -155,6 +162,7 @@ func (s *requestStream) receiveFrame(frame Frame) {
 		panic("Nil frame received in receiveFrame.")
 	}
 
+	// Process the frame depending on its type.
 	switch frame := frame.(type) {
 	case *DataFrame:
 

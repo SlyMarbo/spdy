@@ -29,7 +29,7 @@ func (h *_httpPushWriter) Header() http.Header {
 	return http.Header(h.PushWriter.Header())
 }
 
-func (h *_httpPushWriter) WriteHeader(_ int) {
+func (h *_httpPushWriter) WriteHeader(int) {
 	h.WriteHeaders()
 }
 

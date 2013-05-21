@@ -120,7 +120,7 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
 
 // WriteHeader is provided to satisfy the Stream
 // interface, but has no effect.
-func (p *pushStream) WriteHeader(_ int) {
+func (p *pushStream) WriteHeader(int) {
 	log.Println("Warning: PushWriter.WriteHeader has no effect.")
 	p.WriteHeaders()
 	return

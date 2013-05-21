@@ -28,6 +28,16 @@ type Receiver interface {
 	ReceiveHeaders(*Request, Header)
 }
 
+// A Client is an HTTP/SPDY client. Its zero value (DefaultClient) is
+// a usable client.
+//
+// The Client has an internal state (cached TCP and SPDY connections),
+// so Clients should be reused instead of created as needed. Clients
+// are safe for concurrent use by multiple goroutines.
+//
+// A Client is higher-level than a RoundTripper (such as Transport)
+// and additionally handles HTTP and SPDY details such as cookies and
+// redirects.
 type Client struct {
 	sync.RWMutex
 	ReadTimeout    time.Duration // max duration before timing out read on the request
@@ -90,11 +100,14 @@ func (c *Client) dial(u *url.URL) (net.Conn, error) {
 	}
 }
 
+// doHTTP is used to process an HTTP(S) request, using the TCP connection pool.
 func (c *Client) doHTTP(conn net.Conn, req *Request) (*Response, error) {
 	if DebugMode {
 		log.Printf("Requesting %q over HTTP.\n", req.URL.String())
 	}
 
+	// Create the HTTP ClientConn, which handles the
+	// HTTP details.
 	httpConn := httputil.NewClientConn(conn, nil)
 	httpReq := spdyToHttpRequest(req)
 	httpRes, err := httpConn.Do(httpReq)
@@ -116,8 +129,13 @@ func (c *Client) doHTTP(conn net.Conn, req *Request) (*Response, error) {
 	return httpToSpdyResponse(httpRes, req), nil
 }
 
+// do handles the actual request; ensuring a connection is
+// made, determining which protocol to use, and performing
+// the request.
 func (c *Client) do(req *Request) (*Response, error) {
 	u := req.URL
+
+	// Make sure the URL host contains the port.
 	if !strings.Contains(u.Host, ":") {
 		switch u.Scheme {
 		case "http":
@@ -129,6 +147,8 @@ func (c *Client) do(req *Request) (*Response, error) {
 	}
 
 	c.Lock()
+
+	// Initialise structures if necessary.
 	if c.spdyConns == nil {
 		c.spdyConns = make(map[string]Connection)
 	}
@@ -149,10 +169,12 @@ func (c *Client) do(req *Request) (*Response, error) {
 		}
 	}
 
+	// Check the non-SPDY connection pool.
 	if connChan, ok := c.tcpConns[u.Host]; ok {
 		select {
 		case tcpConn := <-connChan:
 			c.Unlock()
+			// Use a connection from the pool.
 			return c.doHTTP(tcpConn, req)
 		default:
 		}
@@ -160,6 +182,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 		c.tcpConns[u.Host] = make(chan net.Conn, c.MaxTcpConnsPerHost)
 	}
 
+	// Check the SPDY connection pool.
 	conn, ok := c.spdyConns[u.Host]
 	if !ok || u.Scheme == "http" {
 		tcpConn, err := c.dial(req.URL)
@@ -255,6 +278,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 	return res.Response(), nil
 }
 
+// doFollowingRedirects follows redirects while using c.do to actually process each request.
 func (c *Client) doFollowingRedirects(ireq *Request, shouldRedirect func(int) bool) (res *Response, err error) {
 	var base *url.URL
 	redirectChecker := c.CheckRedirect
@@ -383,6 +407,8 @@ func shouldRedirectPost(statusCode int) bool {
 	return false
 }
 
+// defaultCheckRedirect simply accepts redirects until 10 have
+// occurred, or a loop is detected.
 func defaultCheckRedirect(req *Request, via []*Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")

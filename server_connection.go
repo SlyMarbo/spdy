@@ -26,23 +26,23 @@ type serverConnection struct {
 	buf                *bufio.Reader // buffered reader for the connection.
 	tlsState           *tls.ConnectionState
 	streams            map[uint32]Stream
-	streamInputs       map[uint32]chan<- Frame
-	dataPriority       [8]chan Frame
-	pings              map[uint32]chan<- bool
-	pingID             uint32
-	compressor         *Compressor
-	decompressor       *Decompressor
-	receivedSettings   map[uint32]*Setting
-	nextServerStreamID uint32          // even
-	nextClientStreamID uint32          // odd
-	initialWindowSize  uint32          // transport window
-	goaway             bool            // goaway has been sent/received.
-	version            uint16          // SPDY version.
-	numBenignErrors    int             // number of non-serious errors encountered.
-	done               *sync.WaitGroup // WaitGroup for active streams.
-	activeStreams      uint32
-	maxActiveStreams   uint32
-	vectorIndex        uint16
+	streamInputs       map[uint32]chan<- Frame // sending frames to streams.
+	dataPriority       [8]chan Frame           // one output channel per priority level.
+	pings              map[uint32]chan<- bool  // response channel for pings.
+	pingID             uint32                  // next outbound ping ID.
+	compressor         *Compressor             // outbound compression state.
+	decompressor       *Decompressor           // inbound decompression state.
+	receivedSettings   map[uint32]*Setting     // settings sent by client.
+	nextServerStreamID uint32                  // next outbound stream ID. (even)
+	nextClientStreamID uint32                  // next inbound stream ID. (odd)
+	initialWindowSize  uint32                  // initial transport window.
+	goaway             bool                    // goaway has been sent/received.
+	version            uint16                  // SPDY version.
+	numBenignErrors    int                     // number of non-serious errors encountered.
+	done               *sync.WaitGroup         // WaitGroup for active streams.
+	activeStreams      uint32                  // number of currently active streams.
+	maxActiveStreams   uint32                  // limit on number of concurrently active streams (0 for no limit).
+	vectorIndex        uint16                  // current limit on the credential vector size.
 	certificates       map[uint16][]*x509.Certificate
 }
 
@@ -71,7 +71,7 @@ func (conn *serverConnection) readFrames() {
 		if err != nil {
 			if err == io.EOF {
 				// Client has closed the TCP connection.
-				log.Println("Warning: Client has disconnected.")
+				log.Println("Note: Client has disconnected.")
 				return
 			}
 
@@ -163,7 +163,6 @@ func (conn *serverConnection) readFrames() {
 			}
 
 		case *GoawayFrame:
-
 			lastProcessed := frame.LastGoodStreamID
 			for streamID, stream := range conn.streams {
 				if streamID&1 == 0 && streamID > lastProcessed {
@@ -174,10 +173,10 @@ func (conn *serverConnection) readFrames() {
 			conn.goaway = true
 
 		case *HeadersFrame:
-			conn.handleHeadersFrame(frame)
+			conn.handleHeaders(frame)
 
 		case *WindowUpdateFrame:
-			conn.handleWindowUpdateFrame(frame)
+			conn.handleWindowUpdate(frame)
 
 		case *CredentialFrame:
 			if frame.Slot >= conn.vectorIndex {
@@ -193,10 +192,9 @@ func (conn *serverConnection) readFrames() {
 				conn.vectorIndex += 4
 			}
 			conn.certificates[frame.Slot] = frame.Certificates
-			log.Println("Got CREDENTIAL: [UNIMPLEMENTED]")
 
 		case *DataFrame:
-			conn.handleDataFrame(frame)
+			conn.handleData(frame)
 
 		default:
 			log.Println(fmt.Sprintf("unexpected frame type %T", frame))
@@ -230,10 +228,12 @@ func (conn *serverConnection) send() {
 		if err != nil {
 			if err == io.EOF {
 				// Server has closed the TCP connection.
-				log.Println("Warning: Server has disconnected.")
+				log.Println("Note: Server has disconnected.")
 				return
 			}
 
+			// Unexpected error which prevented a write, so
+			// it's best to panic.
 			panic(err)
 		}
 	}
@@ -324,6 +324,7 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 		method = headers.Get("method")
 	}
 
+	// Build this into a request to present to the Handler.
 	stream.request = &Request{
 		Method:     method,
 		URL:        url,
@@ -450,7 +451,7 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 
 // Request is a method stub required to satisfy the Connection
 // interface. It must not be used by servers.
-func (conn *serverConnection) Request(_ *Request, _ Receiver) (Stream, error) {
+func (conn *serverConnection) Request(req *Request, res Receiver) (Stream, error) {
 	return nil, errors.New("Error: Servers cannot make requests.")
 }
 
@@ -524,11 +525,13 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.Lock()
 	input := make(chan Frame)
 	nextStream := conn.newStream(frame, input, conn.dataPriority[frame.Priority])
-	if nextStream == nil {
+	if nextStream == nil { // Make sure an error didn't occur when making the stream.
 		conn.Unlock()
 		conn.RLock()
 		return
 	}
+
+	// Determine which handler to use.
 	nextStream.handler = conn.server.Handler
 	if nextStream.handler == nil {
 		nextStream.handler = DefaultServeMux
@@ -537,14 +540,15 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	if nextStream.httpHandler == nil {
 		nextStream.httpHandler = http.DefaultServeMux
 	}
+
+	// Set and prepare.
 	conn.streamInputs[sid] = input
 	conn.streams[sid] = nextStream
 	conn.Unlock()
 	conn.RLock()
 
+	// Start the stream.
 	go nextStream.Run()
-
-	return
 }
 
 // handleSynReply performs the processing of SYN_REPLY frames.
@@ -586,9 +590,10 @@ func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 
 	sid := frame.streamID
 
+	// Determine the status code and react accordingly.
 	switch frame.StatusCode {
 	case RST_STREAM_INVALID_STREAM:
-		log.Printf("Error: Received INVALID_STREAM for stream ID %d.\n", sid)
+		log.Printf("Error: Received INVALID_STREAM for stream %d.\n", sid)
 		conn.numBenignErrors++
 		return
 
@@ -598,7 +603,7 @@ func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 
 	case RST_STREAM_CANCEL:
 		if sid&1 == 0 {
-			log.Printf("Error: Received RST_STREAM with Stream ID %d, which should be odd.\n", sid)
+			log.Printf("Error: Received RST_STREAM with Stream %d, which should be odd.\n", sid)
 			conn.numBenignErrors++
 			return
 		}
@@ -606,22 +611,22 @@ func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 		return
 
 	case RST_STREAM_FLOW_CONTROL_ERROR:
-		log.Printf("Error: Received FLOW_CONTROL_ERROR for stream ID %d.\n", sid)
+		log.Printf("Error: Received FLOW_CONTROL_ERROR for stream %d.\n", sid)
 		conn.numBenignErrors++
 		return
 
 	case RST_STREAM_STREAM_IN_USE:
-		log.Printf("Error: Received STREAM_IN_USE for stream ID %d.\n", sid)
+		log.Printf("Error: Received STREAM_IN_USE for stream %d.\n", sid)
 		conn.numBenignErrors++
 		return
 
 	case RST_STREAM_STREAM_ALREADY_CLOSED:
-		log.Printf("Error: Received STREAM_ALREADY_CLOSED for stream ID %d.\n", sid)
+		log.Printf("Error: Received STREAM_ALREADY_CLOSED for stream %d.\n", sid)
 		conn.numBenignErrors++
 		return
 
 	case RST_STREAM_INVALID_CREDENTIALS:
-		log.Printf("Error: Received INVALID_CREDENTIALS for stream ID %d.\n", sid)
+		log.Printf("Error: Received INVALID_CREDENTIALS for stream %d.\n", sid)
 		conn.numBenignErrors++
 		return
 
@@ -632,7 +637,7 @@ func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 }
 
 // handleDataFrame performs the processing of DATA frames.
-func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
+func (conn *serverConnection) handleData(frame *DataFrame) {
 	conn.RLock()
 	defer func() { conn.RUnlock() }()
 
@@ -663,8 +668,8 @@ func (conn *serverConnection) handleDataFrame(frame *DataFrame) {
 	}
 }
 
-// handleHeadersFrame performs the processing of HEADERS frames.
-func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
+// handleHeaders performs the processing of HEADERS frames.
+func (conn *serverConnection) handleHeaders(frame *HeadersFrame) {
 	conn.RLock()
 	defer func() { conn.RUnlock() }()
 
@@ -695,8 +700,8 @@ func (conn *serverConnection) handleHeadersFrame(frame *HeadersFrame) {
 	}
 }
 
-// handleWindowUpdateFrame performs the processing of WINDOW_UPDATE frames.
-func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) {
+// handleWindowUpdate performs the processing of WINDOW_UPDATE frames.
+func (conn *serverConnection) handleWindowUpdate(frame *WindowUpdateFrame) {
 	conn.RLock()
 	defer func() { conn.RUnlock() }()
 
@@ -735,6 +740,7 @@ func (conn *serverConnection) handleWindowUpdateFrame(frame *WindowUpdateFrame) 
 }
 
 // Add timeouts if requested by the server.
+// TODO: this could be improved.
 func (conn *serverConnection) refreshTimeouts() {
 	if d := conn.server.ReadTimeout; d != 0 {
 		conn.conn.SetReadDeadline(time.Now().Add(d))

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 )
 
@@ -33,8 +34,8 @@ type responseStream struct {
 	version        uint16
 }
 
-func (_ *responseStream) Cancel() {
-	panic("Error: Client stream cancelled. Use Stop() instead.")
+func (s *responseStream) Cancel() {
+	panic("Error: Client-sent stream cancelled. Use Stop() instead.")
 }
 
 func (s *responseStream) ClientCertificates(index uint16) []*x509.Certificate {
@@ -132,13 +133,14 @@ func (s *responseStream) WriteHeader(code int) {
 
 	switch s.version {
 	case 3:
-		s.headers.Set(":status", fmt.Sprint(code))
+		s.headers.Set(":status", strconv.Itoa(code))
 		s.headers.Set(":version", "HTTP/1.1")
 	case 2:
-		s.headers.Set("status", fmt.Sprint(code))
+		s.headers.Set("status", strconv.Itoa(code))
 		s.headers.Set("version", "HTTP/1.1")
 	}
 
+	// Create the response SYN_REPLY.
 	synReply := new(SynReplyFrame)
 	synReply.version = s.version
 	synReply.streamID = s.streamID
@@ -164,6 +166,7 @@ func (s *responseStream) WriteHeaders() {
 		return
 	}
 
+	// Create the HEADERS frame.
 	headers := new(HeadersFrame)
 	headers.version = s.version
 	headers.streamID = s.streamID
@@ -182,6 +185,7 @@ func (s *responseStream) WriteSettings(settings ...*Setting) {
 		return
 	}
 
+	// Create the SETTINGS frame.
 	frame := new(SettingsFrame)
 	frame.version = s.version
 	frame.Settings = settings
@@ -198,6 +202,7 @@ func (s *responseStream) receiveFrame(frame Frame) {
 		panic("Nil frame received in receiveFrame.")
 	}
 
+	// Process the frame depending on its type.
 	switch frame := frame.(type) {
 	case *DataFrame:
 		s.requestBody.Write(frame.Data)
@@ -308,6 +313,7 @@ func (s *responseStream) Run() {
 			s.headers.Set("version", "HTTP/1.1")
 		}
 
+		// Create the response SYN_REPLY.
 		synReply := new(SynReplyFrame)
 		synReply.version = s.version
 		synReply.Flags = FLAG_FIN
@@ -316,6 +322,7 @@ func (s *responseStream) Run() {
 
 		s.output <- synReply
 	} else if s.state.OpenHere() {
+		// Create the DATA.
 		data := new(DataFrame)
 		data.streamID = s.streamID
 		data.Flags = FLAG_FIN
@@ -329,10 +336,13 @@ func (s *responseStream) Run() {
 	s.conn.done.Done()
 }
 
+// readCloserBuffer is a helper structure
+// to allow a bytes buffer to satisfy the
+// io.ReadCloser interface.
 type readCloserBuffer struct {
 	*bytes.Buffer
 }
 
-func (_ *readCloserBuffer) Close() error {
+func (r *readCloserBuffer) Close() error {
 	return nil
 }

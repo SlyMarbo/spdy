@@ -612,7 +612,7 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *RstStreamFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *RstStreamFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -631,7 +631,7 @@ func (frame *RstStreamFrame) String() string {
 	return buf.String()
 }
 
-func (_ *RstStreamFrame) WriteHeaders(_ *Compressor) error {
+func (frame *RstStreamFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -688,7 +688,7 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
 	out[11] = byte(numSettings)            // Number of Entries
 
 	offset := 12
-	sort.Sort(_settingsSorter(frame.Settings))
+	sort.Sort(settingsSorter(frame.Settings))
 	var lastID uint32
 	for _, setting := range frame.Settings {
 		if setting.ID == lastID {
@@ -791,11 +791,11 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *SettingsFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *SettingsFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
-func (_ *SettingsFrame) StreamID() uint32 {
+func (frame *SettingsFrame) StreamID() uint32 {
 	return 0
 }
 
@@ -822,7 +822,7 @@ func (frame *SettingsFrame) String() string {
 	return buf.String()
 }
 
-func (_ *SettingsFrame) WriteHeaders(_ *Compressor) error {
+func (frame *SettingsFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -839,17 +839,17 @@ func (frame *SettingsFrame) Version() uint16 {
 	return frame.version
 }
 
-type _settingsSorter []*Setting
+type settingsSorter []*Setting
 
-func (s _settingsSorter) Len() int {
+func (s settingsSorter) Len() int {
 	return len(s)
 }
 
-func (s _settingsSorter) Less(i, j int) bool {
+func (s settingsSorter) Less(i, j int) bool {
 	return s[i].ID < s[j].ID
 }
 
-func (s _settingsSorter) Swap(i, j int) {
+func (s settingsSorter) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
@@ -899,7 +899,7 @@ func (frame *Setting) String() string {
  ************/
 type NoopFrame struct{}
 
-func (_ *NoopFrame) Bytes() ([]byte, error) {
+func (frame *NoopFrame) Bytes() ([]byte, error) {
 	out := make([]byte, 8)
 
 	out[0] = 0x80 // Control bit and Version
@@ -914,7 +914,7 @@ func (_ *NoopFrame) Bytes() ([]byte, error) {
 	return out, nil
 }
 
-func (_ *NoopFrame) Parse(reader *bufio.Reader) error {
+func (frame *NoopFrame) Parse(reader *bufio.Reader) error {
 	// Read in data.
 	data := make([]byte, 8)
 	remaining := 8
@@ -953,27 +953,27 @@ func (_ *NoopFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *NoopFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *NoopFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
-func (_ *NoopFrame) StreamID() uint32 {
+func (frame *NoopFrame) StreamID() uint32 {
 	return 0
 }
 
-func (_ *NoopFrame) String() string {
+func (frame *NoopFrame) String() string {
 	return "NOOP {\n\tVersion: 2\n}\n"
 }
 
-func (_ *NoopFrame) WriteHeaders(_ *Compressor) error {
+func (frame *NoopFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
-func (_ *NoopFrame) WriteTo(writer io.Writer) error {
+func (frame *NoopFrame) WriteTo(writer io.Writer) error {
 	return nil
 }
 
-func (_ *NoopFrame) Version() uint16 {
+func (frame *NoopFrame) Version() uint16 {
 	return 2
 }
 
@@ -1058,11 +1058,11 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *PingFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *PingFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
-func (_ *PingFrame) StreamID() uint32 {
+func (frame *PingFrame) StreamID() uint32 {
 	return 0
 }
 
@@ -1076,7 +1076,7 @@ func (frame *PingFrame) String() string {
 	return buf.String()
 }
 
-func (_ *PingFrame) WriteHeaders(_ *Compressor) error {
+func (frame *PingFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1196,11 +1196,11 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *GoawayFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *GoawayFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
-func (_ *GoawayFrame) StreamID() uint32 {
+func (frame *GoawayFrame) StreamID() uint32 {
 	return 0
 }
 
@@ -1218,7 +1218,7 @@ func (frame *GoawayFrame) String() string {
 	return buf.String()
 }
 
-func (_ *GoawayFrame) WriteHeaders(_ *Compressor) error {
+func (frame *GoawayFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1527,7 +1527,7 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *WindowUpdateFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *WindowUpdateFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -1546,7 +1546,7 @@ func (frame *WindowUpdateFrame) String() string {
 	return buf.String()
 }
 
-func (_ *WindowUpdateFrame) WriteHeaders(_ *Compressor) error {
+func (frame *WindowUpdateFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1688,11 +1688,11 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *CredentialFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *CredentialFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
-func (_ *CredentialFrame) StreamID() uint32 {
+func (frame *CredentialFrame) StreamID() uint32 {
 	return 0
 }
 
@@ -1708,7 +1708,7 @@ func (frame *CredentialFrame) String() string {
 	return buf.String()
 }
 
-func (_ *CredentialFrame) WriteHeaders(_ *Compressor) error {
+func (frame *CredentialFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1830,7 +1830,7 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (_ *DataFrame) ReadHeaders(_ *Decompressor) error {
+func (frame *DataFrame) ReadHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -1858,7 +1858,7 @@ func (frame *DataFrame) String() string {
 	return buf.String()
 }
 
-func (_ *DataFrame) WriteHeaders(_ *Compressor) error {
+func (frame *DataFrame) WriteHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1962,7 +1962,7 @@ func (i *IncorrectDataLength) Error() string {
 
 type FrameTooLarge struct{}
 
-func (_ FrameTooLarge) Error() string {
+func (f FrameTooLarge) Error() string {
 	return "Error: Frame too large."
 }
 

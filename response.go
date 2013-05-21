@@ -11,6 +11,7 @@ import (
 	"strconv"
 )
 
+// Response represents the response from a SPDY/HTTP request.
 type Response struct {
 	Status     string // e.g. "200 OK"
 	StatusCode int    // e.g. 200
@@ -106,13 +107,13 @@ type response struct {
 	Request    *Request
 }
 
-func (r *response) ReceiveData(_ *Request, data []byte, _ bool) {
+func (r *response) ReceiveData(req *Request, data []byte, finished bool) {
 	r.Data.Write(data)
 }
 
 var statusRegex = regexp.MustCompile(`\A\s*(?P<code>\d+)`)
 
-func (r *response) ReceiveHeaders(_ *Request, headers Header) {
+func (r *response) ReceiveHeaders(req *Request, headers Header) {
 	if r.Header == nil {
 		r.Header = make(Header)
 	}
@@ -127,7 +128,7 @@ func (r *response) ReceiveHeaders(_ *Request, headers Header) {
 	}
 }
 
-func (r *response) ReceiveStatus(_ *Request, code int) {
+func (r *response) ReceiveStatus(req *Request, code int) {
 	r.StatusCode = code
 }
 

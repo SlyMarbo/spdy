@@ -302,7 +302,7 @@ func valueOrDefault(value, def string) string {
 	return def
 }
 
-const defaultUserAgent = "Go 1.1 package github.com/SlyMarbo/spdy"
+const defaultUserAgent = "github.com/SlyMarbo/spdy SPDY/HTTP/HTTPS client"
 
 // SetBasicAuth sets the request's Authorization header to use HTTP
 // Basic Authentication with the provided username and password.

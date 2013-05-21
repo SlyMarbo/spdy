@@ -7,7 +7,10 @@ import (
 	"sync"
 )
 
+// SPDY version of this implementation.
 const SPDY_VERSION = 3
+
+// Minimum (oldest) version of SPDY supported.
 const MIN_SPDY_VERSION = 2
 
 // DebugMode, if enabled, will log
@@ -79,6 +82,7 @@ const (
 	SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE = 8
 )
 
+// State variables used internally in StreamState.
 const (
 	STATE_OPEN uint8 = iota
 	STATE_HALF_CLOSED_HERE
@@ -106,7 +110,10 @@ const MAX_STREAM_ID = 0x7fffffff
 // Maximum number of bytes in the transfer window.
 const MAX_TRANSFER_WINDOW_SIZE = 0x80000000
 
+// The default initial transfer window size, as defined in the spec.
 const DEFAULT_INITIAL_WINDOW_SIZE = 65536
+
+// The default initial transfer window sent by the client.
 const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
 
 // Maximum delta window size field for WINDOW_UPDATE.
@@ -154,50 +161,62 @@ func StatusCodeIsFatal(code int) bool {
 	}
 }
 
-// Stream state
+// StreamState is used to store and query
+// the stream's state. The active methods
+// do not directly affect the stream's
+// state, but it will use that information
+// to affect the changes.
 type StreamState struct {
 	sync.RWMutex
 	s uint8
 }
 
+// Check whether the stream is open.
 func (s *StreamState) Open() bool {
 	s.RLock()
 	defer s.RUnlock()
 	return s.s == STATE_OPEN
 }
 
+// Check whether the stream is closed.
 func (s *StreamState) Closed() bool {
 	s.RLock()
 	defer s.RUnlock()
 	return s.s == STATE_CLOSED
 }
 
+// Check whether the stream is half-closed at the other endpoint.
 func (s *StreamState) ClosedThere() bool {
 	s.RLock()
 	defer s.RUnlock()
 	return s.s == STATE_CLOSED || s.s == STATE_HALF_CLOSED_THERE
 }
 
+// Check whether the stream is open at the other endpoint.
 func (s *StreamState) OpenThere() bool {
 	return !s.ClosedThere()
 }
 
+// Check whether the stream is half-closed at the other endpoint.
 func (s *StreamState) ClosedHere() bool {
 	s.RLock()
 	defer s.RUnlock()
 	return s.s == STATE_CLOSED || s.s == STATE_HALF_CLOSED_HERE
 }
 
+// Check whether the stream is open locally.
 func (s *StreamState) OpenHere() bool {
 	return !s.ClosedHere()
 }
 
+// Closes the stream.
 func (s *StreamState) Close() {
 	s.Lock()
 	s.s = STATE_CLOSED
 	s.Unlock()
 }
 
+// Half-close the stream locally.
 func (s *StreamState) CloseHere() {
 	s.Lock()
 	if s.s == STATE_OPEN {
@@ -208,6 +227,7 @@ func (s *StreamState) CloseHere() {
 	s.Unlock()
 }
 
+// Half-close the stream at the other endpoint.
 func (s *StreamState) CloseThere() {
 	s.Lock()
 	if s.s == STATE_OPEN {
