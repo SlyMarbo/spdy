@@ -86,7 +86,7 @@ func (conn *clientConnection) readFrames() {
 		// SPDY version.
 		if !conn.validFrameVersion(frame) {
 			reply := new(RstStreamFrame)
-			reply.version = SPDY_VERSION
+			reply.version = DEFAULT_SPDY_VERSION
 			reply.streamID = frame.StreamID()
 			reply.StatusCode = RST_STREAM_UNSUPPORTED_VERSION
 			conn.WriteFrame(reply)
@@ -382,12 +382,11 @@ func (conn *clientConnection) validFrameVersion(frame Frame) bool {
 	}
 
 	// Check the version.
-	if frame.Version() != conn.version {
-		log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n",
-			frame.Version(), conn.version)
-		if frame.Version() > SPDY_VERSION {
-			log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n",
-				frame.Version())
+	v := frame.Version()
+	if v != conn.version {
+		log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n", v, conn.version)
+		if !SupportedVersion(v) {
+			log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n", v)
 		}
 		return false
 	}

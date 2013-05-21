@@ -166,7 +166,7 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -386,7 +386,7 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -575,7 +575,7 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -724,7 +724,7 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -940,7 +940,7 @@ func (frame *NoopFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version > 2 || version < MIN_SPDY_VERSION {
+	if version != 2 || !SupportedVersion(2) {
 		return UnsupportedVersion(version)
 	}
 
@@ -1022,7 +1022,7 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -1150,7 +1150,7 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -1297,7 +1297,7 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -1485,7 +1485,7 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < MIN_SPDY_VERSION {
+	if !SupportedVersion(version) {
 		return UnsupportedVersion(version)
 	}
 
@@ -1628,7 +1628,7 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
-	if version > SPDY_VERSION || version < 3 {
+	if !SupportedVersion(version) || version < 3 {
 		return UnsupportedVersion(version)
 	}
 

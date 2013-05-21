@@ -1,6 +1,7 @@
 package spdy
 
 import (
+	"errors"
 	"io"
 	"io/ioutil"
 	logging "log"
@@ -11,10 +12,7 @@ import (
 )
 
 // SPDY version of this implementation.
-const SPDY_VERSION = 3
-
-// Minimum (oldest) version of SPDY supported.
-const MIN_SPDY_VERSION = 2
+const DEFAULT_SPDY_VERSION = 3
 
 // MaxBenignErrors is the maximum
 // number of minor errors each
@@ -265,6 +263,56 @@ func DefaultPriority(path string) int {
 	default:
 		return 2
 	}
+}
+
+// Version factors.
+var supportedVersions = map[uint16]struct{}{
+	2: struct{}{},
+	3: struct{}{},
+}
+
+const maxVersion = 3
+const minVersion = 2
+
+func SupportedVersions() []uint16 {
+	s := make([]uint16, 0, len(supportedVersions))
+	for v, _ := range supportedVersions {
+		s = append(s, v)
+	}
+	return s
+}
+
+func SupportedVersion(v uint16) bool {
+	_, s := supportedVersions[v]
+	return s
+}
+
+func EnableSpdyVersion(v uint16) error {
+	if v == 0 {
+		return errors.New("Error: version 0 is invalid.")
+	}
+	if v < minVersion {
+		return errors.New("Error: SPDY version too old.")
+	}
+	if v > maxVersion {
+		return errors.New("Error: SPDY version too new.")
+	}
+	delete(supportedVersions, v)
+	return nil
+}
+
+func DisableSpdyVersion(v uint16) error {
+	if v == 0 {
+		return errors.New("Error: version 0 is invalid.")
+	}
+	if v < minVersion {
+		return errors.New("Error: SPDY version too old.")
+	}
+	if v > maxVersion {
+		return errors.New("Error: SPDY version too new.")
+	}
+	supportedVersions[v] = struct{}{}
+	return nil
 }
 
 // defaultSPDYServerSettings are used in initialising the connection.
