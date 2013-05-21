@@ -39,8 +39,8 @@ type serverConnection struct {
 	version            uint16                  // SPDY version.
 	numBenignErrors    int                     // number of non-serious errors encountered.
 	done               *sync.WaitGroup         // WaitGroup for active streams.
-	activeStreams      uint32                  // number of currently active streams.
-	maxActiveStreams   uint32                  // limit on number of concurrently active streams (0 for no limit).
+	clientStreamLimit  *streamLimit            // Limit on streams openable by the client.
+	serverStreamLimit  *streamLimit            // Limit on streams openable by the server.
 	vectorIndex        uint16                  // current limit on the credential vector size.
 	certificates       map[uint16][]*x509.Certificate
 }
@@ -131,8 +131,7 @@ func (conn *serverConnection) readFrames() {
 					}
 
 				case SETTINGS_MAX_CONCURRENT_STREAMS:
-					conn.maxActiveStreams = setting.Value
-					// TODO: enforce. (Issue #7)
+					conn.serverStreamLimit.SetLimit(setting.Value)
 				}
 			}
 
@@ -203,7 +202,7 @@ func (conn *serverConnection) send() {
 	// Initialise the connection by sending the connection settings.
 	settings := new(SettingsFrame)
 	settings.version = conn.version
-	settings.Settings = defaultSPDYServerSettings[conn.version]
+	settings.Settings = defaultSPDYServerSettings(conn.version, conn.clientStreamLimit.Limit())
 
 	// Add any global settings set by the server.
 	if conn.server.GlobalSettings != nil {
@@ -399,6 +398,11 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 		return nil, errors.New("Error: GOAWAY received, so push could not be sent.")
 	}
 
+	// Check stream limit would allow the new stream.
+	if !conn.clientStreamLimit.Add() {
+		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
+	}
+
 	// Prepare the SYN_STREAM.
 	push := new(SynStreamFrame)
 	push.version = conn.version
@@ -525,6 +529,16 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	}
 
 	// Stream ID is fine.
+
+	// Check stream limit would allow the new stream.
+	if !conn.clientStreamLimit.Add() {
+		rst := new(RstStreamFrame)
+		rst.version = conn.version
+		rst.streamID = sid
+		rst.StatusCode = RST_STREAM_REFUSED_STREAM
+		conn.WriteFrame(rst)
+		return
+	}
 
 	// Create and start new stream.
 	conn.RUnlock()
@@ -810,6 +824,9 @@ func (conn *serverConnection) serve() {
 		}
 	}()
 
+	// Initialise max concurrent streams limit.
+	conn.clientStreamLimit.SetLimit(conn.server.MaxConcurrentStreams)
+
 	// Start the send loop.
 	go conn.send()
 
@@ -825,6 +842,7 @@ func (conn *serverConnection) serve() {
 func acceptDefaultSPDYv2(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
 	server := new(Server)
 	server.TLSConfig = srv.TLSConfig
+	server.MaxConcurrentStreams = DEFAULT_MAX_CONCURRENT_STREAMS
 	acceptSPDYv2(server, tlsConn, nil)
 }
 
@@ -844,6 +862,7 @@ func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
 func acceptDefaultSPDYv3(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
 	server := new(Server)
 	server.TLSConfig = srv.TLSConfig
+	server.MaxConcurrentStreams = DEFAULT_MAX_CONCURRENT_STREAMS
 	acceptSPDYv3(server, tlsConn, nil)
 }
 
@@ -883,6 +902,8 @@ func newConn(tlsConn *tls.Conn) *serverConnection {
 	conn.dataPriority[7] = make(chan Frame)
 	conn.pings = make(map[uint32]chan<- bool)
 	conn.done = new(sync.WaitGroup)
+	conn.clientStreamLimit = new(streamLimit)
+	conn.serverStreamLimit = new(streamLimit)
 	conn.vectorIndex = 8
 	conn.certificates = make(map[uint16][]*x509.Certificate, 8)
 	if conn.tlsState != nil && conn.tlsState.PeerCertificates != nil {

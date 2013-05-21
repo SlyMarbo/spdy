@@ -70,6 +70,12 @@ type Client struct {
 	// If Jar is nil, cookies are not sent in requests and ignored
 	// in responses.
 	Jar http.CookieJar
+
+	// This sets the maximum number of concurrent streams the
+	// library will allow servers to create. The default value
+	// is 1000, and the limit can be disabled by setting it to
+	// 0.
+	MaxConcurrentStreams uint32
 }
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.

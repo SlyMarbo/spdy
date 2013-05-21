@@ -36,8 +36,8 @@ type clientConnection struct {
 	version            uint16                  // SPDY version.
 	numBenignErrors    int                     // number of non-serious errors encountered.
 	done               *sync.WaitGroup         // WaitGroup for active streams.
-	activeStreams      uint32                  // number of currently active streams.
-	maxActiveStreams   uint32                  // limit on number of concurrently active streams (0 for no limit).
+	clientStreamLimit  *streamLimit            // Limit on streams openable by the client.
+	serverStreamLimit  *streamLimit            // Limit on streams openable by the server.
 }
 
 // readFrames is the main processing loop, where frames
@@ -125,8 +125,7 @@ func (conn *clientConnection) readFrames() {
 					}
 
 				case SETTINGS_MAX_CONCURRENT_STREAMS:
-					conn.maxActiveStreams = setting.Value
-					// TODO: enforce. (Issue #7)
+					conn.clientStreamLimit.SetLimit(setting.Value)
 				}
 			}
 
@@ -185,7 +184,7 @@ func (conn *clientConnection) send() {
 	// Initialise the connection by sending the connection settings.
 	settings := new(SettingsFrame)
 	settings.version = conn.version
-	settings.Settings = defaultSPDYClientSettings[conn.version]
+	settings.Settings = defaultSPDYClientSettings(conn.version, conn.serverStreamLimit.Limit())
 
 	// Add any global settings set by the server.
 	if conn.client.GlobalSettings != nil {
@@ -270,6 +269,14 @@ func (conn *clientConnection) Push(resource string, origin Stream) (PushWriter, 
 // used to manipulate the underlying stream, provided the
 // request was started successfully.
 func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error) {
+	if conn.goaway {
+		return nil, errors.New("Error: GOAWAY received, so request could not be sent.")
+	}
+
+	// Check stream limit would allow the new stream.
+	if !conn.clientStreamLimit.Add() {
+		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
+	}
 
 	// Prepare the SYN_STREAM.
 	syn := new(SynStreamFrame)
@@ -427,6 +434,16 @@ func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
 	}
 
 	// Stream ID is fine.
+
+	// Check stream limit would allow the new stream.
+	if !conn.serverStreamLimit.Add() {
+		rst := new(RstStreamFrame)
+		rst.version = conn.version
+		rst.streamID = sid
+		rst.StatusCode = RST_STREAM_REFUSED_STREAM
+		conn.WriteFrame(rst)
+		return
+	}
 
 	// Create and start new stream.
 	conn.RUnlock()
@@ -700,6 +717,9 @@ func (conn *clientConnection) run() {
 		}
 	}()
 
+	// Initialise max concurrent streams limit.
+	conn.serverStreamLimit.SetLimit(conn.client.MaxConcurrentStreams)
+
 	// Start the send loop.
 	go conn.send()
 
@@ -728,6 +748,8 @@ func newClientConn(tlsConn *tls.Conn) *clientConnection {
 	conn.pings = make(map[uint32]chan<- bool)
 	conn.pingID = 1
 	conn.nextClientStreamID = 1
+	conn.clientStreamLimit = new(streamLimit)
+	conn.serverStreamLimit = new(streamLimit)
 	conn.done = new(sync.WaitGroup)
 
 	return conn

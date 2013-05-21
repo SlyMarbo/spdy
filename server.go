@@ -469,6 +469,12 @@ type Server struct {
 	WriteTimeout   time.Duration // maximum duration before timing out write of the response
 	TLSConfig      *tls.Config   // optional TLS config, used by ListenAndServeTLS
 	GlobalSettings []*Setting    // SPDY settings to be sent to all clients automatically.
+
+	// This sets the maximum number of concurrent streams the
+	// library will allow clients to create. The default value
+	// is 1000, and the limit can be disabled by setting it to
+	// 0.
+	MaxConcurrentStreams uint32
 }
 
 // ListenAndServeTLS listens on the TCP network address srv.Addr and
@@ -654,7 +660,7 @@ func AddSPDYServer(srv *http.Server, server *Server) {
 // AddSPDY adds SPDY support to srv, using spdy.DefaultServeMux to handle requests.
 // This must be called before srv begins serving.
 func AddSPDY(srv *http.Server) {
-	server := &Server{Handler: DefaultServeMux}
+	server := &Server{Handler: DefaultServeMux, MaxConcurrentStreams: DEFAULT_MAX_CONCURRENT_STREAMS}
 	AddSPDYServer(srv, server)
 }
 

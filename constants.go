@@ -112,6 +112,9 @@ const DEFAULT_INITIAL_WINDOW_SIZE = 65536
 // The default initial transfer window sent by the client.
 const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
 
+// The default maximum number of concurrent streams.
+const DEFAULT_MAX_CONCURRENT_STREAMS = 1000
+
 // Maximum delta window size field for WINDOW_UPDATE.
 const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
@@ -127,6 +130,49 @@ var statusCodeText = map[int]string{
 	RST_STREAM_STREAM_ALREADY_CLOSED: "STREAM_ALREADY_CLOSED",
 	RST_STREAM_INVALID_CREDENTIALS:   "INVALID_CREDENTIALS",
 	RST_STREAM_FRAME_TOO_LARGE:       "FRAME_TOO_LARGE",
+}
+
+// streamLimit is used to add and enforce
+// a limit on the number of concurrently
+// active streams.
+type streamLimit struct {
+	sync.Mutex
+	limit   uint32
+	current uint32
+}
+
+// SetLimit is used to modify the stream limit. If the
+// limit is set to 0, then the limiting is disabled.
+func (s *streamLimit) SetLimit(l uint32) {
+	s.Lock()
+	s.limit = l
+	s.Unlock()
+}
+
+// Limit returns the current limit.
+func (s *streamLimit) Limit() uint32 {
+	return s.limit
+}
+
+// Add is called when a new stream is to be opened. Add
+// returns a bool indicating whether the stream is safe
+// open.
+func (s *streamLimit) Add() bool {
+	s.Lock()
+	defer s.Unlock()
+	if s.current >= s.limit && s.limit != 0 {
+		return false
+	}
+	s.current++
+	return true
+}
+
+// Close is called when a stream is closed; thus freeing
+// up a slot.
+func (s *streamLimit) Close() {
+	s.Lock()
+	s.current--
+	s.Unlock()
 }
 
 // StatusCodeText returns the text for
@@ -341,45 +387,55 @@ func DisableSpdyVersion(v uint16) error {
 }
 
 // defaultSPDYServerSettings are used in initialising the connection.
-var defaultSPDYServerSettings = map[uint16][]*Setting{
-	3: []*Setting{
-		&Setting{
-			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
-			Value: DEFAULT_INITIAL_WINDOW_SIZE,
-		},
-		&Setting{
-			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-			Value: 1000,
-		},
-	},
-
-	2: []*Setting{
-		&Setting{
-			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-			Value: 1000,
-		},
-	},
+// It takes the SPDY version and max concurrent streams.
+func defaultSPDYServerSettings(v uint16, m uint32) []*Setting {
+	switch v {
+	case 3:
+		return []*Setting{
+			&Setting{
+				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
+				Value: DEFAULT_INITIAL_WINDOW_SIZE,
+			},
+			&Setting{
+				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+				Value: m,
+			},
+		}
+	case 2:
+		return []*Setting{
+			&Setting{
+				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+				Value: m,
+			},
+		}
+	}
+	return nil
 }
 
 // defaultSPDYClientSettings are used in initialising the connection.
-var defaultSPDYClientSettings = map[uint16][]*Setting{
-	3: []*Setting{
-		&Setting{
-			ID:    SETTINGS_INITIAL_WINDOW_SIZE,
-			Value: DEFAULT_INITIAL_CLIENT_WINDOW_SIZE,
-		},
-		&Setting{
-			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-			Value: 1000,
-		},
-	},
-
-	2: []*Setting{
-		&Setting{
-			ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
-			Value: 1000,
-		},
-	},
+// It takes the SPDY version and max concurrent streams.
+func defaultSPDYClientSettings(v uint16, m uint32) []*Setting {
+	switch v {
+	case 3:
+		return []*Setting{
+			&Setting{
+				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
+				Value: DEFAULT_INITIAL_CLIENT_WINDOW_SIZE,
+			},
+			&Setting{
+				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+				Value: m,
+			},
+		}
+	case 2:
+		return []*Setting{
+			&Setting{
+				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
+				Value: m,
+			},
+		}
+	}
+	return nil
 }
 
 var log = logging.New(os.Stderr, "spdy", logging.LstdFlags|logging.Lshortfile)
