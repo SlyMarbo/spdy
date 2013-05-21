@@ -80,10 +80,10 @@ func (c *Client) dial(u *url.URL) (net.Conn, error) {
 
 	if c.TLSConfig == nil {
 		c.TLSConfig = &tls.Config{
-			NextProtos: []string{"spdy/3", /*"spdy/2",*/ "http/1.1"},
+			NextProtos: NpnStrings(),
 		}
 	} else if c.TLSConfig.NextProtos == nil {
-		c.TLSConfig.NextProtos = []string{"spdy/3", /*"spdy/2",*/ "http/1.1"}
+		c.TLSConfig.NextProtos = NpnStrings()
 	}
 
 	// Wait for a connection slot to become available.
@@ -216,6 +216,21 @@ func (c *Client) do(req *Request) (*Response, error) {
 				return c.doHTTP(tcpConn, req)
 			}
 
+			// Scan the list of supported NPN strings.
+			supported := false
+			for _, proto := range NpnStrings() {
+				if state.NegotiatedProtocol == proto {
+					supported = true
+					break
+				}
+			}
+
+			if !supported {
+				msg := fmt.Sprintf("Error: Unsupported negotiated protocol %q.", state.NegotiatedProtocol)
+				c.Unlock()
+				return nil, errors.New(msg)
+			}
+
 			switch state.NegotiatedProtocol {
 			case "http/1.1", "":
 				c.Unlock()
@@ -238,11 +253,6 @@ func (c *Client) do(req *Request) (*Response, error) {
 				c.spdyConns[u.Host] = newConn
 				conn = newConn
 				c.Unlock()
-
-			default:
-				msg := fmt.Sprintf("Error: Unknown negotiated protocol %q.", state.NegotiatedProtocol)
-				c.Unlock()
-				return nil, errors.New(msg)
 			}
 		} else {
 			// Handle HTTP requests.

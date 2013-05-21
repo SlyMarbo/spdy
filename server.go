@@ -511,25 +511,28 @@ type Server struct {
 //
 // One can use generate_cert.go in crypto/tls to generate cert.pem and key.pem.
 func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
+	npnStrings := NpnStrings()
 	server := &http.Server{
 		Addr: srv.Addr,
 		TLSConfig: &tls.Config{
-			NextProtos: []string{
-				"spdy/3",
-				"spdy/2",
-				"http/1.1",
-			},
+			NextProtos: npnStrings,
 		},
-		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-			"spdy/2": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
+	}
+
+	for _, str := range npnStrings {
+		switch str {
+		case "spdy/2":
+			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv2(srv, tlsConn, nil)
-			},
-			"spdy/3": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			}
+		case "spdy/3":
+			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv3(srv, tlsConn, nil)
-			},
-		},
+			}
+		}
 	}
 
 	return server.ListenAndServeTLS(certFile, keyFile)
@@ -575,26 +578,29 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 //
 // One can use generate_cert.go in crypto/tls to generate cert.pem and key.pem.
 func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Handler) error {
+	npnStrings := NpnStrings()
 	srv := &Server{Handler: handler}
 	server := &http.Server{
 		Addr: addr,
 		TLSConfig: &tls.Config{
-			NextProtos: []string{
-				"spdy/3",
-				"spdy/2",
-				"http/1.1",
-			},
+			NextProtos: npnStrings,
 		},
-		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){
-			"spdy/2": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
+	}
+
+	for _, str := range npnStrings {
+		switch str {
+		case "spdy/2":
+			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv2(srv, tlsConn, nil)
-			},
-			"spdy/3": func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+			}
+		case "spdy/3":
+			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				srv.httpHandler = handler
 				acceptSPDYv3(srv, tlsConn, nil)
-			},
-		},
+			}
+		}
 	}
 
 	return server.ListenAndServeTLS(certFile, keyFile)
@@ -603,15 +609,12 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler Han
 // AddSPDYServer adds SPDY support to srv, using server to handle requests. This
 // must be called before srv begins serving.
 func AddSPDYServer(srv *http.Server, server *Server) {
+	npnStrings := NpnStrings()
 	if srv.TLSConfig == nil {
 		srv.TLSConfig = new(tls.Config)
 	}
 	if srv.TLSConfig.NextProtos == nil {
-		srv.TLSConfig.NextProtos = []string{
-			"spdy/3",
-			"spdy/2",
-			"http/1.1",
-		}
+		srv.TLSConfig.NextProtos = npnStrings
 	} else {
 		// Collect compatible alternative protocols.
 		others := make([]string, 0, len(srv.TLSConfig.NextProtos))
@@ -623,10 +626,7 @@ func AddSPDYServer(srv *http.Server, server *Server) {
 
 		// Start with spdy.
 		srv.TLSConfig.NextProtos = make([]string, 0, len(others)+3)
-		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, []string{
-			"spdy/3",
-			"spdy/2",
-		}...)
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, npnStrings[:len(npnStrings)-1]...)
 
 		// Add the others.
 		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, others...)
@@ -635,13 +635,19 @@ func AddSPDYServer(srv *http.Server, server *Server) {
 	if srv.TLSNextProto == nil {
 		srv.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
 	}
-	srv.TLSNextProto["spdy/3"] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-		server.httpHandler = handler
-		acceptSPDYv3(server, tlsConn, nil)
-	}
-	srv.TLSNextProto["spdy/2"] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-		server.httpHandler = handler
-		acceptSPDYv2(server, tlsConn, nil)
+	for _, str := range npnStrings {
+		switch str {
+		case "spdy/2":
+			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				server.httpHandler = handler
+				acceptSPDYv2(server, tlsConn, nil)
+			}
+		case "spdy/3":
+			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				server.httpHandler = handler
+				acceptSPDYv3(server, tlsConn, nil)
+			}
+		}
 	}
 }
 

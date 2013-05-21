@@ -2,11 +2,13 @@ package spdy
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	logging "log"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -274,19 +276,39 @@ var supportedVersions = map[uint16]struct{}{
 const maxVersion = 3
 const minVersion = 2
 
-func SupportedVersions() []uint16 {
-	s := make([]uint16, 0, len(supportedVersions))
+// SupportedVersions will return a slice of supported SPDY versions.
+// The returned versions are sorted into order of most recent first.
+func SupportedVersions() []int {
+	s := make([]int, 0, len(supportedVersions))
 	for v, _ := range supportedVersions {
-		s = append(s, v)
+		s = append(s, int(v))
 	}
+	sort.Sort(sort.Reverse(sort.IntSlice(s)))
 	return s
 }
 
+// NpnStrings returns the NPN version strings for the SPDY versions
+// currently enabled, plus HTTP/1.1.
+func NpnStrings() []string {
+	v := SupportedVersions()
+	s := make([]string, 0, len(v)+1)
+	for v, _ := range v {
+		s = append(s, fmt.Sprintf("spdy/%d", v))
+	}
+	s = append(s, "http/1.1")
+	return s
+}
+
+// SupportedVersion determines if the provided SPDY version is
+// supported by this instance of the library. This can be modified
+// with EnableSpdyVersion and DisableSpdyVersion.
 func SupportedVersion(v uint16) bool {
 	_, s := supportedVersions[v]
 	return s
 }
 
+// EnableSpdyVersion can re-enable support for versions of SPDY
+// that have been disabled by DisableSpdyVersion.
 func EnableSpdyVersion(v uint16) error {
 	if v == 0 {
 		return errors.New("Error: version 0 is invalid.")
@@ -301,6 +323,9 @@ func EnableSpdyVersion(v uint16) error {
 	return nil
 }
 
+// DisableSpdyVersion can be used to disable support for the
+// given SPDY version. This process can be undone by using
+// EnableSpdyVersion.
 func DisableSpdyVersion(v uint16) error {
 	if v == 0 {
 		return errors.New("Error: version 0 is invalid.")
