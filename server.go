@@ -498,7 +498,7 @@ func (s *Server) MaxConcurrentStreams(v uint32) {
 // A trivial example server is:
 //
 //      import (
-//							"github.com/SlyMarbo/spdy"
+//              "github.com/SlyMarbo/spdy"
 //              "log"
 //              "net/http"
 //      )
@@ -508,14 +508,14 @@ func (s *Server) MaxConcurrentStreams(v uint32) {
 //              w.Write([]byte("This is an example server.\n"))
 //      }
 //
-//			func spdyHandler(w spdy.ResponseWriter, req *spdy.Request) {
-//							w.Header().Set("Content-Type", "text/plain")
-//							w.Write([]byte("This is an example server.\n"))
-//			}
+//      func spdyHandler(w spdy.ResponseWriter, req *spdy.Request) {
+//              w.Header().Set("Content-Type", "text/plain")
+//              w.Write([]byte("This is an example server.\n"))
+//      }
 //
 //      func main() {
 //              http.HandleFunc("/", handler)
-//							spdy.HandleFunc("/", handler)
+//              spdy.HandleFunc("/", handler)
 //              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
 //              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
 //              if err != nil {
@@ -565,7 +565,7 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 // A trivial example server is:
 //
 //      import (
-//							"github.com/SlyMarbo/spdy"
+//              "github.com/SlyMarbo/spdy"
 //              "log"
 //              "net/http"
 //      )
@@ -575,14 +575,14 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 //              w.Write([]byte("This is an example server.\n"))
 //      }
 //
-//			func spdyHandler(w spdy.ResponseWriter, req *spdy.Request) {
-//							w.Header().Set("Content-Type", "text/plain")
-//							w.Write([]byte("This is an example server.\n"))
-//			}
+//      func spdyHandler(w spdy.ResponseWriter, req *spdy.Request) {
+//              w.Header().Set("Content-Type", "text/plain")
+//              w.Write([]byte("This is an example server.\n"))
+//      }
 //
 //      func main() {
 //              http.HandleFunc("/", handler)
-//							spdy.HandleFunc("/", handler)
+//              spdy.HandleFunc("/", handler)
 //              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
 //              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
 //              if err != nil {
