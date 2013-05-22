@@ -317,7 +317,7 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Fram
 	}
 	major, minor, ok := http.ParseHTTPVersion(vers)
 	if !ok {
-		log.Println("Error: Invalid HTTP version: " + headers.Get(":version"))
+		log.Println("Error: Invalid HTTP version: " + vers)
 		return nil
 	}
 
