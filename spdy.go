@@ -177,7 +177,7 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 	} else if version == 2 && length < 12 {
 		return &IncorrectDataLength{length, 12}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -397,7 +397,7 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 	} else if version == 2 && length < 8 {
 		return &IncorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -584,7 +584,7 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 	if length != 8 {
 		return &IncorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -733,7 +733,7 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 	if length < 8 {
 		return &IncorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -1031,7 +1031,7 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 	if length != 4 {
 		return &IncorrectDataLength{length, 4}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -1161,7 +1161,7 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 	} else if version == 2 && length != 4 {
 		return &IncorrectDataLength{length, 4}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -1308,7 +1308,7 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 	} else if version == 2 && length < 8 {
 		return &IncorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -1494,7 +1494,7 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 	if length != 8 {
 		return &IncorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -1637,7 +1637,7 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 	if length < 6 {
 		return &IncorrectDataLength{length, 6}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -1803,7 +1803,7 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 	if length < 1 && start[4] == 0 {
 		return &IncorrectDataLength{length, 1}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge{}
+		return FrameTooLarge
 	}
 
 	// Read in data.
@@ -1941,8 +1941,7 @@ type IncorrectFrame struct {
 }
 
 func (i *IncorrectFrame) Error() string {
-	return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", FrameName(i.expected),
-		FrameName(i.got))
+	return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", FrameName(i.expected), FrameName(i.got))
 }
 
 type UnsupportedVersion uint16
@@ -1956,15 +1955,10 @@ type IncorrectDataLength struct {
 }
 
 func (i *IncorrectDataLength) Error() string {
-	return fmt.Sprintf("Error: Incorrect amount of data for frame: got %d bytes, expected %d.", i.got,
-		i.expected)
+	return fmt.Sprintf("Error: Incorrect amount of data for frame: got %d bytes, expected %d.", i.got, i.expected)
 }
 
-type FrameTooLarge struct{}
-
-func (f FrameTooLarge) Error() string {
-	return "Error: Frame too large."
-}
+var FrameTooLarge = errors.New("Error: Frame too large.")
 
 type InvalidField struct {
 	field         string
@@ -1972,6 +1966,5 @@ type InvalidField struct {
 }
 
 func (i *InvalidField) Error() string {
-	return fmt.Sprintf("Error: Field %q recieved invalid data %d, expecting %d.", i.field, i.got,
-		i.expected)
+	return fmt.Sprintf("Error: Field %q recieved invalid data %d, expecting %d.", i.field, i.got, i.expected)
 }

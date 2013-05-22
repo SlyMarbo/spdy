@@ -339,6 +339,8 @@ func SupportedVersions() []int {
 
 // NpnStrings returns the NPN version strings for the SPDY versions
 // currently enabled, plus HTTP/1.1.
+//
+//		fmt.Println(spdy.NpnStrings()) // => ["spdy/3" "spdy/2" "http/1.1"]
 func NpnStrings() []string {
 	v := SupportedVersions()
 	s := make([]string, 0, len(v)+1)

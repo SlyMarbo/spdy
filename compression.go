@@ -14,14 +14,23 @@ var versionError = errors.New("spdy: Version not supported.")
 // Decompressors retain their state, so a single Decompressor
 // should be used for each direction of a particular connection.
 type Decompressor struct {
-	m   sync.Mutex
-	in  *bytes.Buffer
-	out io.ReadCloser
+	m       sync.Mutex
+	in      *bytes.Buffer
+	out     io.ReadCloser
+	version uint16
+}
+
+// NewDecompressor is used to create a new decompressor.
+// It takes the SPDY version to use.
+func NewDecompressor(version uint16) *Decompressor {
+	out := new(Decompressor)
+	out.version = version
+	return out
 }
 
 // Decompress uses zlib decompression to decompress the provided
 // data, according to the SPDY specification of the given version.
-func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, err error) {
+func (d *Decompressor) Decompress(data []byte) (headers Header, err error) {
 	d.m.Lock()
 	defer d.m.Unlock()
 
@@ -35,7 +44,7 @@ func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, 
 	// Initialise the decompressor with the appropriate
 	// dictionary, depending on SPDY version.
 	if d.out == nil {
-		switch version {
+		switch d.version {
 		case 2:
 			d.out, err = zlib.NewReaderDict(d.in, HeaderDictionaryV2)
 		case 3:
@@ -53,7 +62,7 @@ func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, 
 	var dechunk func([]byte) int
 
 	// SPDY/2 uses 16-bit fixed fields, where SPDY/3 uses 32-bit fields.
-	switch version {
+	switch d.version {
 	case 2:
 		chunk = make([]byte, 2)
 		dechunk = func(b []byte) int {
@@ -135,14 +144,23 @@ func (d *Decompressor) Decompress(version uint16, data []byte) (headers Header, 
 // should be used for each direction of a particular
 // connection.
 type Compressor struct {
-	m   sync.Mutex
-	buf *bytes.Buffer
-	w   *zlib.Writer
+	m       sync.Mutex
+	buf     *bytes.Buffer
+	w       *zlib.Writer
+	version uint16
+}
+
+// NewCompressor is used to create a new compressor.
+// It takes the SPDY version to use.
+func NewCompressor(version uint16) *Compressor {
+	out := new(Compressor)
+	out.version = version
+	return out
 }
 
 // Compress uses zlib compression to compress the provided
 // data, according to the SPDY specification of the given version.
-func (c *Compressor) Compress(version uint16, data []byte) ([]byte, error) {
+func (c *Compressor) Compress(data []byte) ([]byte, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -150,7 +168,7 @@ func (c *Compressor) Compress(version uint16, data []byte) ([]byte, error) {
 	if c.buf == nil {
 		c.buf = new(bytes.Buffer)
 
-		switch version {
+		switch c.version {
 		case 2:
 			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
 		case 3:

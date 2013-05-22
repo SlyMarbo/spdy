@@ -7,7 +7,6 @@ import (
 	"net/textproto"
 	"sort"
 	"strings"
-	"time"
 )
 
 // A Header represents the key-value pairs in an HTTP header.
@@ -36,7 +35,7 @@ func (h Header) String() string {
 // Parse decompresses the data and parses the resulting
 // data into the spdy.Header.
 func (h Header) Parse(data []byte, dec *Decompressor, version uint16) error {
-	header, err := dec.Decompress(version, data)
+	header, err := dec.Decompress(data)
 	if err != nil {
 		return err
 	}
@@ -139,7 +138,7 @@ func (h Header) Bytes(version uint16) []byte {
 // Compressed returns the binary data of the headers
 // once they have been compressed.
 func (h Header) Compressed(com *Compressor, version uint16) ([]byte, error) {
-	return com.Compress(version, h.Bytes(version))
+	return com.Compress(h.Bytes(version))
 }
 
 // Add adds the key, value pair to the header.
@@ -208,25 +207,6 @@ func (h Header) clone() Header {
 		h2[k] = vv2
 	}
 	return h2
-}
-
-var timeFormats = []string{
-	TimeFormat,
-	time.RFC850,
-	time.ANSIC,
-}
-
-// ParseTime parses a time header (such as the Date: header),
-// trying each of the three formats allowed by HTTP/1.1:
-// TimeFormat, time.RFC850, and time.ANSIC.
-func ParseTime(text string) (t time.Time, err error) {
-	for _, layout := range timeFormats {
-		t, err = time.Parse(layout, text)
-		if err == nil {
-			return
-		}
-	}
-	return
 }
 
 var headerNewlineToSpace = strings.NewReplacer("\n", " ", "\r", " ")
@@ -311,13 +291,6 @@ func (h Header) WriteSubset(w io.Writer, exclude map[string]bool) error {
 	}
 	return nil
 }
-
-// CanonicalHeaderKey returns the canonical format of the
-// header key s.  The canonicalization converts the first
-// letter and any letter following a hyphen to upper case;
-// the rest are converted to lowercase.  For example, the
-// canonical key for "accept-encoding" is "Accept-Encoding".
-func CanonicalHeaderKey(s string) string { return textproto.CanonicalMIMEHeaderKey(s) }
 
 // hasToken returns whether token appears with v, ASCII
 // case-insensitive, with space or comma boundaries.

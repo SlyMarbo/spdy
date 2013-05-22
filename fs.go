@@ -73,6 +73,13 @@ func ServeFile(wrt ResponseWriter, req *Request, name string) {
 
 // PushFile uses a server push to send the contents of
 // the named file or directory directly to the client.
+//
+//		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+//			
+//			spdy.PushFile(w, r, "/", "./index.html")
+//			
+//      // ...
+//		}
 func PushFile(wrt ResponseWriter, req *Request, name, path string) error {
 	url := new(url.URL)
 	*url = *req.URL

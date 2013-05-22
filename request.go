@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"mime"
@@ -215,32 +214,24 @@ func (r *Request) UserAgent() string {
 }
 
 // Cookies parses and returns the HTTP cookies sent with the request.
-func (r *Request) Cookies() []*Cookie {
-	return readCookies(r.Header, "")
+func (r *Request) Cookies() []*http.Cookie {
+	return spdyToHttpRequest(r).Cookies()
 }
 
 var ErrNoCookie = errors.New("spdy: named cookie not present")
 
 // Cookie returns the named cookie provided in the request or
 // ErrNoCookie if not found.
-func (r *Request) Cookie(name string) (*Cookie, error) {
-	for _, c := range readCookies(r.Header, name) {
-		return c, nil
-	}
-	return nil, ErrNoCookie
+func (r *Request) Cookie(name string) (*http.Cookie, error) {
+	return spdyToHttpRequest(r).Cookie(name)
 }
 
 // AddCookie adds a cookie to the request.  Per RFC 6265 section 5.4,
 // AddCookie does not attach more than one Cookie header field.  That
 // means all cookies, if any, are written into the same line,
 // separated by semicolon.
-func (r *Request) AddCookie(c *Cookie) {
-	s := fmt.Sprintf("%s=%s", sanitizeName(c.Name), sanitizeValue(c.Value))
-	if c := r.Header.Get("Cookie"); c != "" {
-		r.Header.Set("Cookie", c+"; "+s)
-	} else {
-		r.Header.Set("Cookie", s)
-	}
+func (r *Request) AddCookie(c *http.Cookie) {
+	spdyToHttpRequest(r).AddCookie(c)
 }
 
 // Referer returns the referring URL, if sent in the request.

@@ -2,7 +2,7 @@
 Package spdy provides a full-featured SPDY library for the Go language (still under very active development).
 
 So far, servers and clients are ready, but the client API is not completely stable.
- 
+
 Note that this implementation currently supports SPDY drafts 2 and 3.
 
 		Servers
@@ -22,7 +22,7 @@ Modifying a simple example server like the following:
 		}
 
 		func main() {
-	
+
 			// Register handler.
 			http.HandleFunc("/", ServeHTTP)
 
@@ -47,7 +47,7 @@ Simply requires the following changes:
 		}
 
 		func main() {
-	
+
 			http.HandleFunc("/", ServeHTTP)
 
 			// Use spdy's ListenAndServe.
@@ -81,7 +81,7 @@ Making full use of the SPDY protocol simple requires adding an extra handler:
 		}
 
 		func main() {
-	
+
 			// Register handlers.
 			http.HandleFunc("/", ServeHTTP)
 			spdy.HandleFunc("/", ServeSPDY)
@@ -110,7 +110,7 @@ A very simple file server for both SPDY and HTTPS:
 		}
 
 		func main() {
-	
+
 			// Register handlers.
 			http.HandleFunc("/", ServeHTTP)
 			spdy.HandleFunc("/", ServeSPDY)
@@ -135,7 +135,7 @@ Use SPDY's pinging features to test the connection:
 		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
 			// Ping returns a channel which will send a bool.
 			ping := w.Ping()
-	
+
 			select {
 			case success := <- ping:
 				if success {
@@ -143,12 +143,12 @@ Use SPDY's pinging features to test the connection:
 				} else {
 					// Something went wrong.
 				}
-		
+
 			case <-time.After(timeout):
 				// Ping took too long.
-		
+
 			}
-	
+
 			// ...
 		}
 
@@ -159,19 +159,19 @@ Sending a server push:
 		import "github.com/SlyMarbo/spdy"
 
 		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
-	
+
 			// Push a whole file automatically.
 			spdy.PushFile(w, r, otherFile)
-	
+
 			// or
-	
+
 			// Push returns a PushWriter (similar to a ResponseWriter) and an error.
 			push, err := w.Push()
 			if err != nil {
 				// Handle the error.
 			}
 			push.Write([]byte("Some stuff."))   // Push data manually.
-	
+
 			// ...
 		}
 
@@ -182,14 +182,14 @@ Sending SPDY settings:
 		import "github.com/SlyMarbo/spdy"
 
 		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
-	
+
 			setting := new(spdy.Setting)
 			setting.Flags = spdy.FLAG_SETTINGS_PERSIST_VALUE
 			setting.ID = spdy.SETTINGS_MAX_CONCURRENT_STREAMS
 			setting.Value = 500
-	
+
 			w.WriteSettings(setting)
-	
+
 			// ...
 		}
 
@@ -214,13 +214,13 @@ Here's a simple example that will fetch the requested page over HTTP, HTTPS, or 
 			if err != nil {
 				// handle the error.
 			}
-	
+
 			bytes, err := ioutil.ReadAll(res.Body)
 			if err != nil {
 				// handle the error.
 			}
 			res.Body.Close()
-	
+
 			fmt.Printf("Received: %s\n", bytes)
 		}
 

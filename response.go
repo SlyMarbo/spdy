@@ -71,8 +71,8 @@ type Response struct {
 }
 
 // Cookies parses and returns the cookies set in the Set-Cookie headers.
-func (r *Response) Cookies() []*Cookie {
-	return readSetCookies(r.Header)
+func (r *Response) Cookies() []*http.Cookie {
+	return spdyToHttpResponse(r, r.Request).Cookies()
 }
 
 var ErrNoLocation = errors.New("http: no Location header in response")
@@ -166,6 +166,23 @@ func (_ nilReceiver) ReceiveHeaders(req *Request, headers Header) {
 
 func (_ nilReceiver) ReceiveRequest(req *Request) bool {
 	return false
+}
+
+func spdyToHttpResponse(res *Response, req *Request) *http.Response {
+	out := new(http.Response)
+	out.Status = res.Status
+	out.StatusCode = res.StatusCode
+	out.Proto = res.Proto
+	out.ProtoMajor = res.ProtoMajor
+	out.ProtoMinor = res.ProtoMinor
+	out.Header = http.Header(res.Header)
+	out.Body = res.Body
+	out.ContentLength = res.ContentLength
+	out.TransferEncoding = res.TransferEncoding
+	out.Close = res.Close
+	out.Trailer = http.Header(res.Trailer)
+	out.Request = spdyToHttpRequest(req)
+	return out
 }
 
 func httpToSpdyResponse(res *http.Response, req *Request) *Response {

@@ -825,6 +825,10 @@ func (conn *serverConnection) serve() {
 		conn.clientStreamLimit.SetLimit(NO_STREAM_LIMIT)
 	}
 
+	// Create the header (de)compression states.
+	conn.compressor = NewCompressor(conn.version)
+	conn.decompressor = NewDecompressor(conn.version)
+
 	// Start the send loop.
 	go conn.send()
 
@@ -881,8 +885,6 @@ func newConn(tlsConn *tls.Conn) *serverConnection {
 	conn.buf = bufio.NewReader(tlsConn)
 	conn.tlsState = new(tls.ConnectionState)
 	*conn.tlsState = tlsConn.ConnectionState()
-	conn.compressor = new(Compressor)
-	conn.decompressor = new(Decompressor)
 	conn.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
 	conn.streams = make(map[uint32]Stream)
 	conn.streamInputs = make(map[uint32]chan<- Frame)

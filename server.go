@@ -128,7 +128,7 @@ func Error(w ResponseWriter, error string, code int) {
 }
 
 // NotFound replies to the request with an HTTP 404 not found error.
-func NotFound(w ResponseWriter, _ *Request) {
+func NotFound(w ResponseWriter, r *Request) {
 	Error(w, "404 page not found", http.StatusNotFound)
 }
 
