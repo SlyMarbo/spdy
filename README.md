@@ -3,9 +3,11 @@ spdy
 
 A full-featured SPDY library for the Go language (still under very active development).
 
-So far, servers and clients are ready, but the client API is not completely stable.
+So far, servers and clients are ready, although there is an outstanding issue with the SPDY/2 client.
  
 Note that this implementation currently supports SPDY drafts 2 and 3.
+
+The GoDoc for this package can be found at http://godoc.org/github.com/SlyMarbo/spdy.
 
 Servers
 -------
