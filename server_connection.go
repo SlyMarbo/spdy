@@ -822,7 +822,7 @@ func (conn *serverConnection) serve() {
 	if conn.server.maxConcurrentStreams != 0 {
 		conn.clientStreamLimit.SetLimit(conn.server.maxConcurrentStreams)
 	} else {
-		conn.clientStreamLimit.SetLimit(NO_STREAM_LIMIT)
+		conn.clientStreamLimit.SetLimit(DEFAULT_MAX_CONCURRENT_STREAMS)
 	}
 
 	// Create the header (de)compression states.

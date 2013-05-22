@@ -214,6 +214,7 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 	}
 
 	frame.rawHeaders = data[18:]
+	debug.Println(data[:18])
 
 	return nil
 }
@@ -309,6 +310,7 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
 		out[16] = ((frame.Priority & 0x3) << 6) // Priority and unused
 		out[17] = 0                             // Unused
 	}
+	debug.Println(out)
 
 	_, err := writer.Write(out)
 	if err != nil {

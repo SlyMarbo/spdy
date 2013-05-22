@@ -781,7 +781,7 @@ func (conn *clientConnection) run() {
 	if conn.client.maxConcurrentStreamsSet {
 		conn.serverStreamLimit.SetLimit(conn.client.maxConcurrentStreams)
 	} else {
-		conn.serverStreamLimit.SetLimit(NO_STREAM_LIMIT)
+		conn.serverStreamLimit.SetLimit(DEFAULT_MAX_CONCURRENT_STREAMS)
 	}
 
 	// Initialise push receiver.
