@@ -214,7 +214,6 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 	}
 
 	frame.rawHeaders = data[18:]
-	debug.Println(data[:18])
 
 	return nil
 }
