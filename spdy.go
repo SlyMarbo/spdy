@@ -29,6 +29,7 @@ type Stream interface {
 	Cancel()
 	Connection() Connection
 	Header() Header
+	ReceiveFrame(Frame)
 	Run()
 	State() *StreamState
 	Stop()
@@ -36,6 +37,7 @@ type Stream interface {
 	Write([]byte) (int, error)
 	WriteHeader(int)
 	WriteHeaders()
+	Wait()
 	Version() uint16
 }
 

@@ -15,7 +15,6 @@ type clientStream struct {
 	streamID     uint32
 	flow         *flowControl
 	state        *StreamState
-	input        <-chan Frame
 	output       chan<- Frame
 	request      *Request
 	receiver     Receiver
@@ -23,13 +22,14 @@ type clientStream struct {
 	responseCode int
 	stop         bool
 	version      uint16
+	done         chan struct{}
 }
 
 // Cancel is used to cancel a mid-air
 // request.
 func (s *clientStream) Cancel() {
 	s.Lock()
-	s.stop = true
+	s.Stop()
 	if s.state.OpenHere() {
 		rst := new(RstStreamFrame)
 		rst.streamID = s.streamID
@@ -57,6 +57,12 @@ func (s *clientStream) Push(string) (PushWriter, error) {
 	panic("Error: Request stream cannot push.")
 }
 
+func (s *clientStream) ReceiveFrame(frame Frame) {
+	s.Lock()
+	s.receiveFrame(frame)
+	s.Unlock()
+}
+
 func (s *clientStream) Settings() []*Setting {
 	out := make([]*Setting, 0, len(s.conn.receivedSettings))
 	for _, val := range s.conn.receivedSettings {
@@ -71,6 +77,7 @@ func (s *clientStream) State() *StreamState {
 
 func (s *clientStream) Stop() {
 	s.stop = true
+	s.done <- struct{}{}
 }
 
 func (s *clientStream) StreamID() uint32 {
@@ -83,8 +90,6 @@ func (s *clientStream) Write(inputData []byte) (int, error) {
 		return 0, errors.New("Error: Stream already closed.")
 	}
 
-	// Check any frames received since last call.
-	s.processInput()
 	if s.stop {
 		return 0, ErrCancelled
 	}
@@ -203,37 +208,11 @@ func (s *clientStream) receiveFrame(frame Frame) {
 	}
 }
 
-// wait blocks until a frame is received
+// Wait blocks until a frame is received
 // or the input channel is closed. If a
 // frame is received, it is processed.
-func (s *clientStream) wait() {
-	frame := <-s.input
-	if frame == nil {
-		return
-	}
-	s.receiveFrame(frame)
-}
-
-// processInput processes any frames currently
-// queued in the input channel, but does not
-// wait once the channel has been cleared, or
-// if it is empty immediately.
-func (s *clientStream) processInput() {
-	var frame Frame
-	var ok bool
-
-	for {
-		select {
-		case frame, ok = <-s.input:
-			if !ok {
-				return
-			}
-			s.receiveFrame(frame)
-
-		default:
-			return
-		}
-	}
+func (s *clientStream) Wait() {
+	<-s.done
 }
 
 // run is the main control path of
@@ -246,15 +225,12 @@ func (s *clientStream) Run() {
 	// Make sure Request is prepared.
 	s.AddFlowControl()
 
-	// Make sure any queued data has been sent.
-	for s.flow.Paused() {
-		s.wait()
-		s.flow.Flush()
-	}
-
 	// Receive and process inbound frames.
-	for frame := range s.input {
-		s.receiveFrame(frame)
+	s.Wait()
+
+	// Make sure any queued data has been sent.
+	if s.flow.Paused() {
+		log.Printf("Error: Stream %d has been closed with data still buffered.\n", s.streamID)
 	}
 
 	// Clean up state.

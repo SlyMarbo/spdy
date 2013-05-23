@@ -61,6 +61,10 @@ func (p *pushStream) Header() Header {
 	return p.headers
 }
 
+func (p *pushStream) ReceiveFrame(frame Frame) {
+	panic("Error: Push cannot receive frames.")
+}
+
 func (p *pushStream) State() *StreamState {
 	return p.state
 }
@@ -147,5 +151,9 @@ func (p *pushStream) Version() uint16 {
 }
 
 func (p *pushStream) Run() {
+	panic("Error: Push cannot run.")
+}
+
+func (p *pushStream) Wait() {
 	panic("Error: Push cannot run.")
 }

@@ -20,7 +20,6 @@ type serverStream struct {
 	flow           *flowControl
 	requestBody    *bytes.Buffer
 	state          *StreamState
-	input          <-chan Frame
 	output         chan<- Frame
 	request        *Request
 	handler        Handler
@@ -31,6 +30,7 @@ type serverStream struct {
 	stop           bool
 	wroteHeader    bool
 	version        uint16
+	done           chan struct{}
 }
 
 func (s *serverStream) Cancel() {
@@ -57,6 +57,13 @@ func (s *serverStream) Push(resource string) (PushWriter, error) {
 	return s.conn.Push(resource, s)
 }
 
+func (s *serverStream) ReceiveFrame(frame Frame) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.receiveFrame(frame)
+}
+
 func (s *serverStream) Settings() []*Setting {
 	out := make([]*Setting, 0, len(s.conn.receivedSettings))
 	for _, val := range s.conn.receivedSettings {
@@ -71,6 +78,7 @@ func (s *serverStream) State() *StreamState {
 
 func (s *serverStream) Stop() {
 	s.stop = true
+	s.done <- struct{}{}
 }
 
 func (s *serverStream) StreamID() uint32 {
@@ -83,8 +91,6 @@ func (s *serverStream) Write(inputData []byte) (int, error) {
 		return 0, errors.New("Error: Stream already closed.")
 	}
 
-	// Check any frames received since last call.
-	s.processInput()
 	if s.stop {
 		return 0, ErrCancelled
 	}
@@ -231,37 +237,11 @@ func (s *serverStream) receiveFrame(frame Frame) {
 	}
 }
 
-// wait blocks until a frame is received
+// Wait blocks until a frame is received
 // or the input channel is closed. If a
 // frame is received, it is processed.
-func (s *serverStream) wait() {
-	frame := <-s.input
-	if frame == nil {
-		return
-	}
-	s.receiveFrame(frame)
-}
-
-// processInput processes any frames currently
-// queued in the input channel, but does not
-// wait once the channel has been cleared, or
-// if it is empty immediately.
-func (s *serverStream) processInput() {
-	var frame Frame
-	var ok bool
-
-	for {
-		select {
-		case frame, ok = <-s.input:
-			if !ok {
-				return
-			}
-			s.receiveFrame(frame)
-
-		default:
-			return
-		}
-	}
+func (s *serverStream) Wait() {
+	<-s.done
 }
 
 // run is the main control path of
@@ -275,7 +255,6 @@ func (s *serverStream) Run() {
 	// Make sure Request is prepared.
 	s.AddFlowControl()
 	s.requestBody = new(bytes.Buffer)
-	s.processInput()
 	s.request.Body = &readCloserBuffer{s.requestBody}
 
 	/***************
@@ -291,9 +270,12 @@ func (s *serverStream) Run() {
 	}
 
 	// Make sure any queued data has been sent.
-	for s.flow.Paused() {
-		s.wait()
+	if s.flow.Paused() && s.state.OpenThere() {
+		s.Wait()
 		s.flow.Flush()
+	}
+	if s.flow.Paused() {
+		log.Printf("Error: Stream %d has been closed with data still buffered.\n", s.streamID)
 	}
 
 	// Close the stream with a SYN_REPLY if
