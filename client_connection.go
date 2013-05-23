@@ -77,7 +77,7 @@ func (conn *clientConnection) readFrames() {
 		}
 
 		// Decompress the frame's headers, if there are any.
-		err = frame.ReadHeaders(conn.decompressor)
+		err = frame.DecodeHeaders(conn.decompressor)
 		if err != nil {
 			panic(err)
 		}
@@ -198,7 +198,7 @@ func (conn *clientConnection) send() {
 
 	for {
 		// Compress any name/value header blocks.
-		err := frame.WriteHeaders(conn.compressor)
+		err := frame.EncodeHeaders(conn.compressor)
 		if err != nil {
 			panic(err)
 		}

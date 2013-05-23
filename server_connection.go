@@ -78,7 +78,7 @@ func (conn *serverConnection) readFrames() {
 		}
 
 		// Decompress the frame's headers, if there are any.
-		err = frame.ReadHeaders(conn.decompressor)
+		err = frame.DecodeHeaders(conn.decompressor)
 		if err != nil {
 			log.Println("Error in decompression: ", err)
 			conn.PROTOCOL_ERROR(frame.StreamID())
@@ -214,7 +214,7 @@ func (conn *serverConnection) send() {
 	for {
 
 		// Compress any name/value header blocks.
-		err := frame.WriteHeaders(conn.compressor)
+		err := frame.EncodeHeaders(conn.compressor)
 		if err != nil {
 			log.Println(err)
 			continue
@@ -577,7 +577,8 @@ func (conn *serverConnection) handleSynReply(frame *SynReplyFrame) {
 	}
 
 	// Check stream is open.
-	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+	stream, ok := conn.streams[sid]
+	if !ok || stream == nil || stream.State().ClosedThere() {
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
@@ -586,11 +587,11 @@ func (conn *serverConnection) handleSynReply(frame *SynReplyFrame) {
 	// Stream ID is fine.
 
 	// Send headers to stream.
-	conn.streams[sid].ReceiveFrame(frame)
+	stream.ReceiveFrame(frame)
 
 	// Handle flags.
 	if frame.Flags&FLAG_FIN != 0 {
-		conn.streams[sid].State().CloseThere()
+		stream.State().CloseThere()
 	}
 }
 

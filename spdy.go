@@ -44,11 +44,11 @@ type Stream interface {
 // Frame represents a SPDY frame.
 type Frame interface {
 	Bytes() ([]byte, error)
+	DecodeHeaders(*Decompressor) error
+	EncodeHeaders(*Compressor) error
 	Parse(*bufio.Reader) error
-	ReadHeaders(*Decompressor) error
 	StreamID() uint32
 	String() string
-	WriteHeaders(*Compressor) error
 	WriteTo(io.Writer) error
 	Version() uint16
 }
@@ -220,7 +220,7 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *SynStreamFrame) ReadHeaders(decom *Decompressor) error {
+func (frame *SynStreamFrame) DecodeHeaders(decom *Decompressor) error {
 	if frame.headersDecoded {
 		return nil
 	}
@@ -267,7 +267,7 @@ func (frame *SynStreamFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SynStreamFrame) WriteHeaders(com *Compressor) error {
+func (frame *SynStreamFrame) EncodeHeaders(com *Compressor) error {
 	headers, err := frame.Headers.Compressed(com, frame.version)
 	if err != nil {
 		return err
@@ -311,7 +311,6 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
 		out[16] = ((frame.Priority & 0x3) << 6) // Priority and unused
 		out[17] = 0                             // Unused
 	}
-	debug.Println(out)
 
 	_, err := writer.Write(out)
 	if err != nil {
@@ -439,7 +438,7 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *SynReplyFrame) ReadHeaders(decom *Decompressor) error {
+func (frame *SynReplyFrame) DecodeHeaders(decom *Decompressor) error {
 	if frame.headersDecoded {
 		return nil
 	}
@@ -478,7 +477,7 @@ func (frame *SynReplyFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SynReplyFrame) WriteHeaders(com *Compressor) error {
+func (frame *SynReplyFrame) EncodeHeaders(com *Compressor) error {
 	headers, err := frame.Headers.Compressed(com, frame.version)
 	if err != nil {
 		return err
@@ -615,7 +614,7 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *RstStreamFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *RstStreamFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -634,7 +633,7 @@ func (frame *RstStreamFrame) String() string {
 	return buf.String()
 }
 
-func (frame *RstStreamFrame) WriteHeaders(comp *Compressor) error {
+func (frame *RstStreamFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -794,7 +793,7 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *SettingsFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *SettingsFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -825,7 +824,7 @@ func (frame *SettingsFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SettingsFrame) WriteHeaders(comp *Compressor) error {
+func (frame *SettingsFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -956,7 +955,7 @@ func (frame *NoopFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *NoopFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *NoopFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -968,7 +967,7 @@ func (frame *NoopFrame) String() string {
 	return "NOOP {\n\tVersion: 2\n}\n"
 }
 
-func (frame *NoopFrame) WriteHeaders(comp *Compressor) error {
+func (frame *NoopFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1061,7 +1060,7 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *PingFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *PingFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -1079,7 +1078,7 @@ func (frame *PingFrame) String() string {
 	return buf.String()
 }
 
-func (frame *PingFrame) WriteHeaders(comp *Compressor) error {
+func (frame *PingFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1199,7 +1198,7 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *GoawayFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *GoawayFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -1221,7 +1220,7 @@ func (frame *GoawayFrame) String() string {
 	return buf.String()
 }
 
-func (frame *GoawayFrame) WriteHeaders(comp *Compressor) error {
+func (frame *GoawayFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1349,7 +1348,7 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *HeadersFrame) ReadHeaders(decom *Decompressor) error {
+func (frame *HeadersFrame) DecodeHeaders(decom *Decompressor) error {
 	if frame.headersDecoded {
 		return nil
 	}
@@ -1388,7 +1387,7 @@ func (frame *HeadersFrame) String() string {
 	return buf.String()
 }
 
-func (frame *HeadersFrame) WriteHeaders(com *Compressor) error {
+func (frame *HeadersFrame) EncodeHeaders(com *Compressor) error {
 	headers, err := frame.Headers.Compressed(com, frame.version)
 	if err != nil {
 		return err
@@ -1530,7 +1529,7 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *WindowUpdateFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *WindowUpdateFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -1549,7 +1548,7 @@ func (frame *WindowUpdateFrame) String() string {
 	return buf.String()
 }
 
-func (frame *WindowUpdateFrame) WriteHeaders(comp *Compressor) error {
+func (frame *WindowUpdateFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1691,7 +1690,7 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *CredentialFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *CredentialFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -1711,7 +1710,7 @@ func (frame *CredentialFrame) String() string {
 	return buf.String()
 }
 
-func (frame *CredentialFrame) WriteHeaders(comp *Compressor) error {
+func (frame *CredentialFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
@@ -1833,7 +1832,7 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *DataFrame) ReadHeaders(decomp *Decompressor) error {
+func (frame *DataFrame) DecodeHeaders(decomp *Decompressor) error {
 	return nil
 }
 
@@ -1861,7 +1860,7 @@ func (frame *DataFrame) String() string {
 	return buf.String()
 }
 
-func (frame *DataFrame) WriteHeaders(comp *Compressor) error {
+func (frame *DataFrame) EncodeHeaders(comp *Compressor) error {
 	return nil
 }
 
