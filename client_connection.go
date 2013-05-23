@@ -355,7 +355,7 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 	conn.Unlock()
 
 	// Create the request stream.
-	out := new(requestStream)
+	out := new(clientStream)
 	out.conn = conn
 	out.streamID = syn.streamID
 	out.state = new(StreamState)

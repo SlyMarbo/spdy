@@ -27,7 +27,7 @@ type flowControl struct {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (s *responseStream) AddFlowControl() {
+func (s *serverStream) AddFlowControl() {
 	if s.flow != nil {
 		return
 	}
@@ -79,7 +79,7 @@ func (p *pushStream) AddFlowControl() {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (r *requestStream) AddFlowControl() {
+func (r *clientStream) AddFlowControl() {
 	if r.flow != nil {
 		return
 	}

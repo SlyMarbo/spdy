@@ -278,9 +278,9 @@ func (conn *serverConnection) selectFrameToSend() (frame Frame) {
 	}
 }
 
-// newStream is used to create a new responseStream from a SYN_STREAM frame.
-func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Frame, output chan<- Frame) *responseStream {
-	stream := new(responseStream)
+// newStream is used to create a new serverStream from a SYN_STREAM frame.
+func (conn *serverConnection) newStream(frame *SynStreamFrame, input <-chan Frame, output chan<- Frame) *serverStream {
+	stream := new(serverStream)
 	stream.conn = conn
 	stream.streamID = frame.streamID
 	stream.state = new(StreamState)

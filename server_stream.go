@@ -10,10 +10,10 @@ import (
 	"sync"
 )
 
-// responseStream is a structure that implements
+// serverStream is a structure that implements
 // the Stream and ResponseWriter interfaces. This
 // is used for responding to client requests.
-type responseStream struct {
+type serverStream struct {
 	sync.RWMutex
 	conn           *serverConnection
 	streamID       uint32
@@ -33,31 +33,31 @@ type responseStream struct {
 	version        uint16
 }
 
-func (s *responseStream) Cancel() {
+func (s *serverStream) Cancel() {
 	panic("Error: Client-sent stream cancelled. Use Stop() instead.")
 }
 
-func (s *responseStream) ClientCertificates(index uint16) []*x509.Certificate {
+func (s *serverStream) ClientCertificates(index uint16) []*x509.Certificate {
 	return s.conn.certificates[index]
 }
 
-func (s *responseStream) Connection() Connection {
+func (s *serverStream) Connection() Connection {
 	return s.conn
 }
 
-func (s *responseStream) Header() Header {
+func (s *serverStream) Header() Header {
 	return s.headers
 }
 
-func (s *responseStream) Ping() <-chan bool {
+func (s *serverStream) Ping() <-chan bool {
 	return s.conn.Ping()
 }
 
-func (s *responseStream) Push(resource string) (PushWriter, error) {
+func (s *serverStream) Push(resource string) (PushWriter, error) {
 	return s.conn.Push(resource, s)
 }
 
-func (s *responseStream) Settings() []*Setting {
+func (s *serverStream) Settings() []*Setting {
 	out := make([]*Setting, 0, len(s.conn.receivedSettings))
 	for _, val := range s.conn.receivedSettings {
 		out = append(out, val)
@@ -65,20 +65,20 @@ func (s *responseStream) Settings() []*Setting {
 	return out
 }
 
-func (s *responseStream) State() *StreamState {
+func (s *serverStream) State() *StreamState {
 	return s.state
 }
 
-func (s *responseStream) Stop() {
+func (s *serverStream) Stop() {
 	s.stop = true
 }
 
-func (s *responseStream) StreamID() uint32 {
+func (s *serverStream) StreamID() uint32 {
 	return s.streamID
 }
 
 // Write is the main method with which data is sent.
-func (s *responseStream) Write(inputData []byte) (int, error) {
+func (s *serverStream) Write(inputData []byte) (int, error) {
 	if s.state.ClosedHere() {
 		return 0, errors.New("Error: Stream already closed.")
 	}
@@ -121,7 +121,7 @@ func (s *responseStream) Write(inputData []byte) (int, error) {
 }
 
 // WriteHeader is used to set the HTTP status code.
-func (s *responseStream) WriteHeader(code int) {
+func (s *serverStream) WriteHeader(code int) {
 	if s.wroteHeader {
 		log.Println("spdy: Error: Multiple calls to ResponseWriter.WriteHeader.")
 		return
@@ -160,7 +160,7 @@ func (s *responseStream) WriteHeader(code int) {
 }
 
 // WriteHeaders is used to flush HTTP headers.
-func (s *responseStream) WriteHeaders() {
+func (s *serverStream) WriteHeaders() {
 	if len(s.headers) == 0 {
 		return
 	}
@@ -179,7 +179,7 @@ func (s *responseStream) WriteHeaders() {
 	s.output <- headers
 }
 
-func (s *responseStream) WriteSettings(settings ...*Setting) {
+func (s *serverStream) WriteSettings(settings ...*Setting) {
 	if settings == nil {
 		return
 	}
@@ -191,12 +191,12 @@ func (s *responseStream) WriteSettings(settings ...*Setting) {
 	s.output <- frame
 }
 
-func (s *responseStream) Version() uint16 {
+func (s *serverStream) Version() uint16 {
 	return s.version
 }
 
 // receiveFrame is used to process an inbound frame.
-func (s *responseStream) receiveFrame(frame Frame) {
+func (s *serverStream) receiveFrame(frame Frame) {
 	if frame == nil {
 		panic("Nil frame received in receiveFrame.")
 	}
@@ -234,7 +234,7 @@ func (s *responseStream) receiveFrame(frame Frame) {
 // wait blocks until a frame is received
 // or the input channel is closed. If a
 // frame is received, it is processed.
-func (s *responseStream) wait() {
+func (s *serverStream) wait() {
 	frame := <-s.input
 	if frame == nil {
 		return
@@ -246,7 +246,7 @@ func (s *responseStream) wait() {
 // queued in the input channel, but does not
 // wait once the channel has been cleared, or
 // if it is empty immediately.
-func (s *responseStream) processInput() {
+func (s *serverStream) processInput() {
 	var frame Frame
 	var ok bool
 
@@ -269,7 +269,7 @@ func (s *responseStream) processInput() {
 // registered handler is called,
 // and then the stream is cleaned
 // up and closed.
-func (s *responseStream) Run() {
+func (s *serverStream) Run() {
 	s.conn.done.Add(1)
 
 	// Make sure Request is prepared.

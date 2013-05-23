@@ -6,10 +6,10 @@ import (
 	"sync"
 )
 
-// requestStream is a structure that implements
+// clientStream is a structure that implements
 // the Stream and ResponseWriter interfaces. This
 // is used for responding to client requests.
-type requestStream struct {
+type clientStream struct {
 	sync.RWMutex
 	conn         *clientConnection
 	streamID     uint32
@@ -27,7 +27,7 @@ type requestStream struct {
 
 // Cancel is used to cancel a mid-air
 // request.
-func (s *requestStream) Cancel() {
+func (s *clientStream) Cancel() {
 	s.Lock()
 	s.stop = true
 	if s.state.OpenHere() {
@@ -41,23 +41,23 @@ func (s *requestStream) Cancel() {
 	s.Unlock()
 }
 
-func (s *requestStream) Connection() Connection {
+func (s *clientStream) Connection() Connection {
 	return s.conn
 }
 
-func (s *requestStream) Header() Header {
+func (s *clientStream) Header() Header {
 	return s.headers
 }
 
-func (s *requestStream) Ping() <-chan bool {
+func (s *clientStream) Ping() <-chan bool {
 	return s.conn.Ping()
 }
 
-func (s *requestStream) Push(string) (PushWriter, error) {
+func (s *clientStream) Push(string) (PushWriter, error) {
 	panic("Error: Request stream cannot push.")
 }
 
-func (s *requestStream) Settings() []*Setting {
+func (s *clientStream) Settings() []*Setting {
 	out := make([]*Setting, 0, len(s.conn.receivedSettings))
 	for _, val := range s.conn.receivedSettings {
 		out = append(out, val)
@@ -65,20 +65,20 @@ func (s *requestStream) Settings() []*Setting {
 	return out
 }
 
-func (s *requestStream) State() *StreamState {
+func (s *clientStream) State() *StreamState {
 	return s.state
 }
 
-func (s *requestStream) Stop() {
+func (s *clientStream) Stop() {
 	s.stop = true
 }
 
-func (s *requestStream) StreamID() uint32 {
+func (s *clientStream) StreamID() uint32 {
 	return s.streamID
 }
 
 // Write is one method with which request data is sent.
-func (s *requestStream) Write(inputData []byte) (int, error) {
+func (s *clientStream) Write(inputData []byte) (int, error) {
 	if s.state.ClosedHere() {
 		return 0, errors.New("Error: Stream already closed.")
 	}
@@ -116,12 +116,12 @@ func (s *requestStream) Write(inputData []byte) (int, error) {
 }
 
 // WriteHeader is used to set the HTTP status code.
-func (s *requestStream) WriteHeader(int) {
+func (s *clientStream) WriteHeader(int) {
 	panic("Error: Cannot write status code on request.")
 }
 
 // WriteHeaders is used to flush HTTP headers.
-func (s *requestStream) WriteHeaders() {
+func (s *clientStream) WriteHeaders() {
 	if len(s.headers) == 0 {
 		return
 	}
@@ -140,7 +140,7 @@ func (s *requestStream) WriteHeaders() {
 	s.output <- headers
 }
 
-func (s *requestStream) WriteSettings(settings ...*Setting) {
+func (s *clientStream) WriteSettings(settings ...*Setting) {
 	if settings == nil {
 		return
 	}
@@ -152,12 +152,12 @@ func (s *requestStream) WriteSettings(settings ...*Setting) {
 	s.output <- frame
 }
 
-func (s *requestStream) Version() uint16 {
+func (s *clientStream) Version() uint16 {
 	return uint16(s.version)
 }
 
 // receiveFrame is used to process an inbound frame.
-func (s *requestStream) receiveFrame(frame Frame) {
+func (s *clientStream) receiveFrame(frame Frame) {
 	if frame == nil {
 		panic("Nil frame received in receiveFrame.")
 	}
@@ -206,7 +206,7 @@ func (s *requestStream) receiveFrame(frame Frame) {
 // wait blocks until a frame is received
 // or the input channel is closed. If a
 // frame is received, it is processed.
-func (s *requestStream) wait() {
+func (s *clientStream) wait() {
 	frame := <-s.input
 	if frame == nil {
 		return
@@ -218,7 +218,7 @@ func (s *requestStream) wait() {
 // queued in the input channel, but does not
 // wait once the channel has been cleared, or
 // if it is empty immediately.
-func (s *requestStream) processInput() {
+func (s *clientStream) processInput() {
 	var frame Frame
 	var ok bool
 
@@ -240,7 +240,7 @@ func (s *requestStream) processInput() {
 // the stream. Data is recieved,
 // processed, and then the stream
 // is cleaned up and closed.
-func (s *requestStream) Run() {
+func (s *clientStream) Run() {
 	s.conn.done.Add(1)
 
 	// Make sure Request is prepared.
