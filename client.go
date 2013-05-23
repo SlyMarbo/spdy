@@ -274,7 +274,6 @@ func (c *Client) do(req *Request) (*Response, error) {
 				go newConn.run()
 				c.spdyConns[u.Host] = newConn
 				conn = newConn
-				c.Unlock()
 
 			case "spdy/2":
 				newConn := newClientConn(tlsConn)
@@ -284,7 +283,6 @@ func (c *Client) do(req *Request) (*Response, error) {
 				go newConn.run()
 				c.spdyConns[u.Host] = newConn
 				conn = newConn
-				c.Unlock()
 			}
 		} else {
 			// Handle HTTP requests.
@@ -292,6 +290,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 			return c.doHTTP(tcpConn, req)
 		}
 	}
+	c.Unlock()
 
 	// The connection has now been established.
 

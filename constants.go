@@ -467,6 +467,11 @@ func SetDebugOutput(w io.Writer) {
 	debug = logging.New(w, "(spdy debug) ", logging.LstdFlags)
 }
 
+// EnableDebugOutput sets the output for the package's debug info logger to os.Stdout.
+func EnableDebugOutput() {
+	SetDebugOutput(os.Stdout)
+}
+
 // Compression header for SPDY/2
 var HeaderDictionaryV2 = []byte{
 	0x6f, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x67,

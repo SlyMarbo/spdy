@@ -514,8 +514,8 @@ func (s *Server) MaxConcurrentStreams(v uint32) {
 //      }
 //
 //      func main() {
-//              http.HandleFunc("/", handler)
-//              spdy.HandleFunc("/", handler)
+//              http.HandleFunc("/", httpHandler)
+//              spdy.HandleFunc("/", spdyHandler)
 //              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
 //              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
 //              if err != nil {
@@ -581,8 +581,8 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 //      }
 //
 //      func main() {
-//              http.HandleFunc("/", handler)
-//              spdy.HandleFunc("/", handler)
+//              http.HandleFunc("/", httpHandler)
+//              spdy.HandleFunc("/", spdyHandler)
 //              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
 //              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
 //              if err != nil {

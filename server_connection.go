@@ -112,7 +112,7 @@ func (conn *serverConnection) readFrames() {
 		case *RstStreamFrame:
 			if StatusCodeIsFatal(int(frame.StatusCode)) {
 				code := StatusCodeText(int(frame.StatusCode))
-				log.Printf("Warning: Received %s on stream %d. Closing stream.\n", code, frame.StreamID())
+				log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID())
 				return
 			}
 			conn.handleRstStream(frame)
@@ -497,7 +497,7 @@ func (conn *serverConnection) validFrameVersion(frame Frame) bool {
 // handleSynStream performs the processing of SYN_STREAM frames.
 func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	conn.Lock()
-	defer func() { conn.Unlock() }()
+	defer conn.Unlock()
 
 	// Check stream creation is allowed.
 	if conn.goaway {
@@ -568,7 +568,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 // handleSynReply performs the processing of SYN_REPLY frames.
 func (conn *serverConnection) handleSynReply(frame *SynReplyFrame) {
 	conn.RLock()
-	defer func() { conn.RUnlock() }()
+	defer conn.RUnlock()
 
 	sid := frame.streamID
 
@@ -600,7 +600,7 @@ func (conn *serverConnection) handleSynReply(frame *SynReplyFrame) {
 // handleRstStream performs the processing of RST_STREAM frames.
 func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 	conn.RLock()
-	defer func() { conn.RUnlock() }()
+	defer conn.RUnlock()
 
 	sid := frame.streamID
 
@@ -653,7 +653,7 @@ func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 // handleDataFrame performs the processing of DATA frames.
 func (conn *serverConnection) handleData(frame *DataFrame) {
 	conn.RLock()
-	defer func() { conn.RUnlock() }()
+	defer conn.RUnlock()
 
 	sid := frame.streamID
 
@@ -685,7 +685,7 @@ func (conn *serverConnection) handleData(frame *DataFrame) {
 // handleHeaders performs the processing of HEADERS frames.
 func (conn *serverConnection) handleHeaders(frame *HeadersFrame) {
 	conn.RLock()
-	defer func() { conn.RUnlock() }()
+	defer conn.RUnlock()
 
 	sid := frame.streamID
 
@@ -717,7 +717,7 @@ func (conn *serverConnection) handleHeaders(frame *HeadersFrame) {
 // handleWindowUpdate performs the processing of WINDOW_UPDATE frames.
 func (conn *serverConnection) handleWindowUpdate(frame *WindowUpdateFrame) {
 	conn.RLock()
-	defer func() { conn.RUnlock() }()
+	defer conn.RUnlock()
 
 	sid := frame.streamID
 
