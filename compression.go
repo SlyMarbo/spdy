@@ -170,13 +170,15 @@ func (c *Compressor) Compress(h http.Header) ([]byte, error) {
 	if c.buf == nil {
 		c.buf = new(bytes.Buffer)
 
-		switch c.version {
-		case 2:
-			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, headerDictionaryV2)
-		case 3:
-			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, headerDictionaryV3)
-		default:
-			err = versionError
+		if c.w == nil {
+			switch c.version {
+			case 2:
+				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, headerDictionaryV2)
+			case 3:
+				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, headerDictionaryV3)
+			default:
+				err = versionError
+			}
 		}
 
 		if err != nil {
@@ -273,4 +275,8 @@ func (c *Compressor) Compress(h http.Header) ([]byte, error) {
 
 	c.w.Flush()
 	return c.buf.Bytes(), nil
+}
+
+func (c *Compressor) Close() error {
+	return c.w.Close()
 }

@@ -812,6 +812,9 @@ func (conn *serverConnection) cleanup() {
 	for _, output := range conn.dataPriority {
 		close(output)
 	}
+	conn.compressor.Close()
+	conn.compressor = nil
+	conn.decompressor = nil
 }
 
 // serve prepares and executes the frame reading
@@ -819,12 +822,13 @@ func (conn *serverConnection) cleanup() {
 // global settings set by the server are sent to
 // the new client.
 func (conn *serverConnection) serve() {
+	addr := conn.remoteAddr
 	defer func() {
 		if err := recover(); err != nil {
 			const size = 4096
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			log.Printf("spdy: panic serving %v: %v\n%s", conn.remoteAddr, err, buf)
+			log.Printf("spdy: panic serving %v: %v\n%s", addr, err, buf)
 		}
 	}()
 
