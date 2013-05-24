@@ -92,7 +92,7 @@ func (s *clientStream) Write(inputData []byte) (int, error) {
 	}
 
 	if s.stop {
-		return 0, ErrCancelled
+		return 0, errors.New("spdy: Stream has been cancelled.")
 	}
 
 	// Copy the data locally to avoid any pointer issues.

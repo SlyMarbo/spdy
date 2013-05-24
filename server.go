@@ -3,7 +3,6 @@ package spdy
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -665,18 +664,31 @@ func AddSPDYServer(srv *http.Server, server *Server) {
 	}
 }
 
+// acceptSPDYv2 is used in starting a SPDY/2 connection from an HTTP
+// server supporting NPN. This is called manually from within a
+// closure which stores the SPDY server.
+func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
+	conn := newConn(tlsConn)
+	conn.server = server
+	conn.version = 2
+
+	conn.serve()
+}
+
+// acceptSPDYv3 is used in starting a SPDY/3 connection from an HTTP
+// server supporting NPN. This is called manually from within a
+// closure which stores the SPDY server.
+func acceptSPDYv3(server *Server, tlsConn *tls.Conn, _ http.Handler) {
+	conn := newConn(tlsConn)
+	conn.server = server
+	conn.version = 3
+
+	conn.serve()
+}
+
 // AddSPDY adds SPDY support to srv, using spdy.DefaultServeMux to handle requests.
 // This must be called before srv begins serving.
 func AddSPDY(srv *http.Server) {
 	server := &Server{Handler: DefaultServeMux}
 	AddSPDYServer(srv, server)
 }
-
-// Errors introduced by the HTTP server.
-var (
-	ErrWriteAfterFlush = errors.New("Conn.Write called after Flush")
-	ErrBodyNotAllowed  = errors.New("spdy: request method or response status code does not allow body")
-	ErrHijacked        = errors.New("Conn has been hijacked")
-	ErrContentLength   = errors.New("Conn.Write wrote more than the declared Content-Length")
-	ErrCancelled       = errors.New("spdy: Stream has been cancelled.")
-)

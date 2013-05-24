@@ -94,7 +94,7 @@ func (p *pushStream) Write(inputData []byte) (int, error) {
 	}
 
 	if p.stop {
-		return 0, ErrCancelled
+		return 0, errors.New("spdy: Stream has been cancelled.")
 	}
 
 	p.WriteHeaders()

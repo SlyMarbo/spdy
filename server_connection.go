@@ -60,7 +60,7 @@ func (conn *serverConnection) readFrames() {
 		// Default MaxBenignErrors is 10.
 		if conn.numBenignErrors > MaxBenignErrors {
 			log.Println("Error: Too many invalid stream IDs received. Ending connection.")
-			conn.PROTOCOL_ERROR(0)
+			conn.protocolError(0)
 		}
 
 		// ReadFrame takes care of the frame parsing for us.
@@ -81,7 +81,7 @@ func (conn *serverConnection) readFrames() {
 		err = frame.DecodeHeaders(conn.decompressor)
 		if err != nil {
 			log.Println("Error in decompression: ", err)
-			conn.PROTOCOL_ERROR(frame.StreamID())
+			conn.protocolError(frame.StreamID())
 		}
 
 		debug.Println("Received Frame:")
@@ -345,11 +345,6 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, output chan<- Fra
 	return stream
 }
 
-// Internally-sent frames have high priority.
-func (conn *serverConnection) WriteFrame(frame Frame) {
-	conn.dataPriority[0] <- frame
-}
-
 func (conn *serverConnection) InitialWindowSize() uint32 {
 	return conn.initialWindowSize
 }
@@ -467,6 +462,11 @@ func (conn *serverConnection) Version() uint16 {
 	return conn.version
 }
 
+// Internally-sent frames have high priority.
+func (conn *serverConnection) WriteFrame(frame Frame) {
+	conn.dataPriority[0] <- frame
+}
+
 // validFrameVersion checks that a frame has the same SPDY
 // version number as the rest of the connection. This library
 // does not support the mixing of different versions within a
@@ -480,12 +480,16 @@ func (conn *serverConnection) validFrameVersion(frame Frame) bool {
 		return true
 	}
 
+	notSupported := "Error: Received frame with SPDY version %d, which is not supported.\n"
+	different := "Error: Received frame with SPDY version %d on connection with version %d.\n"
+
 	// Check the version.
 	v := frame.Version()
 	if v != conn.version {
-		log.Printf("Error: Received frame with SPDY version %d on connection with version %d.\n", v, conn.version)
 		if !SupportedVersion(v) {
-			log.Printf("Error: Received frame with SPDY version %d, which is not supported.\n", v)
+			log.Printf(notSupported, v)
+		} else {
+			log.Printf(different, v, conn.version)
 		}
 		return false
 	}
@@ -522,7 +526,7 @@ func (conn *serverConnection) handleSynStream(frame *SynStreamFrame) {
 	// Check Stream ID is not out of bounds.
 	if sid > MAX_STREAM_ID {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
-		conn.PROTOCOL_ERROR(sid)
+		conn.protocolError(sid)
 	}
 
 	// Stream ID is fine.
@@ -643,7 +647,7 @@ func (conn *serverConnection) handleRstStream(frame *RstStreamFrame) {
 
 	default:
 		log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.StatusCode)
-		conn.PROTOCOL_ERROR(sid)
+		conn.protocolError(sid)
 	}
 }
 
@@ -743,7 +747,7 @@ func (conn *serverConnection) handleWindowUpdate(frame *WindowUpdateFrame) {
 	delta := frame.DeltaWindowSize
 	if delta > MAX_DELTA_WINDOW_SIZE || delta < 0 {
 		log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n", delta)
-		conn.PROTOCOL_ERROR(sid)
+		conn.protocolError(sid)
 	}
 
 	// Ignore empty deltas.
@@ -780,7 +784,7 @@ func (conn *serverConnection) closeStream(streamID uint32) {
 
 // PROTOCOL_ERROR informs the client that a protocol error has
 // occurred, stops all running streams, and ends the connection.
-func (conn *serverConnection) PROTOCOL_ERROR(streamID uint32) {
+func (conn *serverConnection) protocolError(streamID uint32) {
 	reply := new(RstStreamFrame)
 	reply.version = conn.version
 	reply.streamID = streamID
@@ -836,44 +840,6 @@ func (conn *serverConnection) serve() {
 
 	// Cleanup before the connection closes.
 	conn.cleanup()
-}
-
-// acceptDefaultSPDYv2 is used in starting a SPDY/2 connection from
-// an HTTP server supporting NPN.
-func acceptDefaultSPDYv2(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-	server := new(Server)
-	server.TLSConfig = srv.TLSConfig
-	acceptSPDYv2(server, tlsConn, nil)
-}
-
-// acceptSPDYv2 is used in starting a SPDY/2 connection from an HTTP
-// server supporting NPN. This is called manually from within a
-// closure which stores the SPDY server.
-func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
-	conn := newConn(tlsConn)
-	conn.server = server
-	conn.version = 2
-
-	conn.serve()
-}
-
-// acceptDefaultSPDYv3 is used in starting a SPDY/3 connection from
-// an HTTP server supporting NPN.
-func acceptDefaultSPDYv3(srv *http.Server, tlsConn *tls.Conn, _ http.Handler) {
-	server := new(Server)
-	server.TLSConfig = srv.TLSConfig
-	acceptSPDYv3(server, tlsConn, nil)
-}
-
-// acceptSPDYv3 is used in starting a SPDY/3 connection from an HTTP
-// server supporting NPN. This is called manually from within a
-// closure which stores the SPDY server.
-func acceptSPDYv3(server *Server, tlsConn *tls.Conn, _ http.Handler) {
-	conn := newConn(tlsConn)
-	conn.server = server
-	conn.version = 3
-
-	conn.serve()
 }
 
 // newConn is used to create and initialise a server connection.
