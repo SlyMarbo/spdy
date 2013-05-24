@@ -76,7 +76,7 @@ Making full use of the SPDY protocol simple requires adding an extra handler:
 		}
 
 		// Add a SPDY handler.
-		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+		func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Hello, SPDY!"))
 		}
 
@@ -105,7 +105,7 @@ A very simple file server for both SPDY and HTTPS:
 			http.ServeFile(w, r, "." + r.RequestURI)
 		}
 
-		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+		func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 			spdy.ServeFile(w, r, "." + r.RequestURI)
 		}
 
@@ -132,7 +132,7 @@ Use SPDY's pinging features to test the connection:
 			"time"
 		)
 
-		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+		func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 			// Ping returns a channel which will send a bool.
 			ping := w.Ping()
 
@@ -158,7 +158,7 @@ Sending a server push:
 
 		import "github.com/SlyMarbo/spdy"
 
-		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+		func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 
 			// Push a whole file automatically.
 			spdy.PushFile(w, r, otherFile)
@@ -181,7 +181,7 @@ Sending SPDY settings:
 
 		import "github.com/SlyMarbo/spdy"
 
-		func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+		func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 
 			setting := new(spdy.Setting)
 			setting.Flags = spdy.FLAG_SETTINGS_PERSIST_VALUE

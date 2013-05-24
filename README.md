@@ -84,7 +84,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Add a SPDY handler.
-func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, SPDY!"))
 }
 
@@ -114,7 +114,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "." + r.RequestURI)
 }
 
-func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 	spdy.ServeFile(w, r, "." + r.RequestURI)
 }
 
@@ -146,7 +146,7 @@ import (
 	"time"
 )
 
-func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 	// Ping returns a channel which will send a bool.
 	ping := w.Ping()
 	
@@ -175,7 +175,7 @@ package main
 
 import "github.com/SlyMarbo/spdy"
 
-func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 	
 	// Push a whole file automatically.
 	spdy.PushFile(w, r, otherFile)
@@ -201,7 +201,7 @@ package main
 
 import "github.com/SlyMarbo/spdy"
 
-func ServeSPDY(w spdy.ResponseWriter, r *spdy.Request) {
+func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
 	
 	setting := new(spdy.Setting)
 	setting.Flags = spdy.FLAG_SETTINGS_PERSIST_VALUE

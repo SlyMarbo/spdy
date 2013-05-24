@@ -3,6 +3,7 @@ package spdy
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 )
 
@@ -16,9 +17,9 @@ type clientStream struct {
 	flow         *flowControl
 	state        *StreamState
 	output       chan<- Frame
-	request      *Request
+	request      *http.Request
 	receiver     Receiver
-	headers      Header
+	headers      http.Header
 	responseCode int
 	stop         bool
 	version      uint16
@@ -45,7 +46,7 @@ func (s *clientStream) Connection() Connection {
 	return s.conn
 }
 
-func (s *clientStream) Header() Header {
+func (s *clientStream) Header() http.Header {
 	return s.headers
 }
 
@@ -135,7 +136,7 @@ func (s *clientStream) WriteHeaders() {
 	headers := new(HeadersFrame)
 	headers.version = uint16(s.version)
 	headers.streamID = s.streamID
-	headers.Headers = s.headers.clone()
+	headers.Headers = cloneHeaders(s.headers)
 
 	// Clear the headers that have been sent.
 	for name := range headers.Headers {

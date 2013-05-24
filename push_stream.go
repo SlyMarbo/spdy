@@ -2,6 +2,7 @@ package spdy
 
 import (
 	"errors"
+	"net/http"
 	"sync"
 )
 
@@ -16,7 +17,7 @@ type pushStream struct {
 	origin      Stream
 	state       *StreamState
 	output      chan<- Frame
-	headers     Header
+	headers     http.Header
 	headersSent bool
 	stop        bool
 	cancelled   bool
@@ -57,7 +58,7 @@ func (p *pushStream) Close() {
 	p.state.CloseHere()
 }
 
-func (p *pushStream) Header() Header {
+func (p *pushStream) Header() http.Header {
 	return p.headers
 }
 
@@ -139,7 +140,7 @@ func (p *pushStream) WriteHeaders() {
 	headers := new(HeadersFrame)
 	headers.version = p.version
 	headers.streamID = p.streamID
-	headers.Headers = p.headers.clone()
+	headers.Headers = cloneHeaders(p.headers)
 	for name := range headers.Headers {
 		p.headers.Del(name)
 	}

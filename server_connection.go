@@ -284,7 +284,7 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, output chan<- Fra
 	stream.streamID = frame.streamID
 	stream.state = new(StreamState)
 	stream.output = output
-	stream.headers = make(Header)
+	stream.headers = make(http.Header)
 	stream.unidirectional = frame.Flags&FLAG_UNIDIRECTIONAL != 0
 	stream.version = conn.version
 	stream.done = make(chan struct{}, 1)
@@ -329,13 +329,12 @@ func (conn *serverConnection) newStream(frame *SynStreamFrame, output chan<- Fra
 	}
 
 	// Build this into a request to present to the Handler.
-	stream.request = &Request{
+	stream.request = &http.Request{
 		Method:     method,
 		URL:        url,
 		Proto:      vers,
 		ProtoMajor: major,
 		ProtoMinor: minor,
-		Priority:   int(frame.Priority),
 		RemoteAddr: conn.remoteAddr,
 		Header:     headers,
 		Host:       url.Host,
@@ -415,7 +414,7 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 		return nil, errors.New("Error: Incomplete path provided to resource.")
 	}
 
-	headers := make(Header)
+	headers := make(http.Header)
 	switch conn.version {
 	case 3:
 		headers.Set(":scheme", url.Scheme)
@@ -447,7 +446,7 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 	out.origin = origin
 	out.state = new(StreamState)
 	out.output = conn.dataPriority[7]
-	out.headers = make(Header)
+	out.headers = make(http.Header)
 	out.stop = false
 	out.version = conn.version
 	out.AddFlowControl()
@@ -460,7 +459,7 @@ func (conn *serverConnection) Push(resource string, origin Stream) (PushWriter, 
 
 // Request is a method stub required to satisfy the Connection
 // interface. It must not be used by servers.
-func (conn *serverConnection) Request(req *Request, res Receiver) (Stream, error) {
+func (conn *serverConnection) Request(req *http.Request, res Receiver, priority int) (Stream, error) {
 	return nil, errors.New("Error: Servers cannot make requests.")
 }
 

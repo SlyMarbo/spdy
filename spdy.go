@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
+	"strings"
 )
 
 // Connection represents a SPDY
@@ -17,7 +19,7 @@ type Connection interface {
 	InitialWindowSize() uint32
 	Ping() <-chan bool
 	Push(string, Stream) (PushWriter, error)
-	Request(*Request, Receiver) (Stream, error)
+	Request(*http.Request, Receiver, int) (Stream, error)
 	WriteFrame(Frame)
 	Version() uint16
 }
@@ -28,7 +30,7 @@ type Stream interface {
 	AddFlowControl()
 	Cancel()
 	Connection() Connection
-	Header() Header
+	Header() http.Header
 	ReceiveFrame(Frame)
 	Run()
 	State() *StreamState
@@ -104,7 +106,7 @@ type SynStreamFrame struct {
 	AssocStreamID  uint32
 	Priority       byte
 	Slot           byte
-	Headers        Header
+	Headers        http.Header
 	rawHeaders     []byte
 	headersWritten bool
 	headersDecoded bool
@@ -148,6 +150,30 @@ func (frame *SynStreamFrame) Bytes() ([]byte, error) {
 	out = append(out, headers...) // Name/Value Header Block
 
 	return out, nil
+}
+
+func (frame *SynStreamFrame) DecodeHeaders(decom *Decompressor) error {
+	if frame.headersDecoded {
+		return nil
+	}
+
+	headers, err := decodeHeaders(frame.rawHeaders, decom, frame.version)
+	if err != nil {
+		return err
+	}
+	frame.Headers = headers
+	frame.headersDecoded = true
+	return nil
+}
+
+func (frame *SynStreamFrame) EncodeHeaders(com *Compressor) error {
+	data, err := encodeHeaders(frame.Headers, com, frame.version)
+	if err != nil {
+		return err
+	}
+	frame.rawHeaders = data
+	frame.headersWritten = true
+	return nil
 }
 
 func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
@@ -220,21 +246,6 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *SynStreamFrame) DecodeHeaders(decom *Decompressor) error {
-	if frame.headersDecoded {
-		return nil
-	}
-
-	headers := make(Header)
-	err := headers.Parse(frame.rawHeaders, decom, frame.version)
-	if err != nil {
-		return err
-	}
-	frame.Headers = headers
-	frame.headersDecoded = true
-	return nil
-}
-
 func (frame *SynStreamFrame) StreamID() uint32 {
 	return frame.streamID
 }
@@ -267,14 +278,8 @@ func (frame *SynStreamFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SynStreamFrame) EncodeHeaders(com *Compressor) error {
-	headers, err := frame.Headers.Compressed(com, frame.version)
-	if err != nil {
-		return err
-	}
-	frame.rawHeaders = headers
-	frame.headersWritten = true
-	return nil
+func (frame *SynStreamFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
@@ -321,10 +326,6 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) error {
 	return err
 }
 
-func (frame *SynStreamFrame) Version() uint16 {
-	return frame.version
-}
-
 /*****************
  *** SYN_REPLY ***
  *****************/
@@ -332,7 +333,7 @@ type SynReplyFrame struct {
 	version        uint16
 	Flags          byte
 	streamID       uint32
-	Headers        Header
+	Headers        http.Header
 	rawHeaders     []byte
 	headersWritten bool
 	headersDecoded bool
@@ -368,6 +369,30 @@ func (frame *SynReplyFrame) Bytes() ([]byte, error) {
 	out = append(out, headers...) // Name/Value Header Block
 
 	return out, nil
+}
+
+func (frame *SynReplyFrame) DecodeHeaders(decom *Decompressor) error {
+	if frame.headersDecoded {
+		return nil
+	}
+
+	headers, err := decodeHeaders(frame.rawHeaders, decom, frame.version)
+	if err != nil {
+		return err
+	}
+	frame.Headers = headers
+	frame.headersDecoded = true
+	return nil
+}
+
+func (frame *SynReplyFrame) EncodeHeaders(com *Compressor) error {
+	data, err := encodeHeaders(frame.Headers, com, frame.version)
+	if err != nil {
+		return err
+	}
+	frame.rawHeaders = data
+	frame.headersWritten = true
+	return nil
 }
 
 func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
@@ -438,21 +463,6 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *SynReplyFrame) DecodeHeaders(decom *Decompressor) error {
-	if frame.headersDecoded {
-		return nil
-	}
-
-	headers := make(Header)
-	err := headers.Parse(frame.rawHeaders, decom, frame.version)
-	if err != nil {
-		return err
-	}
-	frame.Headers = headers
-	frame.headersDecoded = true
-	return nil
-}
-
 func (frame *SynReplyFrame) StreamID() uint32 {
 	return frame.streamID
 }
@@ -477,14 +487,8 @@ func (frame *SynReplyFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SynReplyFrame) EncodeHeaders(com *Compressor) error {
-	headers, err := frame.Headers.Compressed(com, frame.version)
-	if err != nil {
-		return err
-	}
-	frame.rawHeaders = headers
-	frame.headersWritten = true
-	return nil
+func (frame *SynReplyFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
@@ -523,10 +527,6 @@ func (frame *SynReplyFrame) WriteTo(writer io.Writer) error {
 	return err
 }
 
-func (frame *SynReplyFrame) Version() uint16 {
-	return frame.version
-}
-
 /******************
  *** RST_STREAM ***
  ******************/
@@ -557,6 +557,14 @@ func (frame *RstStreamFrame) Bytes() ([]byte, error) {
 	out[15] = byte(frame.StatusCode)         // Status code
 
 	return out, nil
+}
+
+func (frame *RstStreamFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *RstStreamFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
 }
 
 func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
@@ -614,10 +622,6 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *RstStreamFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *RstStreamFrame) StreamID() uint32 {
 	return frame.streamID
 }
@@ -633,8 +637,8 @@ func (frame *RstStreamFrame) String() string {
 	return buf.String()
 }
 
-func (frame *RstStreamFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *RstStreamFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *RstStreamFrame) WriteTo(writer io.Writer) error {
@@ -644,10 +648,6 @@ func (frame *RstStreamFrame) WriteTo(writer io.Writer) error {
 	}
 	_, err = writer.Write(bytes)
 	return err
-}
-
-func (frame *RstStreamFrame) Version() uint16 {
-	return frame.version
 }
 
 /****************
@@ -706,6 +706,14 @@ func (frame *SettingsFrame) Bytes() ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+func (frame *SettingsFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *SettingsFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
 }
 
 func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
@@ -793,10 +801,6 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *SettingsFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *SettingsFrame) StreamID() uint32 {
 	return 0
 }
@@ -824,8 +828,8 @@ func (frame *SettingsFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SettingsFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *SettingsFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *SettingsFrame) WriteTo(writer io.Writer) error {
@@ -835,10 +839,6 @@ func (frame *SettingsFrame) WriteTo(writer io.Writer) error {
 	}
 	_, err = writer.Write(bytes)
 	return err
-}
-
-func (frame *SettingsFrame) Version() uint16 {
-	return frame.version
 }
 
 type settingsSorter []*Setting
@@ -916,6 +916,14 @@ func (frame *NoopFrame) Bytes() ([]byte, error) {
 	return out, nil
 }
 
+func (frame *NoopFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *NoopFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
+}
+
 func (frame *NoopFrame) Parse(reader *bufio.Reader) error {
 	// Read in data.
 	data := make([]byte, 8)
@@ -955,10 +963,6 @@ func (frame *NoopFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *NoopFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *NoopFrame) StreamID() uint32 {
 	return 0
 }
@@ -967,16 +971,12 @@ func (frame *NoopFrame) String() string {
 	return "NOOP {\n\tVersion: 2\n}\n"
 }
 
-func (frame *NoopFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *NoopFrame) Version() uint16 {
+	return 2
 }
 
 func (frame *NoopFrame) WriteTo(writer io.Writer) error {
 	return nil
-}
-
-func (frame *NoopFrame) Version() uint16 {
-	return 2
 }
 
 /************
@@ -1004,6 +1004,14 @@ func (frame *PingFrame) Bytes() ([]byte, error) {
 	out[11] = byte(frame.PingID)           // Ping ID
 
 	return out, nil
+}
+
+func (frame *PingFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *PingFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
 }
 
 func (frame *PingFrame) Parse(reader *bufio.Reader) error {
@@ -1060,10 +1068,6 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *PingFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *PingFrame) StreamID() uint32 {
 	return 0
 }
@@ -1078,8 +1082,8 @@ func (frame *PingFrame) String() string {
 	return buf.String()
 }
 
-func (frame *PingFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *PingFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *PingFrame) WriteTo(writer io.Writer) error {
@@ -1089,10 +1093,6 @@ func (frame *PingFrame) WriteTo(writer io.Writer) error {
 	}
 	_, err = writer.Write(bytes)
 	return err
-}
-
-func (frame *PingFrame) Version() uint16 {
-	return frame.version
 }
 
 /**************
@@ -1132,6 +1132,14 @@ func (frame *GoawayFrame) Bytes() ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+func (frame *GoawayFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *GoawayFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
 }
 
 func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
@@ -1198,10 +1206,6 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *GoawayFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *GoawayFrame) StreamID() uint32 {
 	return 0
 }
@@ -1220,8 +1224,8 @@ func (frame *GoawayFrame) String() string {
 	return buf.String()
 }
 
-func (frame *GoawayFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *GoawayFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *GoawayFrame) WriteTo(writer io.Writer) error {
@@ -1233,10 +1237,6 @@ func (frame *GoawayFrame) WriteTo(writer io.Writer) error {
 	return err
 }
 
-func (frame *GoawayFrame) Version() uint16 {
-	return frame.version
-}
-
 /***************
  *** HEADERS ***
  ***************/
@@ -1244,7 +1244,7 @@ type HeadersFrame struct {
 	version        uint16
 	Flags          byte
 	streamID       uint32
-	Headers        Header
+	Headers        http.Header
 	rawHeaders     []byte
 	headersWritten bool
 	headersDecoded bool
@@ -1279,6 +1279,30 @@ func (frame *HeadersFrame) Bytes() ([]byte, error) {
 	out = append(out, headers...)            // Name/Value Header Block
 
 	return out, nil
+}
+
+func (frame *HeadersFrame) DecodeHeaders(decom *Decompressor) error {
+	if frame.headersDecoded {
+		return nil
+	}
+
+	headers, err := decodeHeaders(frame.rawHeaders, decom, frame.version)
+	if err != nil {
+		return err
+	}
+	frame.Headers = headers
+	frame.headersDecoded = true
+	return nil
+}
+
+func (frame *HeadersFrame) EncodeHeaders(com *Compressor) error {
+	data, err := encodeHeaders(frame.Headers, com, frame.version)
+	if err != nil {
+		return err
+	}
+	frame.rawHeaders = data
+	frame.headersWritten = true
+	return nil
 }
 
 func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
@@ -1348,21 +1372,6 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *HeadersFrame) DecodeHeaders(decom *Decompressor) error {
-	if frame.headersDecoded {
-		return nil
-	}
-
-	headers := make(Header)
-	err := headers.Parse(frame.rawHeaders, decom, frame.version)
-	if err != nil {
-		return err
-	}
-	frame.Headers = headers
-	frame.headersDecoded = true
-	return nil
-}
-
 func (frame *HeadersFrame) StreamID() uint32 {
 	return frame.streamID
 }
@@ -1387,14 +1396,8 @@ func (frame *HeadersFrame) String() string {
 	return buf.String()
 }
 
-func (frame *HeadersFrame) EncodeHeaders(com *Compressor) error {
-	headers, err := frame.Headers.Compressed(com, frame.version)
-	if err != nil {
-		return err
-	}
-	frame.rawHeaders = headers
-	frame.headersWritten = true
-	return nil
+func (frame *HeadersFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
@@ -1433,10 +1436,6 @@ func (frame *HeadersFrame) WriteTo(writer io.Writer) error {
 	return err
 }
 
-func (frame *HeadersFrame) Version() uint16 {
-	return frame.version
-}
-
 /*********************
  *** WINDOW_UPDATE ***
  *********************/
@@ -1467,6 +1466,14 @@ func (frame *WindowUpdateFrame) Bytes() ([]byte, error) {
 	out[15] = byte(frame.DeltaWindowSize)            // Delta Window Size
 
 	return out, nil
+}
+
+func (frame *WindowUpdateFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *WindowUpdateFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
 }
 
 func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
@@ -1529,10 +1536,6 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *WindowUpdateFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *WindowUpdateFrame) StreamID() uint32 {
 	return frame.streamID
 }
@@ -1548,8 +1551,8 @@ func (frame *WindowUpdateFrame) String() string {
 	return buf.String()
 }
 
-func (frame *WindowUpdateFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *WindowUpdateFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
@@ -1563,10 +1566,6 @@ func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) error {
 	}
 	_, err = writer.Write(bytes)
 	return err
-}
-
-func (frame *WindowUpdateFrame) Version() uint16 {
-	return frame.version
 }
 
 /******************
@@ -1610,6 +1609,14 @@ func (frame *CredentialFrame) Bytes() ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+func (frame *CredentialFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *CredentialFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
 }
 
 func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
@@ -1690,10 +1697,6 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *CredentialFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *CredentialFrame) StreamID() uint32 {
 	return 0
 }
@@ -1710,8 +1713,8 @@ func (frame *CredentialFrame) String() string {
 	return buf.String()
 }
 
-func (frame *CredentialFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *CredentialFrame) Version() uint16 {
+	return frame.version
 }
 
 func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
@@ -1759,10 +1762,6 @@ func (frame *CredentialFrame) WriteTo(writer io.Writer) error {
 	return nil
 }
 
-func (frame *CredentialFrame) Version() uint16 {
-	return frame.version
-}
-
 /************
  *** DATA ***
  ************/
@@ -1787,6 +1786,14 @@ func (frame *DataFrame) Bytes() ([]byte, error) {
 	out = append(out, frame.Data...)         // Data
 
 	return out, nil
+}
+
+func (frame *DataFrame) DecodeHeaders(decomp *Decompressor) error {
+	return nil
+}
+
+func (frame *DataFrame) EncodeHeaders(comp *Compressor) error {
+	return nil
 }
 
 func (frame *DataFrame) Parse(reader *bufio.Reader) error {
@@ -1832,10 +1839,6 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 	return nil
 }
 
-func (frame *DataFrame) DecodeHeaders(decomp *Decompressor) error {
-	return nil
-}
-
 func (frame *DataFrame) StreamID() uint32 {
 	return frame.streamID
 }
@@ -1860,8 +1863,8 @@ func (frame *DataFrame) String() string {
 	return buf.String()
 }
 
-func (frame *DataFrame) EncodeHeaders(comp *Compressor) error {
-	return nil
+func (frame *DataFrame) Version() uint16 {
+	return 0
 }
 
 func (frame *DataFrame) WriteTo(writer io.Writer) error {
@@ -1893,8 +1896,114 @@ func (frame *DataFrame) WriteTo(writer io.Writer) error {
 	return err
 }
 
-func (frame *DataFrame) Version() uint16 {
-	return 0
+func decodeHeaders(data []byte, dec *Decompressor, version uint16) (http.Header, error) {
+	return dec.Decompress(data)
+}
+
+func encodeHeaders(h http.Header, enc *Compressor, version uint16) ([]byte, error) {
+	h.Del("Connection")
+	h.Del("Keep-Alive")
+	h.Del("Proxy-Connection")
+	h.Del("Transfer-Encoding")
+
+	length := 4
+	num := len(h)
+	lens := make(map[string]int)
+	for name, values := range h {
+		length += len(name) + 8
+		lens[name] = len(values) - 1
+		for _, value := range values {
+			length += len(value)
+			lens[name] += len(value)
+		}
+	}
+
+	out := make([]byte, length)
+	switch version {
+	case 3:
+		out[0] = byte(num >> 24)
+		out[1] = byte(num >> 16)
+		out[2] = byte(num >> 8)
+		out[3] = byte(num)
+	case 2:
+		out[0] = byte(num >> 8)
+		out[1] = byte(num)
+	}
+
+	offset := 4
+	if version == 2 {
+		offset = 2
+	}
+	for name, values := range h {
+		nLen := len(name)
+		switch version {
+		case 3:
+			out[offset+0] = byte(nLen >> 24)
+			out[offset+1] = byte(nLen >> 16)
+			out[offset+2] = byte(nLen >> 8)
+			out[offset+3] = byte(nLen)
+			offset += 4
+		case 2:
+			out[offset+0] = byte(nLen >> 8)
+			out[offset+1] = byte(nLen)
+			offset += 2
+		}
+
+		for i, b := range []byte(strings.ToLower(name)) {
+			out[offset+i] = b
+		}
+
+		offset += nLen
+
+		vLen := lens[name]
+		switch version {
+		case 3:
+			out[offset+0] = byte(vLen >> 24)
+			out[offset+1] = byte(vLen >> 16)
+			out[offset+2] = byte(vLen >> 8)
+			out[offset+3] = byte(vLen)
+			offset += 4
+		case 2:
+			out[offset+0] = byte(vLen >> 8)
+			out[offset+1] = byte(vLen)
+			offset += 2
+		}
+
+		for n, value := range values {
+			for i, b := range []byte(value) {
+				out[offset+i] = b
+			}
+			offset += len(value)
+			if n < len(values)-1 {
+				out[offset] = '\x00'
+				offset += 1
+			}
+		}
+	}
+
+	return enc.Compress(out)
+}
+
+func cloneHeaders(h http.Header) http.Header {
+	h2 := make(http.Header, len(h))
+	for k, vv := range h {
+		vv2 := make([]string, len(vv))
+		copy(vv2, vv)
+		h2[k] = vv2
+	}
+	return h2
+}
+
+func updateHeaders(older, newer http.Header) {
+	for name, values := range newer {
+		for i, value := range values {
+			if i == 0 {
+				older.Set(name, value)
+			} else {
+				older.Add(name, value)
+			}
+		}
+	}
 }
 
 /*** HELPER FUNCTIONS ***/

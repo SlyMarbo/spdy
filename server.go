@@ -22,7 +22,7 @@ import (
 // and that the SPDY server can move on to other requests on the
 // connection.
 type Handler interface {
-	ServeSPDY(ResponseWriter, *Request)
+	ServeSPDY(ResponseWriter, *http.Request)
 }
 
 type ResponseWriter interface {
@@ -38,7 +38,7 @@ type ResponseWriter interface {
 
 	// Header returns the header map that will be sent by WriteHeader
 	// and WriteHeaders.
-	Header() Header
+	Header() http.Header
 
 	// Ping immediately returns a channel on which a single boolean will
 	// sent when the ping completes, which can be used as some measure of
@@ -93,7 +93,7 @@ type PushWriter interface {
 	Close()
 
 	// Header returns the header map that will be sent with the push.
-	Header() Header
+	Header() http.Header
 
 	// Write writes the data to the connection as part of a SPDY server
 	// push. If the Header does not contain a Content-Type line, Write
@@ -110,10 +110,10 @@ type PushWriter interface {
 // The HandlerFunc type is an adapter to allow the use of ordinary
 // functions as SPDY handlers. If f is a function with the appropriate
 // signature, HandlerFunc(f) is a Handler object that calls f.
-type HandlerFunc func(ResponseWriter, *Request)
+type HandlerFunc func(ResponseWriter, *http.Request)
 
 // ServeSPDY calls f(w, r).
-func (f HandlerFunc) ServeSPDY(w ResponseWriter, r *Request) {
+func (f HandlerFunc) ServeSPDY(w ResponseWriter, r *http.Request) {
 	f(w, r)
 }
 
@@ -128,7 +128,7 @@ func Error(w ResponseWriter, error string, code int) {
 }
 
 // NotFound replies to the request with an HTTP 404 not found error.
-func NotFound(w ResponseWriter, r *Request) {
+func NotFound(w ResponseWriter, r *http.Request) {
 	Error(w, "404 page not found", http.StatusNotFound)
 }
 
@@ -146,7 +146,7 @@ func StripPrefix(prefix string, h Handler) Handler {
 	if prefix == "" {
 		return h
 	}
-	return HandlerFunc(func(w ResponseWriter, r *Request) {
+	return HandlerFunc(func(w ResponseWriter, r *http.Request) {
 		if p := strings.TrimPrefix(r.URL.Path, prefix); len(p) < len(r.URL.Path) {
 			r.URL.Path = p
 			h.ServeSPDY(w, r)
@@ -158,7 +158,7 @@ func StripPrefix(prefix string, h Handler) Handler {
 
 // Redirect replies to the request with a redirect to url,
 // which may be a path relative to the request path.
-func Redirect(w ResponseWriter, r *Request, urlStr string, code int) {
+func Redirect(w ResponseWriter, r *http.Request, urlStr string, code int) {
 	if u, err := url.Parse(urlStr); err == nil {
 		// If url was relative, make absolute by
 		// combining with request path.
@@ -235,7 +235,7 @@ type redirectHandler struct {
 	code int
 }
 
-func (rh *redirectHandler) ServeSPDY(w ResponseWriter, r *Request) {
+func (rh *redirectHandler) ServeSPDY(w ResponseWriter, r *http.Request) {
 	Redirect(w, r, rh.url, rh.code)
 }
 
@@ -352,7 +352,7 @@ func (mux *ServeMux) match(path string) (h Handler, pattern string) {
 // If there is no registered handler that applies to the
 // request, Handler returns a ''page not found'' handler
 // and an empty pattern.
-func (mux *ServeMux) Handler(r *Request) (h Handler, pattern string) {
+func (mux *ServeMux) Handler(r *http.Request) (h Handler, pattern string) {
 	if r.Method != "CONNECT" {
 		if p := cleanPath(r.URL.Path); p != r.URL.Path {
 			_, pattern = mux.handler(r.Host, p)
@@ -385,7 +385,7 @@ func (mux *ServeMux) handler(host, path string) (h Handler, pattern string) {
 
 // ServeSPDY dispatches the request to the handler whose
 // pattern most closely matches the request URL.
-func (mux *ServeMux) ServeSPDY(w ResponseWriter, r *Request) {
+func (mux *ServeMux) ServeSPDY(w ResponseWriter, r *http.Request) {
 	if r.RequestURI == "*" {
 		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusBadRequest)
@@ -442,7 +442,7 @@ func (mux *ServeMux) Handle(pattern string, handler Handler) {
 }
 
 // HandleFunc registers the handler function for the given pattern.
-func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
+func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *http.Request)) {
 	mux.Handle(pattern, HandlerFunc(handler))
 }
 
@@ -456,7 +456,7 @@ func Handle(pattern string, handler Handler) {
 // HandleFunc registers the handler function for the given pattern
 // in the DefaultServeMux.
 // The documentation for ServeMux explains how patterns are matched.
-func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
+func HandleFunc(pattern string, handler func(ResponseWriter, *http.Request)) {
 	DefaultServeMux.HandleFunc(pattern, handler)
 }
 
@@ -508,7 +508,7 @@ func (s *Server) MaxConcurrentStreams(v uint32) {
 //              w.Write([]byte("This is an example server.\n"))
 //      }
 //
-//      func spdyHandler(w spdy.ResponseWriter, req *spdy.Request) {
+//      func spdyHandler(w spdy.ResponseWriter, req *http.Request) {
 //              w.Header().Set("Content-Type", "text/plain")
 //              w.Write([]byte("This is an example server.\n"))
 //      }
@@ -575,7 +575,7 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 //              w.Write([]byte("This is an example server.\n"))
 //      }
 //
-//      func spdyHandler(w spdy.ResponseWriter, req *spdy.Request) {
+//      func spdyHandler(w spdy.ResponseWriter, req *http.Request) {
 //              w.Header().Set("Content-Type", "text/plain")
 //              w.Write([]byte("This is an example server.\n"))
 //      }

@@ -21,10 +21,10 @@ type serverStream struct {
 	requestBody    *bytes.Buffer
 	state          *StreamState
 	output         chan<- Frame
-	request        *Request
+	request        *http.Request
 	handler        Handler
 	httpHandler    http.Handler
-	headers        Header
+	headers        http.Header
 	unidirectional bool
 	responseCode   int
 	stop           bool
@@ -45,7 +45,7 @@ func (s *serverStream) Connection() Connection {
 	return s.conn
 }
 
-func (s *serverStream) Header() Header {
+func (s *serverStream) Header() http.Header {
 	return s.headers
 }
 
@@ -149,7 +149,7 @@ func (s *serverStream) WriteHeader(code int) {
 	synReply := new(SynReplyFrame)
 	synReply.version = s.version
 	synReply.streamID = s.streamID
-	synReply.Headers = s.headers.clone()
+	synReply.Headers = cloneHeaders(s.headers)
 
 	// Clear the headers that have been sent.
 	for name := range synReply.Headers {
@@ -175,7 +175,7 @@ func (s *serverStream) WriteHeaders() {
 	headers := new(HeadersFrame)
 	headers.version = s.version
 	headers.streamID = s.streamID
-	headers.Headers = s.headers.clone()
+	headers.Headers = cloneHeaders(s.headers)
 
 	// Clear the headers that have been sent.
 	for name := range headers.Headers {
@@ -216,10 +216,10 @@ func (s *serverStream) receiveFrame(frame Frame) {
 		}
 
 	case *SynReplyFrame:
-		s.headers.Update(frame.Headers)
+		updateHeaders(s.headers, frame.Headers)
 
 	case *HeadersFrame:
-		s.headers.Update(frame.Headers)
+		updateHeaders(s.headers, frame.Headers)
 
 	case *WindowUpdateFrame:
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
@@ -262,9 +262,7 @@ func (s *serverStream) Run() {
 	 ***************/
 	mux, ok := s.handler.(*ServeMux)
 	if s.handler == nil || (ok && mux.Nil()) {
-		r := spdyToHttpRequest(s.request)
-		w := &_httpResponseWriter{s}
-		s.httpHandler.ServeHTTP(w, r)
+		s.httpHandler.ServeHTTP(s, s.request)
 	} else {
 		s.handler.ServeSPDY(s, s.request)
 	}

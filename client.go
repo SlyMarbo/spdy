@@ -31,9 +31,9 @@ import (
 // the push. The provided Request will be that sent by
 // the server with the push.
 type Receiver interface {
-	ReceiveData(request *Request, data []byte, final bool)
-	ReceiveHeaders(request *Request, header Header)
-	ReceiveRequest(request *Request) bool
+	ReceiveData(request *http.Request, data []byte, final bool)
+	ReceiveHeaders(request *http.Request, header http.Header)
+	ReceiveRequest(request *http.Request) bool
 }
 
 // A Client is an HTTP/SPDY client. Its zero value (DefaultClient) is
@@ -73,7 +73,7 @@ type Client struct {
 	//
 	// If CheckRedirect is nil, the Client uses its default policy,
 	// which is to stop after 10 consecutive requests.
-	CheckRedirect func(req *Request, via []*Request) error
+	CheckRedirect func(req *http.Request, via []*http.Request) error
 
 	// Jar specifies the cookie jar.
 	// If Jar is nil, cookies are not sent in requests and ignored
@@ -130,14 +130,13 @@ func (c *Client) dial(u *url.URL) (net.Conn, error) {
 }
 
 // doHTTP is used to process an HTTP(S) request, using the TCP connection pool.
-func (c *Client) doHTTP(conn net.Conn, req *Request) (*Response, error) {
+func (c *Client) doHTTP(conn net.Conn, req *http.Request) (*Response, error) {
 	debug.Printf("Requesting %q over HTTP.\n", req.URL.String())
 
 	// Create the HTTP ClientConn, which handles the
 	// HTTP details.
 	httpConn := httputil.NewClientConn(conn, nil)
-	httpReq := spdyToHttpRequest(req)
-	httpRes, err := httpConn.Do(httpReq)
+	httpRes, err := httpConn.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +158,7 @@ func (c *Client) doHTTP(conn net.Conn, req *Request) (*Response, error) {
 // do handles the actual request; ensuring a connection is
 // made, determining which protocol to use, and performing
 // the request.
-func (c *Client) do(req *Request) (*Response, error) {
+func (c *Client) do(req *http.Request, priority int) (*Response, error) {
 	u := req.URL
 
 	// Make sure the URL host contains the port.
@@ -303,7 +302,7 @@ func (c *Client) do(req *Request) (*Response, error) {
 	res.Data = new(bytes.Buffer)
 
 	// Send the request.
-	stream, err := conn.Request(req, res)
+	stream, err := conn.Request(req, res, priority)
 	if err != nil {
 		return nil, err
 	}
@@ -315,13 +314,13 @@ func (c *Client) do(req *Request) (*Response, error) {
 }
 
 // doFollowingRedirects follows redirects while using c.do to actually process each request.
-func (c *Client) doFollowingRedirects(ireq *Request, shouldRedirect func(int) bool) (res *Response, err error) {
+func (c *Client) doFollowingRedirects(ireq *http.Request, priority int, shouldRedirect func(int) bool) (res *Response, err error) {
 	var base *url.URL
 	redirectChecker := c.CheckRedirect
 	if redirectChecker == nil {
 		redirectChecker = defaultCheckRedirect
 	}
-	var via []*Request
+	var via []*http.Request
 
 	if ireq.URL == nil {
 		return nil, errors.New("spdy: nil Request.URL")
@@ -332,12 +331,12 @@ func (c *Client) doFollowingRedirects(ireq *Request, shouldRedirect func(int) bo
 	redirectFailed := false
 	for redirect := 0; ; redirect++ {
 		if redirect != 0 {
-			req = new(Request)
+			req = new(http.Request)
 			req.Method = ireq.Method
 			if ireq.Method == "POST" || ireq.Method == "PUT" {
 				req.Method = "GET"
 			}
-			req.Header = make(Header)
+			req.Header = make(http.Header)
 			req.URL, err = base.Parse(urlStr)
 			if err != nil {
 				break
@@ -367,7 +366,7 @@ func (c *Client) doFollowingRedirects(ireq *Request, shouldRedirect func(int) bo
 		}
 
 		urlStr = req.URL.String()
-		if res, err = c.do(req); err != nil {
+		if res, err = c.do(req, priority); err != nil {
 			break
 		}
 
@@ -412,14 +411,14 @@ func (c *Client) doFollowingRedirects(ireq *Request, shouldRedirect func(int) bo
 // the server does not support SPDY. Which protocol was
 // used can be determined by checking the value set for
 // Response.SentOverSpdy.
-func (c *Client) Do(req *Request) (*Response, error) {
+func (c *Client) Do(req *http.Request, priority int) (*Response, error) {
 	if req.Method == "GET" || req.Method == "HEAD" {
-		return c.doFollowingRedirects(req, shouldRedirectGet)
+		return c.doFollowingRedirects(req, priority, shouldRedirectGet)
 	}
 	if req.Method == "POST" || req.Method == "PUT" {
-		return c.doFollowingRedirects(req, shouldRedirectPost)
+		return c.doFollowingRedirects(req, priority, shouldRedirectPost)
 	}
-	return c.do(req)
+	return c.do(req, priority)
 }
 
 // True if the specified HTTP status code is one for
@@ -445,7 +444,7 @@ func shouldRedirectPost(statusCode int) bool {
 
 // defaultCheckRedirect simply accepts redirects until 10 have
 // occurred, or a loop is detected.
-func defaultCheckRedirect(req *Request, via []*Request) error {
+func defaultCheckRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
 	}
@@ -495,11 +494,11 @@ func Get(url string) (*Response, error) {
 // When err is nil, resp always contains a non-nil resp.Body.
 // Caller should close resp.Body when done reading from it.
 func (c *Client) Get(url string) (*Response, error) {
-	req, err := NewRequest("GET", url, nil, DefaultPriority(url))
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	return c.doFollowingRedirects(req, shouldRedirectGet)
+	return c.doFollowingRedirects(req, DefaultPriority(url), shouldRedirectGet)
 }
 
 // Post issues a POST to the specified URL.
@@ -515,12 +514,12 @@ func Post(url string, bodyType string, body io.Reader) (*Response, error) {
 //
 // Caller should close resp.Body when done reading from it.
 func (c *Client) Post(url string, bodyType string, body io.Reader) (*Response, error) {
-	req, err := NewRequest("POST", url, body, DefaultPriority(url))
+	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", bodyType)
-	return c.doFollowingRedirects(req, shouldRedirectPost)
+	return c.doFollowingRedirects(req, DefaultPriority(url), shouldRedirectPost)
 }
 
 // PostForm issues a POST to the specified URL, with data's keys and
@@ -566,11 +565,11 @@ func Head(url string) (resp *Response, err error) {
 //    303 (See Other)
 //    307 (Temporary Redirect)
 func (c *Client) Head(url string) (resp *Response, err error) {
-	req, err := NewRequest("HEAD", url, nil, DefaultPriority(url))
+	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	return c.doFollowingRedirects(req, shouldRedirectGet)
+	return c.doFollowingRedirects(req, DefaultPriority(url), shouldRedirectGet)
 }
 
 // Given a string of the form "host", "host:port", or "[ipv6::address]:port",

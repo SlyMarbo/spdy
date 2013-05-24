@@ -24,23 +24,23 @@ type clientConnection struct {
 	buf                *bufio.Reader // buffered reader for the connection.
 	tlsState           *tls.ConnectionState
 	streams            map[uint32]Stream
-	dataOutput         chan Frame             // receiving frames from streams to send.
-	pings              map[uint32]chan<- bool // response channel for pings.
-	pingID             uint32                 // next outbound ping ID.
-	compressor         *Compressor            // outbound compression state.
-	decompressor       *Decompressor          // inbound decompression state.
-	receivedSettings   map[uint32]*Setting    // settings sent by server.
-	nextServerStreamID uint32                 // next inbound stream ID. (even)
-	nextClientStreamID uint32                 // next outbound stream ID. (odd)
-	initialWindowSize  uint32                 // initial transport window
-	goaway             bool                   // goaway has been sent/received.
-	version            uint16                 // SPDY version.
-	numBenignErrors    int                    // number of non-serious errors encountered.
-	done               *sync.WaitGroup        // WaitGroup for active streams.
-	clientStreamLimit  *streamLimit           // Limit on streams openable by the client.
-	serverStreamLimit  *streamLimit           // Limit on streams openable by the server.
-	pushReceiver       Receiver               // Receiver used to process server pushes.
-	pushRequests       map[uint32]*Request    // map of requests sent in server pushes.
+	dataOutput         chan Frame               // receiving frames from streams to send.
+	pings              map[uint32]chan<- bool   // response channel for pings.
+	pingID             uint32                   // next outbound ping ID.
+	compressor         *Compressor              // outbound compression state.
+	decompressor       *Decompressor            // inbound decompression state.
+	receivedSettings   map[uint32]*Setting      // settings sent by server.
+	nextServerStreamID uint32                   // next inbound stream ID. (even)
+	nextClientStreamID uint32                   // next outbound stream ID. (odd)
+	initialWindowSize  uint32                   // initial transport window
+	goaway             bool                     // goaway has been sent/received.
+	version            uint16                   // SPDY version.
+	numBenignErrors    int                      // number of non-serious errors encountered.
+	done               *sync.WaitGroup          // WaitGroup for active streams.
+	clientStreamLimit  *streamLimit             // Limit on streams openable by the client.
+	serverStreamLimit  *streamLimit             // Limit on streams openable by the server.
+	pushReceiver       Receiver                 // Receiver used to process server pushes.
+	pushRequests       map[uint32]*http.Request // map of requests sent in server pushes.
 }
 
 // readFrames is the main processing loop, where frames
@@ -271,7 +271,7 @@ func (conn *clientConnection) Push(resource string, origin Stream) (PushWriter, 
 // data received from the server. The returned Stream can be
 // used to manipulate the underlying stream, provided the
 // request was started successfully.
-func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error) {
+func (conn *clientConnection) Request(req *http.Request, res Receiver, priority int) (Stream, error) {
 	if conn.goaway {
 		return nil, errors.New("Error: GOAWAY received, so request could not be sent.")
 	}
@@ -284,7 +284,7 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 	// Prepare the SYN_STREAM.
 	syn := new(SynStreamFrame)
 	syn.version = conn.version
-	syn.Priority = uint8(req.Priority)
+	syn.Priority = uint8(priority)
 	url := req.URL
 	if url == nil || url.Scheme == "" || url.Host == "" || url.Path == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
@@ -360,7 +360,7 @@ func (conn *clientConnection) Request(req *Request, res Receiver) (Stream, error
 	out.output = conn.dataOutput
 	out.request = req
 	out.receiver = res
-	out.headers = make(Header)
+	out.headers = make(http.Header)
 	out.stop = false
 	out.version = conn.version
 	out.done = make(chan struct{}, 1)
@@ -479,13 +479,12 @@ func (conn *clientConnection) handleSynStream(frame *SynStreamFrame) {
 	case 2:
 		method = headers.Get("method")
 	}
-	request := &Request{
+	request := &http.Request{
 		Method:     method,
 		URL:        url,
 		Proto:      vers,
 		ProtoMajor: major,
 		ProtoMinor: minor,
-		Priority:   int(frame.Priority),
 		RemoteAddr: conn.remoteAddr,
 		Header:     headers,
 		Host:       url.Host,
@@ -823,7 +822,7 @@ func newClientConn(tlsConn *tls.Conn) *clientConnection {
 	conn.serverStreamLimit = new(streamLimit)
 	conn.clientStreamLimit.SetLimit(NO_STREAM_LIMIT)
 	conn.done = new(sync.WaitGroup)
-	conn.pushRequests = make(map[uint32]*Request)
+	conn.pushRequests = make(map[uint32]*http.Request)
 
 	return conn
 }

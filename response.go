@@ -31,7 +31,7 @@ type Response struct {
 	// omitted from Header.
 	//
 	// Keys in the map are canonicalized (see CanonicalHeaderKey).
-	Header Header
+	Header http.Header
 
 	// Body represents the response body.
 	//
@@ -62,12 +62,12 @@ type Response struct {
 
 	// Trailer maps trailer keys to values, in the same
 	// format as the header.
-	Trailer Header
+	Trailer http.Header
 
 	// The Request that was sent to obtain this Response.
 	// Request's Body is nil (having already been consumed).
 	// This is only populated for Client requests.
-	Request *Request
+	Request *http.Request
 }
 
 // Cookies parses and returns the cookies set in the Set-Cookie headers.
@@ -102,22 +102,22 @@ func (r *Response) ProtoAtLeast(major, minor int) bool {
 type response struct {
 	StatusCode int
 	SPDYProto  int
-	Header     Header
+	Header     http.Header
 	Data       *bytes.Buffer
-	Request    *Request
+	Request    *http.Request
 }
 
-func (r *response) ReceiveData(req *Request, data []byte, finished bool) {
+func (r *response) ReceiveData(req *http.Request, data []byte, finished bool) {
 	r.Data.Write(data)
 }
 
 var statusRegex = regexp.MustCompile(`\A\s*(?P<code>\d+)`)
 
-func (r *response) ReceiveHeaders(req *Request, headers Header) {
+func (r *response) ReceiveHeaders(req *http.Request, headers http.Header) {
 	if r.Header == nil {
-		r.Header = make(Header)
+		r.Header = make(http.Header)
 	}
-	r.Header.Update(headers)
+	updateHeaders(r.Header, headers)
 	if status := r.Header.Get(":status"); status != "" && statusRegex.MatchString(status) {
 		if matches := statusRegex.FindAllStringSubmatch(status, -1); matches != nil {
 			s, err := strconv.Atoi(matches[0][1])
@@ -128,7 +128,7 @@ func (r *response) ReceiveHeaders(req *Request, headers Header) {
 	}
 }
 
-func (r *response) ReceiveRequest(req *Request) bool {
+func (r *response) ReceiveRequest(req *http.Request) bool {
 	return false
 }
 
@@ -149,43 +149,43 @@ func (r *response) Response() *Response {
 	out.ContentLength = int64(r.Data.Len())
 	out.TransferEncoding = nil
 	out.Close = false
-	out.Trailer = make(Header)
+	out.Trailer = make(http.Header)
 	out.Request = r.Request
 	return out
 }
 
 type nilReceiver struct{}
 
-func (_ nilReceiver) ReceiveData(_ *Request, _ []byte, _ bool) {
+func (_ nilReceiver) ReceiveData(_ *http.Request, _ []byte, _ bool) {
 	return
 }
 
-func (_ nilReceiver) ReceiveHeaders(req *Request, headers Header) {
+func (_ nilReceiver) ReceiveHeaders(req *http.Request, headers http.Header) {
 	return
 }
 
-func (_ nilReceiver) ReceiveRequest(req *Request) bool {
+func (_ nilReceiver) ReceiveRequest(req *http.Request) bool {
 	return false
 }
 
-func spdyToHttpResponse(res *Response, req *Request) *http.Response {
+func spdyToHttpResponse(res *Response, req *http.Request) *http.Response {
 	out := new(http.Response)
 	out.Status = res.Status
 	out.StatusCode = res.StatusCode
 	out.Proto = res.Proto
 	out.ProtoMajor = res.ProtoMajor
 	out.ProtoMinor = res.ProtoMinor
-	out.Header = http.Header(res.Header)
+	out.Header = res.Header
 	out.Body = res.Body
 	out.ContentLength = res.ContentLength
 	out.TransferEncoding = res.TransferEncoding
 	out.Close = res.Close
-	out.Trailer = http.Header(res.Trailer)
-	out.Request = spdyToHttpRequest(req)
+	out.Trailer = res.Trailer
+	out.Request = req
 	return out
 }
 
-func httpToSpdyResponse(res *http.Response, req *Request) *Response {
+func httpToSpdyResponse(res *http.Response, req *http.Request) *Response {
 	out := new(Response)
 	out.Status = res.Status
 	out.StatusCode = res.StatusCode
@@ -194,12 +194,12 @@ func httpToSpdyResponse(res *http.Response, req *Request) *Response {
 	out.ProtoMinor = res.ProtoMinor
 	out.SPDYProto = -1
 	out.SentOverSpdy = false
-	out.Header = Header(res.Header)
+	out.Header = res.Header
 	out.Body = res.Body
 	out.ContentLength = res.ContentLength
 	out.TransferEncoding = res.TransferEncoding
 	out.Close = res.Close
-	out.Trailer = Header(res.Trailer)
+	out.Trailer = res.Trailer
 	out.Request = req
 	return out
 }

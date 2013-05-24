@@ -8,25 +8,10 @@ import (
 )
 
 // _httpResponseWriter is just a wrapper used
-// to allow a spdy.ResponseWriter to fulfil
-// the http.ResponseWriter interface.
-type _httpResponseWriter struct {
-	ResponseWriter
-}
-
-func (h *_httpResponseWriter) Header() http.Header {
-	return http.Header(h.ResponseWriter.Header())
-}
-
-// _httpResponseWriter is just a wrapper used
 // to allow a spdy.PushWriter to fulfil the
 // http.ResponseWriter interface.
 type _httpPushWriter struct {
 	PushWriter
-}
-
-func (h *_httpPushWriter) Header() http.Header {
-	return http.Header(h.PushWriter.Header())
 }
 
 func (h *_httpPushWriter) WriteHeader(int) {
@@ -57,17 +42,13 @@ func (h *_httpPushWriter) WriteHeader(int) {
 // handle requests using If-Range and If-None-Match.
 //
 // Note that *os.File implements the io.ReadSeeker interface.
-func ServeContent(wrt ResponseWriter, req *Request, name string, modtime time.Time, content io.ReadSeeker) {
-	r := spdyToHttpRequest(req)
-	w := &_httpResponseWriter{wrt}
+func ServeContent(w ResponseWriter, r *http.Request, name string, modtime time.Time, content io.ReadSeeker) {
 	http.ServeContent(w, r, name, modtime, content)
 }
 
 // ServeFile replies to the request with the contents of
 // the named file or directory.
-func ServeFile(wrt ResponseWriter, req *Request, name string) {
-	r := spdyToHttpRequest(req)
-	w := &_httpResponseWriter{wrt}
+func ServeFile(w ResponseWriter, r *http.Request, name string) {
 	http.ServeFile(w, r, name)
 }
 
@@ -80,16 +61,15 @@ func ServeFile(wrt ResponseWriter, req *Request, name string) {
 //			
 //      // ...
 //		}
-func PushFile(wrt ResponseWriter, req *Request, name, path string) error {
+func PushFile(wrt ResponseWriter, r *http.Request, name, path string) error {
 	url := new(url.URL)
-	*url = *req.URL
+	*url = *r.URL
 	url.Path = name
 
 	push, err := wrt.Push(url.String())
 	if err != nil {
 		return err
 	}
-	r := spdyToHttpRequest(req)
 	w := &_httpPushWriter{push}
 	http.ServeFile(w, r, path)
 	push.Close()

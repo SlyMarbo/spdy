@@ -5,6 +5,7 @@ import (
 	"compress/zlib"
 	"errors"
 	"io"
+	"net/http"
 	"sync"
 )
 
@@ -30,7 +31,7 @@ func NewDecompressor(version uint16) *Decompressor {
 
 // Decompress uses zlib decompression to decompress the provided
 // data, according to the SPDY specification of the given version.
-func (d *Decompressor) Decompress(data []byte) (headers Header, err error) {
+func (d *Decompressor) Decompress(data []byte) (headers http.Header, err error) {
 	d.m.Lock()
 	defer d.m.Unlock()
 
@@ -84,7 +85,7 @@ func (d *Decompressor) Decompress(data []byte) (headers Header, err error) {
 	}
 	numNameValuePairs := dechunk(chunk)
 
-	headers = make(Header)
+	headers = make(http.Header)
 	length := 0
 	bounds := MAX_FRAME_SIZE - 12 // Maximum frame size minus maximum non-headers data (SYN_STREAM)
 	for i := 0; i < numNameValuePairs; i++ {
