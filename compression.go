@@ -48,9 +48,9 @@ func (d *Decompressor) Decompress(data []byte) (headers http.Header, err error) 
 	if d.out == nil {
 		switch d.version {
 		case 2:
-			d.out, err = zlib.NewReaderDict(d.in, HeaderDictionaryV2)
+			d.out, err = zlib.NewReaderDict(d.in, headerDictionaryV2)
 		case 3:
-			d.out, err = zlib.NewReaderDict(d.in, HeaderDictionaryV3)
+			d.out, err = zlib.NewReaderDict(d.in, headerDictionaryV3)
 		default:
 			err = versionError
 		}
@@ -172,9 +172,9 @@ func (c *Compressor) Compress(h http.Header) ([]byte, error) {
 
 		switch c.version {
 		case 2:
-			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
+			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, headerDictionaryV2)
 		case 3:
-			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV3)
+			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, headerDictionaryV3)
 		default:
 			err = versionError
 		}

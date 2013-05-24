@@ -2,7 +2,6 @@ package spdy
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,8 +74,6 @@ func (r *Response) Cookies() []*http.Cookie {
 	return spdyToHttpResponse(r, r.Request).Cookies()
 }
 
-var ErrNoLocation = errors.New("http: no Location header in response")
-
 // Location returns the URL of the response's "Location" header,
 // if present.  Relative redirects are resolved relative to
 // the Response's Request.  ErrNoLocation is returned if no
@@ -84,7 +81,7 @@ var ErrNoLocation = errors.New("http: no Location header in response")
 func (r *Response) Location() (*url.URL, error) {
 	lv := r.Header.Get("Location")
 	if lv == "" {
-		return nil, ErrNoLocation
+		return nil, http.ErrNoLocation
 	}
 	if r.Request != nil && r.Request.URL != nil {
 		return r.Request.URL.Parse(lv)

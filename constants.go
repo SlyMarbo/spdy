@@ -80,10 +80,10 @@ const (
 
 // State variables used internally in StreamState.
 const (
-	STATE_OPEN uint8 = iota
-	STATE_HALF_CLOSED_HERE
-	STATE_HALF_CLOSED_THERE
-	STATE_CLOSED
+	stateOpen uint8 = iota
+	stateHalfClosedHere
+	stateHalfClosedThere
+	stateClosed
 )
 
 // Stream priority values.
@@ -91,9 +91,6 @@ const (
 	MAX_PRIORITY = 0
 	MIN_PRIORITY = 7
 )
-
-// HTTP time format.
-const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 
 // Maximum frame size (2 ** 24 -1).
 const MAX_FRAME_SIZE = 0xffffff
@@ -213,21 +210,21 @@ type StreamState struct {
 func (s *StreamState) Open() bool {
 	s.RLock()
 	defer s.RUnlock()
-	return s.s == STATE_OPEN
+	return s.s == stateOpen
 }
 
 // Check whether the stream is closed.
 func (s *StreamState) Closed() bool {
 	s.RLock()
 	defer s.RUnlock()
-	return s.s == STATE_CLOSED
+	return s.s == stateClosed
 }
 
 // Check whether the stream is half-closed at the other endpoint.
 func (s *StreamState) ClosedThere() bool {
 	s.RLock()
 	defer s.RUnlock()
-	return s.s == STATE_CLOSED || s.s == STATE_HALF_CLOSED_THERE
+	return s.s == stateClosed || s.s == stateHalfClosedThere
 }
 
 // Check whether the stream is open at the other endpoint.
@@ -239,7 +236,7 @@ func (s *StreamState) OpenThere() bool {
 func (s *StreamState) ClosedHere() bool {
 	s.RLock()
 	defer s.RUnlock()
-	return s.s == STATE_CLOSED || s.s == STATE_HALF_CLOSED_HERE
+	return s.s == stateClosed || s.s == stateHalfClosedHere
 }
 
 // Check whether the stream is open locally.
@@ -250,17 +247,17 @@ func (s *StreamState) OpenHere() bool {
 // Closes the stream.
 func (s *StreamState) Close() {
 	s.Lock()
-	s.s = STATE_CLOSED
+	s.s = stateClosed
 	s.Unlock()
 }
 
 // Half-close the stream locally.
 func (s *StreamState) CloseHere() {
 	s.Lock()
-	if s.s == STATE_OPEN {
-		s.s = STATE_HALF_CLOSED_HERE
-	} else if s.s == STATE_HALF_CLOSED_THERE {
-		s.s = STATE_CLOSED
+	if s.s == stateOpen {
+		s.s = stateHalfClosedHere
+	} else if s.s == stateHalfClosedThere {
+		s.s = stateClosed
 	}
 	s.Unlock()
 }
@@ -268,10 +265,10 @@ func (s *StreamState) CloseHere() {
 // Half-close the stream at the other endpoint.
 func (s *StreamState) CloseThere() {
 	s.Lock()
-	if s.s == STATE_OPEN {
-		s.s = STATE_HALF_CLOSED_THERE
-	} else if s.s == STATE_HALF_CLOSED_HERE {
-		s.s = STATE_CLOSED
+	if s.s == stateOpen {
+		s.s = stateHalfClosedThere
+	} else if s.s == stateHalfClosedHere {
+		s.s = stateClosed
 	}
 	s.Unlock()
 }
@@ -465,7 +462,7 @@ func EnableDebugOutput() {
 }
 
 // Compression header for SPDY/2
-var HeaderDictionaryV2 = []byte{
+var headerDictionaryV2 = []byte{
 	0x6f, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x67,
 	0x65, 0x74, 0x68, 0x65, 0x61, 0x64, 0x70, 0x6f,
 	0x73, 0x74, 0x70, 0x75, 0x74, 0x64, 0x65, 0x6c,
@@ -583,7 +580,7 @@ var HeaderDictionaryV2 = []byte{
 }
 
 // Compression header for SPDY/3
-var HeaderDictionaryV3 = []byte{
+var headerDictionaryV3 = []byte{
 	0x00, 0x00, 0x00, 0x07, 0x6f, 0x70, 0x74, 0x69, // - - - - o p t i
 	0x6f, 0x6e, 0x73, 0x00, 0x00, 0x00, 0x04, 0x68, // o n s - - - - h
 	0x65, 0x61, 0x64, 0x00, 0x00, 0x00, 0x04, 0x70, // e a d - - - - p
