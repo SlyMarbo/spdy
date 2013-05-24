@@ -102,10 +102,14 @@ type response struct {
 	Header     http.Header
 	Data       *bytes.Buffer
 	Request    *http.Request
+	Receiver   Receiver
 }
 
 func (r *response) ReceiveData(req *http.Request, data []byte, finished bool) {
 	r.Data.Write(data)
+	if r.Receiver != nil {
+		r.Receiver.ReceiveData(req, data, finished)
+	}
 }
 
 var statusRegex = regexp.MustCompile(`\A\s*(?P<code>\d+)`)
@@ -123,9 +127,15 @@ func (r *response) ReceiveHeaders(req *http.Request, headers http.Header) {
 			}
 		}
 	}
+	if r.Receiver != nil {
+		r.Receiver.ReceiveHeaders(req, headers)
+	}
 }
 
 func (r *response) ReceiveRequest(req *http.Request) bool {
+	if r.Receiver != nil {
+		return r.Receiver.ReceiveRequest(req)
+	}
 	return false
 }
 

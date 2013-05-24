@@ -85,6 +85,11 @@ type Client struct {
 	maxConcurrentStreams    uint32
 	maxConcurrentStreamsSet bool
 
+	// Receiver is used to receive the server's response. If left
+	// nil, the default Receiver will parse and create a normal
+	// Response.
+	Receiver Receiver
+
 	// PushReceiver is used to receive server pushes. If left nil,
 	// pushes will be refused. The provided Request will be that
 	// sent with the server push. See Receiver for more detail on
@@ -300,6 +305,7 @@ func (c *Client) do(req *http.Request, priority int) (*Response, error) {
 	res.SPDYProto = int(conn.Version())
 	res.Request = req
 	res.Data = new(bytes.Buffer)
+	res.Receiver = c.Receiver
 
 	// Send the request.
 	stream, err := conn.Request(req, res, priority)
