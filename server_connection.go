@@ -212,6 +212,9 @@ func (conn *serverConnection) send() {
 
 	// Enter the normal processing loop.
 	for {
+		if frame == nil {
+			return
+		}
 
 		// Compress any name/value header blocks.
 		err := frame.EncodeHeaders(conn.compressor)
@@ -235,6 +238,7 @@ func (conn *serverConnection) send() {
 			}
 
 			// Unexpected error which prevented a write.
+			log.Printf("Error: Server encountered write error: %q\n", err.Error())
 			return
 		}
 
@@ -805,6 +809,9 @@ func (conn *serverConnection) cleanup() {
 		stream.Stop()
 	}
 	conn.streams = nil
+	for _, output := range conn.dataPriority {
+		close(output)
+	}
 }
 
 // serve prepares and executes the frame reading
