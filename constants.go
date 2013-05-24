@@ -179,19 +179,11 @@ func (s *streamLimit) Close() {
 	s.Unlock()
 }
 
-// StatusCodeText returns the text for
-// the STREAM_ERROR status code given.
-// The empty string will be returned
-// for unknown status codes.
-func StatusCodeText(code int) string {
-	return statusCodeText[code]
-}
-
-// StatusCodeIsFatal returns a bool
+// statusCodeIsFatal returns a bool
 // indicating whether receiving the
 // given status code would end the
 // connection.
-func StatusCodeIsFatal(code int) bool {
+func statusCodeIsFatal(code int) bool {
 	switch code {
 	case RST_STREAM_PROTOCOL_ERROR:
 		return true
@@ -284,12 +276,12 @@ func (s *StreamState) CloseThere() {
 	s.Unlock()
 }
 
-// DefaultPriority returns the default request
+// defaultPriority returns the default request
 // priority for the given target path. This is
 // currently in accordance with Google Chrome;
 // giving 0 for pages, 1 for CSS, 2 for JS, 3
 // for images. Other types default to 2.
-func DefaultPriority(path string) int {
+func defaultPriority(path string) int {
 	u, err := url.Parse(path)
 	if err != nil {
 		log.Printf("Failed to parse request path %q. Using priority 4.\n", path)

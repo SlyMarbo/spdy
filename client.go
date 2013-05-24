@@ -498,7 +498,7 @@ func (c *Client) Get(url string) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.doFollowingRedirects(req, DefaultPriority(url), shouldRedirectGet)
+	return c.doFollowingRedirects(req, defaultPriority(url), shouldRedirectGet)
 }
 
 // Post issues a POST to the specified URL.
@@ -519,7 +519,7 @@ func (c *Client) Post(url string, bodyType string, body io.Reader) (*Response, e
 		return nil, err
 	}
 	req.Header.Set("Content-Type", bodyType)
-	return c.doFollowingRedirects(req, DefaultPriority(url), shouldRedirectPost)
+	return c.doFollowingRedirects(req, defaultPriority(url), shouldRedirectPost)
 }
 
 // PostForm issues a POST to the specified URL, with data's keys and
@@ -569,7 +569,7 @@ func (c *Client) Head(url string) (resp *Response, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.doFollowingRedirects(req, DefaultPriority(url), shouldRedirectGet)
+	return c.doFollowingRedirects(req, defaultPriority(url), shouldRedirectGet)
 }
 
 // Given a string of the form "host", "host:port", or "[ipv6::address]:port",

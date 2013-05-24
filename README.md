@@ -115,7 +115,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
-	spdy.ServeFile(w, r, "." + r.RequestURI)
+	http.ServeFile(w, r, "." + r.RequestURI)
 }
 
 func main() {

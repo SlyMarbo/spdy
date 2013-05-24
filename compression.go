@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -161,7 +162,7 @@ func NewCompressor(version uint16) *Compressor {
 
 // Compress uses zlib compression to compress the provided
 // data, according to the SPDY specification of the given version.
-func (c *Compressor) Compress(data []byte) ([]byte, error) {
+func (c *Compressor) Compress(h http.Header) ([]byte, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -185,7 +186,87 @@ func (c *Compressor) Compress(data []byte) ([]byte, error) {
 		c.buf.Reset()
 	}
 
-	_, err = c.w.Write(data)
+	h.Del("Connection")
+	h.Del("Keep-Alive")
+	h.Del("Proxy-Connection")
+	h.Del("Transfer-Encoding")
+
+	length := 4
+	num := len(h)
+	lens := make(map[string]int)
+	for name, values := range h {
+		length += len(name) + 8
+		lens[name] = len(values) - 1
+		for _, value := range values {
+			length += len(value)
+			lens[name] += len(value)
+		}
+	}
+
+	out := make([]byte, length)
+	switch c.version {
+	case 3:
+		out[0] = byte(num >> 24)
+		out[1] = byte(num >> 16)
+		out[2] = byte(num >> 8)
+		out[3] = byte(num)
+	case 2:
+		out[0] = byte(num >> 8)
+		out[1] = byte(num)
+	}
+
+	offset := 4
+	if c.version == 2 {
+		offset = 2
+	}
+	for name, values := range h {
+		nLen := len(name)
+		switch c.version {
+		case 3:
+			out[offset+0] = byte(nLen >> 24)
+			out[offset+1] = byte(nLen >> 16)
+			out[offset+2] = byte(nLen >> 8)
+			out[offset+3] = byte(nLen)
+			offset += 4
+		case 2:
+			out[offset+0] = byte(nLen >> 8)
+			out[offset+1] = byte(nLen)
+			offset += 2
+		}
+
+		for i, b := range []byte(strings.ToLower(name)) {
+			out[offset+i] = b
+		}
+
+		offset += nLen
+
+		vLen := lens[name]
+		switch c.version {
+		case 3:
+			out[offset+0] = byte(vLen >> 24)
+			out[offset+1] = byte(vLen >> 16)
+			out[offset+2] = byte(vLen >> 8)
+			out[offset+3] = byte(vLen)
+			offset += 4
+		case 2:
+			out[offset+0] = byte(vLen >> 8)
+			out[offset+1] = byte(vLen)
+			offset += 2
+		}
+
+		for n, value := range values {
+			for i, b := range []byte(value) {
+				out[offset+i] = b
+			}
+			offset += len(value)
+			if n < len(values)-1 {
+				out[offset] = '\x00'
+				offset += 1
+			}
+		}
+	}
+
+	_, err = c.w.Write(out)
 	if err != nil {
 		return nil, err
 	}

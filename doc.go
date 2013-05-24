@@ -106,7 +106,7 @@ A very simple file server for both SPDY and HTTPS:
 		}
 
 		func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
-			spdy.ServeFile(w, r, "." + r.RequestURI)
+			http.ServeFile(w, r, "." + r.RequestURI)
 		}
 
 		func main() {

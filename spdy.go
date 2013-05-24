@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strings"
 )
 
 // Connection represents a SPDY
@@ -157,7 +156,7 @@ func (frame *SynStreamFrame) DecodeHeaders(decom *Decompressor) error {
 		return nil
 	}
 
-	headers, err := decodeHeaders(frame.rawHeaders, decom, frame.version)
+	headers, err := decom.Decompress(frame.rawHeaders)
 	if err != nil {
 		return err
 	}
@@ -167,7 +166,7 @@ func (frame *SynStreamFrame) DecodeHeaders(decom *Decompressor) error {
 }
 
 func (frame *SynStreamFrame) EncodeHeaders(com *Compressor) error {
-	data, err := encodeHeaders(frame.Headers, com, frame.version)
+	data, err := com.Compress(frame.Headers)
 	if err != nil {
 		return err
 	}
@@ -184,28 +183,28 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, SYN_STREAM}
+		return &incorrectFrame{DATA_FRAME, SYN_STREAM}
 	}
 
 	// Check it's a SYN_STREAM.
 	if bytesToUint16(start[2:4]) != SYN_STREAM {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), SYN_STREAM}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), SYN_STREAM}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if version == 3 && length < 10 {
-		return &IncorrectDataLength{length, 10}
+		return &incorrectDataLength{length, 10}
 	} else if version == 2 && length < 12 {
-		return &IncorrectDataLength{length, 12}
+		return &incorrectDataLength{length, 12}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -223,11 +222,11 @@ func (frame *SynStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Check unused space.
 	if (data[8]>>7) != 0 || (data[12]>>7) != 0 {
-		return &InvalidField{"Unused", 1, 0}
+		return &invalidField{"Unused", 1, 0}
 	} else if (data[16] & 0x1f) != 0 {
-		return &InvalidField{"Unused", int(data[16] & 0x1f), 0}
+		return &invalidField{"Unused", int(data[16] & 0x1f), 0}
 	} else if version == 2 && data[17] != 0 {
-		return &InvalidField{"Unused", int(data[17]), 0}
+		return &invalidField{"Unused", int(data[17]), 0}
 	}
 
 	frame.version = version
@@ -376,7 +375,7 @@ func (frame *SynReplyFrame) DecodeHeaders(decom *Decompressor) error {
 		return nil
 	}
 
-	headers, err := decodeHeaders(frame.rawHeaders, decom, frame.version)
+	headers, err := decom.Decompress(frame.rawHeaders)
 	if err != nil {
 		return err
 	}
@@ -386,7 +385,7 @@ func (frame *SynReplyFrame) DecodeHeaders(decom *Decompressor) error {
 }
 
 func (frame *SynReplyFrame) EncodeHeaders(com *Compressor) error {
-	data, err := encodeHeaders(frame.Headers, com, frame.version)
+	data, err := com.Compress(frame.Headers)
 	if err != nil {
 		return err
 	}
@@ -403,28 +402,28 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, SYN_REPLY}
+		return &incorrectFrame{DATA_FRAME, SYN_REPLY}
 	}
 
 	// Check it's a SYN_REPLY.
 	if bytesToUint16(start[2:4]) != SYN_REPLY {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), SYN_REPLY}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), SYN_REPLY}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if version == 3 && length < 4 {
-		return &IncorrectDataLength{length, 4}
+		return &incorrectDataLength{length, 4}
 	} else if version == 2 && length < 8 {
-		return &IncorrectDataLength{length, 8}
+		return &incorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -442,11 +441,11 @@ func (frame *SynReplyFrame) Parse(reader *bufio.Reader) error {
 
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
-		return &InvalidField{"Unused", 1, 0}
+		return &invalidField{"Unused", 1, 0}
 	} else if version == 2 && data[12] != 0 {
-		return &InvalidField{"Unused", int(data[12]), 0}
+		return &invalidField{"Unused", int(data[12]), 0}
 	} else if version == 2 && data[13] != 0 {
-		return &InvalidField{"Unused", int(data[13]), 0}
+		return &invalidField{"Unused", int(data[13]), 0}
 	}
 
 	frame.version = version
@@ -575,26 +574,26 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, RST_STREAM}
+		return &incorrectFrame{DATA_FRAME, RST_STREAM}
 	}
 
 	// Check it's a RST_STREAM.
 	if bytesToUint16(start[2:4]) != RST_STREAM {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), RST_STREAM}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), RST_STREAM}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length != 8 {
-		return &IncorrectDataLength{length, 8}
+		return &incorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -612,7 +611,7 @@ func (frame *RstStreamFrame) Parse(reader *bufio.Reader) error {
 
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
-		return &InvalidField{"Unused", 1, 0}
+		return &invalidField{"Unused", 1, 0}
 	}
 
 	frame.version = version
@@ -724,26 +723,26 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, SETTINGS}
+		return &incorrectFrame{DATA_FRAME, SETTINGS}
 	}
 
 	// Check it's a SETTINGS.
 	if bytesToUint16(start[2:4]) != SETTINGS {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), SETTINGS}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), SETTINGS}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length < 8 {
-		return &IncorrectDataLength{length, 8}
+		return &incorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -762,17 +761,17 @@ func (frame *SettingsFrame) Parse(reader *bufio.Reader) error {
 	// Check size.
 	numSettings := int(bytesToUint32(data[8:12]))
 	if length < 4+(8*numSettings) {
-		return &IncorrectDataLength{length, 4 + (8 * numSettings)}
+		return &incorrectDataLength{length, 4 + (8 * numSettings)}
 	}
 
 	// Check control bit.
 	if data[0]&0x80 == 0 {
-		return &InvalidField{"Control bit", 0, 1}
+		return &invalidField{"Control bit", 0, 1}
 	}
 
 	// Check type.
 	if data[2] != 0 || data[3] != 4 {
-		return &InvalidField{"Type", (int(data[2]) << 8) + int(data[3]), 4}
+		return &invalidField{"Type", (int(data[2]) << 8) + int(data[3]), 4}
 	}
 
 	frame.version = version
@@ -940,24 +939,24 @@ func (frame *NoopFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if data[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, NOOP}
+		return &incorrectFrame{DATA_FRAME, NOOP}
 	}
 
 	// Check it's a NOOP.
 	if bytesToUint16(data[2:4]) != NOOP {
-		return &IncorrectFrame{int(bytesToUint16(data[2:4])), NOOP}
+		return &incorrectFrame{int(bytesToUint16(data[2:4])), NOOP}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
 	if version != 2 || !SupportedVersion(2) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(data[5:8]))
 	if length != 0 {
-		return &IncorrectDataLength{length, 0}
+		return &incorrectDataLength{length, 0}
 	}
 
 	return nil
@@ -1022,26 +1021,26 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, PING}
+		return &incorrectFrame{DATA_FRAME, PING}
 	}
 
 	// Check it's a PING.
 	if bytesToUint16(start[2:4]) != PING {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), PING}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), PING}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length != 4 {
-		return &IncorrectDataLength{length, 4}
+		return &incorrectDataLength{length, 4}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -1059,7 +1058,7 @@ func (frame *PingFrame) Parse(reader *bufio.Reader) error {
 
 	// Check flags.
 	if (data[4]) != 0 {
-		return &InvalidField{"Flags", int(data[4]), 0}
+		return &invalidField{"Flags", int(data[4]), 0}
 	}
 
 	frame.version = version
@@ -1150,28 +1149,28 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, GOAWAY}
+		return &incorrectFrame{DATA_FRAME, GOAWAY}
 	}
 
 	// Check it's a GOAWAY.
 	if bytesToUint16(start[2:4]) != GOAWAY {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), GOAWAY}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), GOAWAY}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if version == 3 && length != 8 {
-		return &IncorrectDataLength{length, 8}
+		return &incorrectDataLength{length, 8}
 	} else if version == 2 && length != 4 {
-		return &IncorrectDataLength{length, 4}
+		return &incorrectDataLength{length, 4}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -1189,12 +1188,12 @@ func (frame *GoawayFrame) Parse(reader *bufio.Reader) error {
 
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
-		return &InvalidField{"Unused", 1, 0}
+		return &invalidField{"Unused", 1, 0}
 	}
 
 	// Check flags.
 	if (data[4]) != 0 {
-		return &InvalidField{"Flags", int(data[4]), 0}
+		return &invalidField{"Flags", int(data[4]), 0}
 	}
 
 	frame.version = version
@@ -1286,7 +1285,7 @@ func (frame *HeadersFrame) DecodeHeaders(decom *Decompressor) error {
 		return nil
 	}
 
-	headers, err := decodeHeaders(frame.rawHeaders, decom, frame.version)
+	headers, err := decom.Decompress(frame.rawHeaders)
 	if err != nil {
 		return err
 	}
@@ -1296,7 +1295,7 @@ func (frame *HeadersFrame) DecodeHeaders(decom *Decompressor) error {
 }
 
 func (frame *HeadersFrame) EncodeHeaders(com *Compressor) error {
-	data, err := encodeHeaders(frame.Headers, com, frame.version)
+	data, err := com.Compress(frame.Headers)
 	if err != nil {
 		return err
 	}
@@ -1313,28 +1312,28 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, HEADERS}
+		return &incorrectFrame{DATA_FRAME, HEADERS}
 	}
 
 	// Check it's a HEADERS.
 	if bytesToUint16(start[2:4]) != HEADERS {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), HEADERS}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), HEADERS}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if version == 3 && length < 4 {
-		return &IncorrectDataLength{length, 4}
+		return &incorrectDataLength{length, 4}
 	} else if version == 2 && length < 8 {
-		return &IncorrectDataLength{length, 8}
+		return &incorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -1352,11 +1351,11 @@ func (frame *HeadersFrame) Parse(reader *bufio.Reader) error {
 
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
-		return &InvalidField{"Unused", 1, 0}
+		return &invalidField{"Unused", 1, 0}
 	} else if version == 2 && data[12] != 0 {
-		return &InvalidField{"Unused", int(data[12]), 0}
+		return &invalidField{"Unused", int(data[12]), 0}
 	} else if version == 2 && data[13] != 0 {
-		return &InvalidField{"Unused", int(data[13]), 0}
+		return &invalidField{"Unused", int(data[13]), 0}
 	}
 
 	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
@@ -1484,26 +1483,26 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, WINDOW_UPDATE}
+		return &incorrectFrame{DATA_FRAME, WINDOW_UPDATE}
 	}
 
 	// Check it's a WINDOW_UPDATE.
 	if bytesToUint16(start[2:4]) != WINDOW_UPDATE {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), WINDOW_UPDATE}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), WINDOW_UPDATE}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length != 8 {
-		return &IncorrectDataLength{length, 8}
+		return &incorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -1521,7 +1520,7 @@ func (frame *WindowUpdateFrame) Parse(reader *bufio.Reader) error {
 
 	// Check unused space.
 	if (data[8]>>7)|(data[12]>>7) != 0 {
-		return &InvalidField{"Unused", 1, 0}
+		return &invalidField{"Unused", 1, 0}
 	}
 
 	// Ignored in SPDY/2.
@@ -1627,26 +1626,26 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a control frame.
 	if start[0]&0x80 == 0 {
-		return &IncorrectFrame{DATA_FRAME, CREDENTIAL}
+		return &incorrectFrame{DATA_FRAME, CREDENTIAL}
 	}
 
 	// Check it's a CREDENTIAL.
 	if bytesToUint16(start[2:4]) != CREDENTIAL {
-		return &IncorrectFrame{int(bytesToUint16(start[2:4])), CREDENTIAL}
+		return &incorrectFrame{int(bytesToUint16(start[2:4])), CREDENTIAL}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(start[0]&0x7f) << 8) + uint16(start[1])
 	if !SupportedVersion(version) || version < 3 {
-		return UnsupportedVersion(version)
+		return unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length < 6 {
-		return &IncorrectDataLength{length, 6}
+		return &incorrectDataLength{length, 6}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -1664,7 +1663,7 @@ func (frame *CredentialFrame) Parse(reader *bufio.Reader) error {
 
 	// Check flags.
 	if (data[4]) != 0 {
-		return &InvalidField{"Flags", int(data[4]), 0}
+		return &invalidField{"Flags", int(data[4]), 0}
 	}
 
 	frame.version = (uint16(data[0]&0x7f) << 8) + uint16(data[1])
@@ -1804,15 +1803,15 @@ func (frame *DataFrame) Parse(reader *bufio.Reader) error {
 
 	// Check it's a data frame.
 	if start[0]&0x80 == 1 {
-		return &IncorrectFrame{CONTROL_FRAME, DATA_FRAME}
+		return &incorrectFrame{CONTROL_FRAME, DATA_FRAME}
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(start[5:8]))
 	if length < 1 && start[4] == 0 {
-		return &IncorrectDataLength{length, 1}
+		return &incorrectDataLength{length, 1}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return FrameTooLarge
+		return frameTooLarge
 	}
 
 	// Read in data.
@@ -1896,94 +1895,6 @@ func (frame *DataFrame) WriteTo(writer io.Writer) error {
 	return err
 }
 
-func decodeHeaders(data []byte, dec *Decompressor, version uint16) (http.Header, error) {
-	return dec.Decompress(data)
-}
-
-func encodeHeaders(h http.Header, enc *Compressor, version uint16) ([]byte, error) {
-	h.Del("Connection")
-	h.Del("Keep-Alive")
-	h.Del("Proxy-Connection")
-	h.Del("Transfer-Encoding")
-
-	length := 4
-	num := len(h)
-	lens := make(map[string]int)
-	for name, values := range h {
-		length += len(name) + 8
-		lens[name] = len(values) - 1
-		for _, value := range values {
-			length += len(value)
-			lens[name] += len(value)
-		}
-	}
-
-	out := make([]byte, length)
-	switch version {
-	case 3:
-		out[0] = byte(num >> 24)
-		out[1] = byte(num >> 16)
-		out[2] = byte(num >> 8)
-		out[3] = byte(num)
-	case 2:
-		out[0] = byte(num >> 8)
-		out[1] = byte(num)
-	}
-
-	offset := 4
-	if version == 2 {
-		offset = 2
-	}
-	for name, values := range h {
-		nLen := len(name)
-		switch version {
-		case 3:
-			out[offset+0] = byte(nLen >> 24)
-			out[offset+1] = byte(nLen >> 16)
-			out[offset+2] = byte(nLen >> 8)
-			out[offset+3] = byte(nLen)
-			offset += 4
-		case 2:
-			out[offset+0] = byte(nLen >> 8)
-			out[offset+1] = byte(nLen)
-			offset += 2
-		}
-
-		for i, b := range []byte(strings.ToLower(name)) {
-			out[offset+i] = b
-		}
-
-		offset += nLen
-
-		vLen := lens[name]
-		switch version {
-		case 3:
-			out[offset+0] = byte(vLen >> 24)
-			out[offset+1] = byte(vLen >> 16)
-			out[offset+2] = byte(vLen >> 8)
-			out[offset+3] = byte(vLen)
-			offset += 4
-		case 2:
-			out[offset+0] = byte(vLen >> 8)
-			out[offset+1] = byte(vLen)
-			offset += 2
-		}
-
-		for n, value := range values {
-			for i, b := range []byte(value) {
-				out[offset+i] = b
-			}
-			offset += len(value)
-			if n < len(values)-1 {
-				out[offset] = '\x00'
-				offset += 1
-			}
-		}
-	}
-
-	return enc.Compress(out)
-}
-
 func cloneHeaders(h http.Header) http.Header {
 	h2 := make(http.Header, len(h))
 	for k, vv := range h {
@@ -2022,10 +1933,6 @@ var frameNames = map[int]string{
 	DATA_FRAME:    "DATA_FRAME",
 }
 
-func FrameName(frameType int) string {
-	return frameNames[frameType]
-}
-
 func bytesToUint16(b []byte) uint16 {
 	return (uint16(b[0]) << 8) + uint16(b[1])
 }
@@ -2047,35 +1954,35 @@ func bytesToUint31(b []byte) uint32 {
 }
 
 /*** ERRORS ***/
-type IncorrectFrame struct {
+type incorrectFrame struct {
 	got, expected int
 }
 
-func (i *IncorrectFrame) Error() string {
-	return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", FrameName(i.expected), FrameName(i.got))
+func (i *incorrectFrame) Error() string {
+	return fmt.Sprintf("Error: Frame %s tried to parse data for a %s.", frameNames[i.expected], frameNames[i.got])
 }
 
-type UnsupportedVersion uint16
+type unsupportedVersion uint16
 
-func (u UnsupportedVersion) Error() string {
+func (u unsupportedVersion) Error() string {
 	return fmt.Sprintf("Error: Unsupported SPDY version: %d.\n", u)
 }
 
-type IncorrectDataLength struct {
+type incorrectDataLength struct {
 	got, expected int
 }
 
-func (i *IncorrectDataLength) Error() string {
+func (i *incorrectDataLength) Error() string {
 	return fmt.Sprintf("Error: Incorrect amount of data for frame: got %d bytes, expected %d.", i.got, i.expected)
 }
 
-var FrameTooLarge = errors.New("Error: Frame too large.")
+var frameTooLarge = errors.New("Error: Frame too large.")
 
-type InvalidField struct {
+type invalidField struct {
 	field         string
 	got, expected int
 }
 
-func (i *InvalidField) Error() string {
+func (i *invalidField) Error() string {
 	return fmt.Sprintf("Error: Field %q recieved invalid data %d, expecting %d.", i.field, i.got, i.expected)
 }
