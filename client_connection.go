@@ -761,6 +761,10 @@ func (conn *clientConnection) cleanup() {
 		stream.Stop()
 	}
 	conn.streams = nil
+	close(conn.dataOutput)
+	conn.compressor.Close()
+	conn.compressor = nil
+	conn.decompressor = nil
 }
 
 // run prepares and executes the frame reading
