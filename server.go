@@ -673,6 +673,7 @@ func acceptSPDYv2(server *Server, tlsConn *tls.Conn, _ http.Handler) {
 	conn.version = 2
 
 	conn.serve()
+	tlsConn.Close()
 }
 
 // acceptSPDYv3 is used in starting a SPDY/3 connection from an HTTP
@@ -684,6 +685,7 @@ func acceptSPDYv3(server *Server, tlsConn *tls.Conn, _ http.Handler) {
 	conn.version = 3
 
 	conn.serve()
+	tlsConn.Close()
 }
 
 // AddSPDY adds SPDY support to srv, using spdy.DefaultServeMux to handle requests.
