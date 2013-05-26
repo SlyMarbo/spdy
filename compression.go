@@ -15,7 +15,7 @@ var versionError = errors.New("spdy: Version not supported.")
 // Decompressor is used to decompress name/value header blocks.
 // Decompressors retain their state, so a single Decompressor
 // should be used for each direction of a particular connection.
-type Decompressor struct {
+type decompressor struct {
 	m       sync.Mutex
 	in      *bytes.Buffer
 	out     io.ReadCloser
@@ -24,15 +24,15 @@ type Decompressor struct {
 
 // NewDecompressor is used to create a new decompressor.
 // It takes the SPDY version to use.
-func NewDecompressor(version uint16) *Decompressor {
-	out := new(Decompressor)
+func NewDecompressor(version uint16) Decompressor {
+	out := new(decompressor)
 	out.version = version
 	return out
 }
 
 // Decompress uses zlib decompression to decompress the provided
 // data, according to the SPDY specification of the given version.
-func (d *Decompressor) Decompress(data []byte) (headers http.Header, err error) {
+func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) {
 	d.m.Lock()
 	defer d.m.Unlock()
 
@@ -145,7 +145,7 @@ func (d *Decompressor) Decompress(data []byte) (headers http.Header, err error) 
 // Compressors retain their state, so a single Compressor
 // should be used for each direction of a particular
 // connection.
-type Compressor struct {
+type compressor struct {
 	m       sync.Mutex
 	buf     *bytes.Buffer
 	w       *zlib.Writer
@@ -154,15 +154,15 @@ type Compressor struct {
 
 // NewCompressor is used to create a new compressor.
 // It takes the SPDY version to use.
-func NewCompressor(version uint16) *Compressor {
-	out := new(Compressor)
+func NewCompressor(version uint16) Compressor {
+	out := new(compressor)
 	out.version = version
 	return out
 }
 
 // Compress uses zlib compression to compress the provided
 // data, according to the SPDY specification of the given version.
-func (c *Compressor) Compress(h http.Header) ([]byte, error) {
+func (c *compressor) Compress(h http.Header) ([]byte, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -277,6 +277,6 @@ func (c *Compressor) Compress(h http.Header) ([]byte, error) {
 	return c.buf.Bytes(), nil
 }
 
-func (c *Compressor) Close() error {
+func (c *compressor) Close() error {
 	return c.w.Close()
 }

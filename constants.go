@@ -115,7 +115,7 @@ const DEFAULT_MAX_CONCURRENT_STREAMS = 1000
 // Maximum delta window size field for WINDOW_UPDATE.
 const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
-var statusCodeText = map[int]string{
+var statusCodeText = map[StatusCode]string{
 	RST_STREAM_PROTOCOL_ERROR:        "PROTOCOL_ERROR",
 	RST_STREAM_INVALID_STREAM:        "INVALID_STREAM",
 	RST_STREAM_REFUSED_STREAM:        "REFUSED_STREAM",
@@ -127,6 +127,17 @@ var statusCodeText = map[int]string{
 	RST_STREAM_STREAM_ALREADY_CLOSED: "STREAM_ALREADY_CLOSED",
 	RST_STREAM_INVALID_CREDENTIALS:   "INVALID_CREDENTIALS",
 	RST_STREAM_FRAME_TOO_LARGE:       "FRAME_TOO_LARGE",
+}
+
+var settingText = map[uint32]string{
+	SETTINGS_UPLOAD_BANDWIDTH:               "UPLOAD_BANDWIDTH",
+	SETTINGS_DOWNLOAD_BANDWIDTH:             "DOWNLOAD_BANDWIDTH",
+	SETTINGS_ROUND_TRIP_TIME:                "ROUND_TRIP_TIME",
+	SETTINGS_MAX_CONCURRENT_STREAMS:         "MAX_CONCURRENT_STREAMS",
+	SETTINGS_CURRENT_CWND:                   "CURRENT_CWND",
+	SETTINGS_DOWNLOAD_RETRANS_RATE:          "DOWNLOAD_RETRANS_RATE",
+	SETTINGS_INITIAL_WINDOW_SIZE:            "INITIAL_WINDOW_SIZE",
+	SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE: "CLIENT_CERTIFICATE_VECTOR_SIZE",
 }
 
 // streamLimit is used to add and enforce
@@ -194,83 +205,6 @@ func statusCodeIsFatal(code int) bool {
 	default:
 		return false
 	}
-}
-
-// StreamState is used to store and query
-// the stream's state. The active methods
-// do not directly affect the stream's
-// state, but it will use that information
-// to affect the changes.
-type StreamState struct {
-	sync.RWMutex
-	s uint8
-}
-
-// Check whether the stream is open.
-func (s *StreamState) Open() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateOpen
-}
-
-// Check whether the stream is closed.
-func (s *StreamState) Closed() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateClosed
-}
-
-// Check whether the stream is half-closed at the other endpoint.
-func (s *StreamState) ClosedThere() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateClosed || s.s == stateHalfClosedThere
-}
-
-// Check whether the stream is open at the other endpoint.
-func (s *StreamState) OpenThere() bool {
-	return !s.ClosedThere()
-}
-
-// Check whether the stream is half-closed at the other endpoint.
-func (s *StreamState) ClosedHere() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateClosed || s.s == stateHalfClosedHere
-}
-
-// Check whether the stream is open locally.
-func (s *StreamState) OpenHere() bool {
-	return !s.ClosedHere()
-}
-
-// Closes the stream.
-func (s *StreamState) Close() {
-	s.Lock()
-	s.s = stateClosed
-	s.Unlock()
-}
-
-// Half-close the stream locally.
-func (s *StreamState) CloseHere() {
-	s.Lock()
-	if s.s == stateOpen {
-		s.s = stateHalfClosedHere
-	} else if s.s == stateHalfClosedThere {
-		s.s = stateClosed
-	}
-	s.Unlock()
-}
-
-// Half-close the stream at the other endpoint.
-func (s *StreamState) CloseThere() {
-	s.Lock()
-	if s.s == stateOpen {
-		s.s = stateHalfClosedThere
-	} else if s.s == stateHalfClosedHere {
-		s.s = stateClosed
-	}
-	s.Unlock()
 }
 
 // defaultPriority returns the default request
