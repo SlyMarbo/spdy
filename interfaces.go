@@ -216,37 +216,6 @@ func (s *Setting) String() string {
 
 type Settings map[uint32]*Setting
 
-func (s Settings) Bytes() []byte {
-	if len(s) == 0 {
-		return []byte{}
-	}
-
-	ids := make([]int, 0, len(s))
-	for id := range s {
-		ids = append(ids, int(id))
-	}
-
-	sort.Sort(sort.IntSlice(ids))
-
-	out := make([]byte, 8*len(s))
-
-	offset := 0
-	for _, id := range ids {
-		setting := s[uint32(id)]
-		out[offset] = byte(setting.Flags)
-		out[offset+1] = byte(setting.ID >> 16)
-		out[offset+2] = byte(setting.ID >> 8)
-		out[offset+3] = byte(setting.ID)
-		out[offset+4] = byte(setting.Value >> 24)
-		out[offset+5] = byte(setting.Value >> 16)
-		out[offset+6] = byte(setting.Value >> 8)
-		out[offset+7] = byte(setting.Value)
-		offset += 8
-	}
-
-	return out
-}
-
 func (s Settings) Settings() []*Setting {
 	if len(s) == 0 {
 		return []*Setting{}
