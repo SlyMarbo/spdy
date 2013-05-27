@@ -56,7 +56,7 @@ func readFrameV3(reader *bufio.Reader) (frame Frame, err error) {
  *** SYN_STREAM ***
  ******************/
 type synStreamFrameV3 struct {
-	flags         Flags
+	Flags         Flags
 	streamID      StreamID
 	AssocStreamID StreamID
 	Priority      Priority
@@ -92,10 +92,6 @@ func (frame *synStreamFrameV3) Decompress(decom Decompressor) error {
 	frame.Header = header
 	frame.rawHeader = nil
 	return nil
-}
-
-func (frame *synStreamFrameV3) Flags() Flags {
-	return frame.flags
 }
 
 func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -141,7 +137,7 @@ func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 18, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.streamID = StreamID(bytesToUint32(data[8:12]))
 	frame.AssocStreamID = StreamID(bytesToUint32(data[12:16]))
 	frame.Priority = Priority(data[16] >> 5)
@@ -164,22 +160,22 @@ func (frame *synStreamFrameV3) StreamID() StreamID {
 
 func (frame *synStreamFrameV3) String() string {
 	buf := new(bytes.Buffer)
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if frame.flags.UNIDIRECTIONAL() {
-		flags += " FLAG_UNIDIRECTIONAL"
+	if frame.Flags.UNIDIRECTIONAL() {
+		Flags += " FLAG_UNIDIRECTIONAL"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("SYN_STREAM {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
 	buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
@@ -208,7 +204,7 @@ func (frame *synStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[1] = 3                         // Version
 	out[2] = 0                         // Type
 	out[3] = 1                         // Type
-	out[4] = byte(frame.flags)         // Flags
+	out[4] = byte(frame.Flags)         // Flags
 	out[5] = byte(length >> 16)        // Length
 	out[6] = byte(length >> 8)         // Length
 	out[7] = byte(length)              // Length
@@ -240,7 +236,7 @@ func (frame *synStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
  *** SYN_REPLY ***
  *****************/
 type synReplyFrameV3 struct {
-	flags     Flags
+	Flags     Flags
 	streamID  StreamID
 	Header    http.Header
 	rawHeader []byte
@@ -273,10 +269,6 @@ func (frame *synReplyFrameV3) Decompress(decom Decompressor) error {
 	frame.Header = header
 	frame.rawHeader = nil
 	return nil
-}
-
-func (frame *synReplyFrameV3) Flags() Flags {
-	return frame.flags
 }
 
 func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -320,7 +312,7 @@ func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.streamID = StreamID(bytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
@@ -333,19 +325,19 @@ func (frame *synReplyFrameV3) StreamID() StreamID {
 
 func (frame *synReplyFrameV3) String() string {
 	buf := new(bytes.Buffer)
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("SYN_REPLY {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Header:               %v\n}\n", frame.Header))
 
@@ -368,7 +360,7 @@ func (frame *synReplyFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[1] = 3                    // Version
 	out[2] = 0                    // Type
 	out[3] = 2                    // Type
-	out[4] = byte(frame.flags)    // Flags
+	out[4] = byte(frame.Flags)    // Flags
 	out[5] = byte(length >> 16)   // Length
 	out[6] = byte(length >> 8)    // Length
 	out[7] = byte(length)         // Length
@@ -404,10 +396,6 @@ func (frame *rstStreamFrameV3) Compress(comp Compressor) error {
 
 func (frame *rstStreamFrameV3) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *rstStreamFrameV3) Flags() Flags {
-	return 0
 }
 
 func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -506,12 +494,12 @@ func (frame *rstStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
  *** SETTINGS ***
  ****************/
 type settingsFrameV3 struct {
-	flags    Flags
+	Flags    Flags
 	Settings Settings
 }
 
-func (frame *settingsFrameV3) Add(flags Flags, id uint32, value uint32) {
-	frame.Settings[id] = &Setting{flags, id, value}
+func (frame *settingsFrameV3) Add(Flags Flags, id uint32, value uint32) {
+	frame.Settings[id] = &Setting{Flags, id, value}
 }
 
 func (frame *settingsFrameV3) Compress(comp Compressor) error {
@@ -520,10 +508,6 @@ func (frame *settingsFrameV3) Compress(comp Compressor) error {
 
 func (frame *settingsFrameV3) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *settingsFrameV3) Flags() Flags {
-	return frame.flags
 }
 
 func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -568,7 +552,7 @@ func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.Settings = make(Settings)
 	for i := 0; i < numSettings; i++ {
 		j := i * 8
@@ -588,19 +572,19 @@ func (frame *settingsFrameV3) StreamID() StreamID {
 
 func (frame *settingsFrameV3) String() string {
 	buf := new(bytes.Buffer)
-	flags := ""
-	if frame.flags.CLEAR_SETTINGS() {
-		flags += " FLAG_SETTINGS_CLEAR_SETTINGS"
+	Flags := ""
+	if frame.Flags.CLEAR_SETTINGS() {
+		Flags += " FLAG_SETTINGS_CLEAR_SETTINGS"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("SETTINGS {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", frame.flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", frame.Flags))
 	buf.WriteString(fmt.Sprintf("Settings:\n"))
 	settings := frame.Settings.Settings()
 	for _, setting := range settings {
@@ -621,7 +605,7 @@ func (frame *settingsFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[1] = 3                       // Version
 	out[2] = 0                       // Type
 	out[3] = 4                       // Type
-	out[4] = byte(frame.flags)       // Flags
+	out[4] = byte(frame.Flags)       // Flags
 	out[5] = byte(length >> 16)      // Length
 	out[6] = byte(length >> 8)       // Length
 	out[7] = byte(length)            // Length
@@ -702,10 +686,6 @@ func (frame *pingFrameV3) Decompress(decomp Decompressor) error {
 	return nil
 }
 
-func (frame *pingFrameV3) Flags() Flags {
-	return 0
-}
-
 func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 12)
 	if err != nil {
@@ -734,7 +714,7 @@ func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, &incorrectDataLength{length, 4}
 	}
 
-	// Check flags.
+	// Check Flags.
 	if (data[4]) != 0 {
 		return 12, &invalidField{"Flags", int(data[4]), 0}
 	}
@@ -798,10 +778,6 @@ func (frame *goawayFrameV3) Decompress(decomp Decompressor) error {
 	return nil
 }
 
-func (frame *goawayFrameV3) Flags() Flags {
-	return 0
-}
-
 func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 16)
 	if err != nil {
@@ -835,7 +811,7 @@ func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 16, &invalidField{"Unused", 1, 0}
 	}
 
-	// Check flags.
+	// Check Flags.
 	if (data[4]) != 0 {
 		return 16, &invalidField{"Flags", int(data[4]), 0}
 	}
@@ -901,7 +877,7 @@ func (frame *goawayFrameV3) WriteTo(writer io.Writer) (int64, error) {
  *** HEADERS ***
  ***************/
 type headersFrameV3 struct {
-	flags     Flags
+	Flags     Flags
 	streamID  StreamID
 	Header    http.Header
 	rawHeader []byte
@@ -934,10 +910,6 @@ func (frame *headersFrameV3) Decompress(decom Decompressor) error {
 	frame.Header = header
 	frame.rawHeader = nil
 	return nil
-}
-
-func (frame *headersFrameV3) Flags() Flags {
-	return frame.flags
 }
 
 func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -981,7 +953,7 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.streamID = StreamID(bytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
@@ -999,19 +971,19 @@ func (frame *headersFrameV3) StreamID() StreamID {
 func (frame *headersFrameV3) String() string {
 	buf := new(bytes.Buffer)
 
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("HEADERS {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Header:               %v\n}\n", frame.Header))
 
@@ -1034,7 +1006,7 @@ func (frame *headersFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[1] = 3                    // Version
 	out[2] = 0                    // Type
 	out[3] = 8                    // Type
-	out[4] = byte(frame.flags)    // Flags
+	out[4] = byte(frame.Flags)    // Flags
 	out[5] = byte(length >> 16)   // Length
 	out[6] = byte(length >> 8)    // Length
 	out[7] = byte(length)         // Length
@@ -1070,10 +1042,6 @@ func (frame *windowUpdateFrameV3) Compress(comp Compressor) error {
 
 func (frame *windowUpdateFrameV3) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *windowUpdateFrameV3) Flags() Flags {
-	return 0
 }
 
 func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -1182,10 +1150,6 @@ func (frame *credentialFrameV3) Decompress(decomp Decompressor) error {
 	return nil
 }
 
-func (frame *credentialFrameV3) Flags() Flags {
-	return 0
-}
-
 func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 18)
 	if err != nil {
@@ -1216,7 +1180,7 @@ func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 18, frameTooLarge
 	}
 
-	// Check flags.
+	// Check Flags.
 	if (data[4]) != 0 {
 		return 18, &invalidField{"Flags", int(data[4]), 0}
 	}
@@ -1325,7 +1289,7 @@ func (frame *credentialFrameV3) WriteTo(writer io.Writer) (int64, error) {
  ************/
 type dataFrameV3 struct {
 	streamID StreamID
-	flags    Flags
+	Flags    Flags
 	Data     []byte
 }
 
@@ -1335,10 +1299,6 @@ func (frame *dataFrameV3) Compress(comp Compressor) error {
 
 func (frame *dataFrameV3) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *dataFrameV3) Flags() Flags {
-	return 0
 }
 
 func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -1369,7 +1329,7 @@ func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	frame.streamID = StreamID(bytesToUint32(data[0:4]))
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	if frame.Data == nil {
 		frame.Data = []byte{}
 	}
@@ -1384,19 +1344,19 @@ func (frame *dataFrameV3) StreamID() StreamID {
 func (frame *dataFrameV3) String() string {
 	buf := new(bytes.Buffer)
 
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("DATA {\n\t")
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Length:               %d\n\t", len(frame.Data)))
 	buf.WriteString(fmt.Sprintf("Data:                 %v\n}\n", frame.Data))
 
@@ -1408,7 +1368,7 @@ func (frame *dataFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	if length > MAX_DATA_SIZE {
 		return 0, errors.New("Error: Data size too large.")
 	}
-	if length == 0 && !frame.flags.FIN() {
+	if length == 0 && !frame.Flags.FIN() {
 		return 0, errors.New("Error: Data is empty.")
 	}
 
@@ -1418,7 +1378,7 @@ func (frame *dataFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[1] = frame.streamID.b2() // Stream ID
 	out[2] = frame.streamID.b3() // Stream ID
 	out[3] = frame.streamID.b4() // Stream ID
-	out[4] = byte(frame.flags)   // Flags
+	out[4] = byte(frame.Flags)   // Flags
 	out[5] = byte(length >> 16)  // Length
 	out[6] = byte(length >> 8)   // Length
 	out[7] = byte(length)        // Length

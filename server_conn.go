@@ -3,25 +3,26 @@ package spdy
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
 )
 
-func NewClientConn(conn net.Conn, client *http.Client, version uint16) (spdyConn Conn, err error) {
+func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn Conn, err error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")
 	}
-	if client == nil {
-		return nil, errors.New("Error: Connection initialised with nil client.")
+	if server == nil {
+		return nil, errors.New("Error: Connection initialised with nil server.")
 	}
 
 	switch version {
 	case 3:
 		out := new(connV3)
 		out.remoteAddr = conn.RemoteAddr().String()
-		out.server = nil
-		out.client = client
+		out.server = server
+		out.client = nil
 		out.conn = conn
 		out.buf = bufio.NewReader(conn)
 		if tlsConn, ok := conn.(*tls.Conn); ok {
@@ -45,12 +46,23 @@ func NewClientConn(conn net.Conn, client *http.Client, version uint16) (spdyConn
 		out.receivedSettings = make(Settings)
 		out.lastPushStreamID = 0
 		out.lastRequestStreamID = 0
-		out.oddity = 1
-		out.initialWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-		out.requestStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
-		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
-		out.pushRequests = make(map[StreamID]*http.Request)
+		out.oddity = 0
+		out.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
+		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
+		out.vectorIndex = 8
+		out.certificates = make(map[uint16][]*x509.Certificate, 8)
+		if out.tlsState != nil && out.tlsState.PeerCertificates != nil {
+			out.certificates[1] = out.tlsState.PeerCertificates
+		}
 		out.stop = make(chan struct{})
+		out.init = func() {
+			// Initialise the connection by sending the connection settings.
+			settings := new(settingsFrameV3)
+			settings.Flags = FLAG_SETTINGS_PERSIST_VALUE
+			settings.Settings = defaultSPDYServerSettings(3, DEFAULT_STREAM_LIMIT)
+			out.output[0] <- settings
+		}
 
 		return out, nil
 

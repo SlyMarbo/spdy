@@ -17,8 +17,9 @@ import (
 // be started with a call to Run, which will return once the
 // connection has been terminated. The connection can be ended
 // early by using Close.
-type Connection interface {
+type Conn interface {
 	io.Closer
+	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
 	Push(url string, origin Stream) (Stream, error)
 	Request(request *http.Request, priority int) (Stream, error)
@@ -29,8 +30,7 @@ type Connection interface {
 type Stream interface {
 	http.ResponseWriter
 	io.ReadCloser
-	Connection() Connection
-	Push(url string) (Stream, error)
+	Conn() Conn
 	ReceiveFrame(Frame) error
 	Run() error
 	State() *StreamState
@@ -44,7 +44,6 @@ type Frame interface {
 	io.WriterTo
 	Compress(Compressor) error
 	Decompress(Decompressor) error
-	Flags() Flags
 	StreamID() StreamID
 }
 
@@ -113,7 +112,7 @@ func (s StreamID) Zero() bool {
  * Flags *
  *********/
 
-// Flags represent a frame's flags.
+// Flags represent a frame's Flags.
 type Flags byte
 
 // CLEAR_SETTINGS indicates whether the CLEAR_SETTINGS
@@ -198,20 +197,20 @@ type Setting struct {
 
 func (s *Setting) String() string {
 	id := settingText[s.ID] + ":"
-	flags := ""
+	Flags := ""
 	if s.Flags.PERSIST_VALUE() {
-		flags += " FLAG_SETTINGS_PERSIST_VALUE"
+		Flags += " FLAG_SETTINGS_PERSIST_VALUE"
 	}
 	if s.Flags.PERSISTED() {
-		flags += " FLAG_SETTINGS_PERSISTED"
+		Flags += " FLAG_SETTINGS_PERSISTED"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
-	return fmt.Sprintf("%-31s %-10d %s", id, s.Value, flags)
+	return fmt.Sprintf("%-31s %-10d %s", id, s.Value, Flags)
 }
 
 type Settings map[uint32]*Setting
@@ -417,6 +416,17 @@ func write(w io.Writer, data []byte) error {
 			i -= n
 		}
 	}
+	return nil
+}
+
+// readCloser is a helper structure to allow
+// an io.Reader to satisfy the io.ReadCloser
+// interface.
+type readCloser struct {
+	io.Reader
+}
+
+func (r *readCloser) Close() error {
 	return nil
 }
 

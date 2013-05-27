@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-var versionError = errors.New("spdy: Version not supported.")
+var versionError = errors.New("Version not supported.")
 
 // Decompressor is used to decompress name/value header blocks.
 // Decompressors retain their state, so a single Decompressor

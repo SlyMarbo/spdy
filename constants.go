@@ -109,9 +109,6 @@ const DEFAULT_INITIAL_WINDOW_SIZE = 65536
 // The default initial transfer window sent by the client.
 const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
 
-// The default maximum number of concurrent streams.
-const DEFAULT_MAX_CONCURRENT_STREAMS = 1000
-
 // Maximum delta window size field for WINDOW_UPDATE.
 const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
@@ -148,6 +145,15 @@ type streamLimit struct {
 	limit   uint32
 	current uint32
 }
+
+func newStreamLimit(limit uint32) *streamLimit {
+	out := new(streamLimit)
+	out.limit = limit
+	return out
+}
+
+// The default maximum number of concurrent streams.
+const DEFAULT_STREAM_LIMIT = 1000
 
 // NO_STREAM_LIMIT can be used to disable the stream limit.
 const NO_STREAM_LIMIT = 0x80000000
@@ -191,7 +197,7 @@ func (s *streamLimit) Close() {
 // indicating whether receiving the
 // given status code would end the
 // connection.
-func statusCodeIsFatal(code int) bool {
+func statusCodeIsFatal(code StatusCode) bool {
 	switch code {
 	case RST_STREAM_PROTOCOL_ERROR:
 		return true
@@ -317,22 +323,22 @@ func DisableSpdyVersion(v uint16) error {
 
 // defaultSPDYServerSettings are used in initialising the connection.
 // It takes the SPDY version and max concurrent streams.
-func defaultSPDYServerSettings(v uint16, m uint32) []*Setting {
+func defaultSPDYServerSettings(v uint16, m uint32) Settings {
 	switch v {
 	case 3:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_INITIAL_WINDOW_SIZE: &Setting{
 				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
 				Value: DEFAULT_INITIAL_WINDOW_SIZE,
 			},
-			&Setting{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
 		}
 	case 2:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
@@ -343,22 +349,22 @@ func defaultSPDYServerSettings(v uint16, m uint32) []*Setting {
 
 // defaultSPDYClientSettings are used in initialising the connection.
 // It takes the SPDY version and max concurrent streams.
-func defaultSPDYClientSettings(v uint16, m uint32) []*Setting {
+func defaultSPDYClientSettings(v uint16, m uint32) Settings {
 	switch v {
 	case 3:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_INITIAL_WINDOW_SIZE: &Setting{
 				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
 				Value: DEFAULT_INITIAL_CLIENT_WINDOW_SIZE,
 			},
-			&Setting{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
 		}
 	case 2:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
