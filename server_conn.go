@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 )
 
@@ -116,6 +117,8 @@ func AddSPDY(srv *http.Server) {
 					return
 				}
 				conn.Run()
+				conn = nil
+				runtime.GC()
 			}
 		case "spdy/3":
 			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
@@ -125,6 +128,8 @@ func AddSPDY(srv *http.Server) {
 					return
 				}
 				conn.Run()
+				conn = nil
+				runtime.GC()
 			}
 		}
 	}
@@ -192,6 +197,8 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 					return
 				}
 				conn.Run()
+				conn = nil
+				runtime.GC()
 			}
 		case "spdy/3":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
@@ -201,6 +208,8 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 					return
 				}
 				conn.Run()
+				conn = nil
+				runtime.GC()
 			}
 		}
 	}
