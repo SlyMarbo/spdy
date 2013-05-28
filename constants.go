@@ -2,7 +2,6 @@ package spdy
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	logging "log"
@@ -266,15 +265,22 @@ func SupportedVersions() []int {
 	return s
 }
 
-// NpnStrings returns the NPN version strings for the SPDY versions
+var npnStrings = map[uint16]string{
+	2: "spdy/2",
+	3: "spdy/3",
+}
+
+// npn returns the NPN version strings for the SPDY versions
 // currently enabled, plus HTTP/1.1.
 //
-//		fmt.Println(spdy.NpnStrings()) // => ["spdy/3" "spdy/2" "http/1.1"]
-func NpnStrings() []string {
+//		fmt.Println(spdy.npn()) // => ["spdy/3" "spdy/2" "http/1.1"]
+func npn() []string {
 	v := SupportedVersions()
 	s := make([]string, 0, len(v)+1)
 	for _, v := range v {
-		s = append(s, fmt.Sprintf("spdy/%d", v))
+		if str := npnStrings[uint16(v)]; str != "" {
+			s = append(s, str)
+		}
 	}
 	s = append(s, "http/1.1")
 	return s

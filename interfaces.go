@@ -21,7 +21,7 @@ type Conn interface {
 	io.Closer
 	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
-	Push(url string, origin Stream) (Stream, error)
+	Push(url string, origin Stream) (http.ResponseWriter, error)
 	Request(request *http.Request, priority int) (Stream, error)
 	Run() error
 }

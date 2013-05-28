@@ -126,7 +126,7 @@ func (conn *connV3) Ping() (<-chan Ping, error) {
 	return c, nil
 }
 
-func (conn *connV3) Push(resource string, origin Stream) (Stream, error) {
+func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, error) {
 	if conn.goaway {
 		return nil, errors.New("Error: GOAWAY received, so push could not be sent.")
 	}
@@ -173,22 +173,21 @@ func (conn *connV3) Push(resource string, origin Stream) (Stream, error) {
 	conn.output[0] <- push
 	conn.Unlock()
 
-	// // Create the pushStream.
-	// 	out := new(pushStreamV3)
-	// 	out.conn = conn
-	// 	out.streamID = newID
-	// 	out.origin = origin
-	// 	out.state = new(StreamState)
-	// 	out.output = conn.output[7]
-	// 	out.header = make(http.Header)
-	// 	out.stop = conn.stop
-	// 	out.AddFlowControl()
-	// 
-	// 	// Store in the connection map.
-	// 	conn.streams[newID] = out
-	// 
-	// 	return out, nil
-	return nil, nil
+	// Create the pushStream.
+	out := new(pushStreamV3)
+	out.conn = conn
+	out.streamID = newID
+	out.origin = origin
+	out.state = new(StreamState)
+	out.output = conn.output[7]
+	out.header = make(http.Header)
+	out.stop = conn.stop
+	out.AddFlowControl()
+
+	// Store in the connection map.
+	conn.streams[newID] = out
+
+	return out, nil
 }
 
 func (conn *connV3) Request(request *http.Request, priority int) (Stream, error) {
@@ -293,13 +292,13 @@ func (conn *connV3) Request(request *http.Request, priority int) (Stream, error)
 }
 
 func (conn *connV3) Run() error {
+	// Start the send loop.
+	go conn.send()
+
 	// Prepare any initialisation frames.
 	if conn.init != nil {
 		conn.init()
 	}
-
-	// Start the send loop.
-	go conn.send()
 
 	// Enter the main loop.
 	conn.readFrames()
@@ -858,7 +857,7 @@ Loop:
 		switch frame := frame.(type) {
 
 		case *synStreamFrameV3:
-			if conn.server == nil {
+			if conn.client != nil {
 				conn.handlePush(frame)
 			} else {
 				conn.handleRequest(frame)

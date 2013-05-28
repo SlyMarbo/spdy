@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -39,6 +40,10 @@ func (s *serverStreamV3) Header() http.Header {
 
 // Write is the main method with which data is sent.
 func (s *serverStreamV3) Write(inputData []byte) (int, error) {
+	if s.unidirectional {
+		return 0, errors.New("Error: Stream is unidirectional.")
+	}
+
 	if s.state.ClosedHere() {
 		return 0, errors.New("Error: Stream already closed.")
 	}
@@ -57,7 +62,7 @@ func (s *serverStreamV3) Write(inputData []byte) (int, error) {
 	}
 
 	// Send any new headers.
-	s.writeHeaders()
+	s.writeHeader()
 
 	// Chunk the response if necessary.
 	// Data is sent to the flow control to
@@ -80,8 +85,13 @@ func (s *serverStreamV3) Write(inputData []byte) (int, error) {
 
 // WriteHeader is used to set the HTTP status code.
 func (s *serverStreamV3) WriteHeader(code int) {
+	if s.unidirectional {
+		log.Println("Error: Stream is unidirectional.")
+		return
+	}
+
 	if s.wroteHeader {
-		log.Println("spdy: Error: Multiple calls to ResponseWriter.WriteHeader.")
+		log.Println("Error: Multiple calls to ResponseWriter.WriteHeader.")
 		return
 	}
 
@@ -114,11 +124,35 @@ func (s *serverStreamV3) WriteHeader(code int) {
  *****************/
 
 func (s *serverStreamV3) Close() error {
+	s.Lock()
+	defer s.Unlock()
+	s.writeHeader()
+	if s.state != nil {
+		s.state.Close()
+		s.state = nil
+	}
+	if s.flow != nil {
+		s.flow.Close()
+		s.flow = nil
+	}
+	if s.requestBody != nil {
+		s.requestBody.Reset()
+		s.requestBody = nil
+	}
+	s.output = nil
+	s.request = nil
+	s.handler = nil
+	s.header = nil
+	s.stop = nil
 	return nil
 }
 
 func (s *serverStreamV3) Read(out []byte) (int, error) {
-	return 0, nil
+	n, err := s.requestBody.Read(out)
+	if err == io.EOF && s.state.OpenThere() {
+		return n, nil
+	}
+	return n, err
 }
 
 /**********
@@ -198,25 +232,27 @@ func (s *serverStreamV3) Run() error {
 	// already.
 	// If the stream is already closed at
 	// this end, then nothing happens.
-	if s.state.OpenHere() && !s.wroteHeader {
-		s.header.Set(":status", "200")
-		s.header.Set(":version", "HTTP/1.1")
+	if !s.unidirectional {
+		if s.state.OpenHere() && !s.wroteHeader {
+			s.header.Set(":status", "200")
+			s.header.Set(":version", "HTTP/1.1")
 
-		// Create the response SYN_REPLY.
-		synReply := new(synReplyFrameV3)
-		synReply.Flags = FLAG_FIN
-		synReply.streamID = s.streamID
-		synReply.Header = s.header
+			// Create the response SYN_REPLY.
+			synReply := new(synReplyFrameV3)
+			synReply.Flags = FLAG_FIN
+			synReply.streamID = s.streamID
+			synReply.Header = s.header
 
-		s.output <- synReply
-	} else if s.state.OpenHere() {
-		// Create the DATA.
-		data := new(dataFrameV3)
-		data.streamID = s.streamID
-		data.Flags = FLAG_FIN
-		data.Data = []byte{}
+			s.output <- synReply
+		} else if s.state.OpenHere() {
+			// Create the DATA.
+			data := new(dataFrameV3)
+			data.streamID = s.streamID
+			data.Flags = FLAG_FIN
+			data.Data = []byte{}
 
-		s.output <- data
+			s.output <- data
+		}
 	}
 
 	// Clean up state.
@@ -233,6 +269,9 @@ func (s *serverStreamV3) StreamID() StreamID {
 }
 
 func (s *serverStreamV3) closed() bool {
+	if s.conn == nil || s.state == nil || s.handler == nil {
+		return true
+	}
 	select {
 	case _ = <-s.stop:
 		return true
@@ -241,9 +280,9 @@ func (s *serverStreamV3) closed() bool {
 	}
 }
 
-// writeHeaders is used to flush HTTP headers.
-func (s *serverStreamV3) writeHeaders() {
-	if len(s.header) == 0 {
+// writeHeader is used to flush HTTP headers.
+func (s *serverStreamV3) writeHeader() {
+	if len(s.header) == 0 || s.unidirectional {
 		return
 	}
 

@@ -278,5 +278,13 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 }
 
 func (c *compressor) Close() error {
-	return c.w.Close()
+	if c.w == nil {
+		return nil
+	}
+	err := c.w.Close()
+	if err != nil {
+		return err
+	}
+	c.w = nil
+	return nil
 }

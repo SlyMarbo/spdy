@@ -52,26 +52,26 @@ func (s *serverStreamV3) AddFlowControl() {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-// func (p *pushStream) AddFlowControl() {
-// 	if p.flow != nil {
-// 		return
-// 	}
-// 
-// 	flow := new(flowControl)
-// 	initialWindow := p.conn.initialWindowSize
-// 	flow.streamID = p.streamID
-// 	flow.output = p.output
-// 	if p.version == 3 {
-// 		flow.active = true
-// 		flow.buffer = make([][]byte, 0, 10)
-// 		flow.initialWindow = initialWindow
-// 		flow.transferWindow = int64(initialWindow)
-// 		flow.stream = p
-// 		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-// 		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-// 	}
-// 	p.flow = flow
-// }
+func (p *pushStreamV3) AddFlowControl() {
+	if p.flow != nil {
+		return
+	}
+
+	p.flow = new(flowControl)
+	initialWindow, err := p.conn.InitialWindowSize()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	p.flow.streamID = p.streamID
+	p.flow.output = p.output
+	p.flow.buffer = make([][]byte, 0, 10)
+	p.flow.initialWindow = initialWindow
+	p.flow.transferWindow = int64(initialWindow)
+	p.flow.stream = p
+	p.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	p.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+}
 
 // AddFlowControl initialises flow control for
 // the Stream. If the Stream is running at an
@@ -124,6 +124,64 @@ func (f *flowControl) CheckInitialWindow() {
 		}
 		f.initialWindow = newWindow
 	}
+}
+
+// Close nils any references held by the flowControl.
+func (f *flowControl) Close() {
+	f.buffer = nil
+	f.stream = nil
+}
+
+// Flush is used to send buffered data to
+// the connection, if the transfer window
+// will allow. Flush does not guarantee
+// that any or all buffered data will be
+// sent with a single flush.
+func (f *flowControl) Flush() {
+	f.CheckInitialWindow()
+	if !f.constrained || f.transferWindow == 0 {
+		return
+	}
+
+	out := make([]byte, 0, f.transferWindow)
+	left := f.transferWindow
+	for i := 0; i < len(f.buffer); i++ {
+		if l := int64(len(f.buffer[i])); l <= left {
+			out = append(out, f.buffer[i]...)
+			left -= l
+			f.buffer = f.buffer[1:]
+		} else {
+			out = append(out, f.buffer[i][:left]...)
+			f.buffer[i] = f.buffer[i][left:]
+			left = 0
+		}
+
+		if left == 0 {
+			break
+		}
+	}
+
+	f.transferWindow -= int64(len(out))
+
+	if f.transferWindow > 0 {
+		f.constrained = false
+		fmt.Printf("Stream %d is no longer constrained.\n", f.streamID)
+	}
+
+	dataFrame := new(dataFrameV3)
+	dataFrame.streamID = f.streamID
+	dataFrame.Data = out
+
+	f.output <- dataFrame
+}
+
+// Paused indicates whether there is data buffered.
+// A Stream should not be closed until after the
+// last data has been sent and then Paused returns
+// false.
+func (f *flowControl) Paused() bool {
+	f.CheckInitialWindow()
+	return f.constrained
 }
 
 // Receive is called when data is received from
@@ -208,56 +266,4 @@ func (f *flowControl) Write(data []byte) (int, error) {
 
 	f.output <- dataFrame
 	return l, nil
-}
-
-// Flush is used to send buffered data to
-// the connection, if the transfer window
-// will allow. Flush does not guarantee
-// that any or all buffered data will be
-// sent with a single flush.
-func (f *flowControl) Flush() {
-	f.CheckInitialWindow()
-	if !f.constrained || f.transferWindow == 0 {
-		return
-	}
-
-	out := make([]byte, 0, f.transferWindow)
-	left := f.transferWindow
-	for i := 0; i < len(f.buffer); i++ {
-		if l := int64(len(f.buffer[i])); l <= left {
-			out = append(out, f.buffer[i]...)
-			left -= l
-			f.buffer = f.buffer[1:]
-		} else {
-			out = append(out, f.buffer[i][:left]...)
-			f.buffer[i] = f.buffer[i][left:]
-			left = 0
-		}
-
-		if left == 0 {
-			break
-		}
-	}
-
-	f.transferWindow -= int64(len(out))
-
-	if f.transferWindow > 0 {
-		f.constrained = false
-		fmt.Printf("Stream %d is no longer constrained.\n", f.streamID)
-	}
-
-	dataFrame := new(dataFrameV3)
-	dataFrame.streamID = f.streamID
-	dataFrame.Data = out
-
-	f.output <- dataFrame
-}
-
-// Paused indicates whether there is data buffered.
-// A Stream should not be closed until after the
-// last data has been sent and then Paused returns
-// false.
-func (f *flowControl) Paused() bool {
-	f.CheckInitialWindow()
-	return f.constrained
 }
