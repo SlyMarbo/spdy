@@ -10,9 +10,8 @@ import (
 // versions of SPDY before 3, this has no effect.
 type flowControl struct {
 	stream              Stream
-	streamID            uint32
+	streamID            StreamID
 	output              chan<- Frame
-	active              bool
 	initialWindow       uint32
 	transferWindow      int64
 	sent                uint32
@@ -27,25 +26,25 @@ type flowControl struct {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (s *serverStream) AddFlowControl() {
+func (s *serverStreamV3) AddFlowControl() {
 	if s.flow != nil {
 		return
 	}
 
-	flow := new(flowControl)
-	initialWindow := s.conn.initialWindowSize
-	flow.streamID = s.streamID
-	flow.output = s.output
-	if s.version == 3 {
-		flow.active = true
-		flow.buffer = make([][]byte, 0, 10)
-		flow.initialWindow = initialWindow
-		flow.transferWindow = int64(initialWindow)
-		flow.stream = s
-		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	s.flow = new(flowControl)
+	initialWindow, err := s.conn.InitialWindowSize()
+	if err != nil {
+		log.Println(err)
+		return
 	}
-	s.flow = flow
+	s.flow.streamID = s.streamID
+	s.flow.output = s.output
+	s.flow.buffer = make([][]byte, 0, 10)
+	s.flow.initialWindow = initialWindow
+	s.flow.transferWindow = int64(initialWindow)
+	s.flow.stream = s
+	s.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	s.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 }
 
 // AddFlowControl initialises flow control for
@@ -53,25 +52,25 @@ func (s *serverStream) AddFlowControl() {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (p *pushStream) AddFlowControl() {
+func (p *pushStreamV3) AddFlowControl() {
 	if p.flow != nil {
 		return
 	}
 
-	flow := new(flowControl)
-	initialWindow := p.conn.initialWindowSize
-	flow.streamID = p.streamID
-	flow.output = p.output
-	if p.version == 3 {
-		flow.active = true
-		flow.buffer = make([][]byte, 0, 10)
-		flow.initialWindow = initialWindow
-		flow.transferWindow = int64(initialWindow)
-		flow.stream = p
-		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	p.flow = new(flowControl)
+	initialWindow, err := p.conn.InitialWindowSize()
+	if err != nil {
+		log.Println(err)
+		return
 	}
-	p.flow = flow
+	p.flow.streamID = p.streamID
+	p.flow.output = p.output
+	p.flow.buffer = make([][]byte, 0, 10)
+	p.flow.initialWindow = initialWindow
+	p.flow.transferWindow = int64(initialWindow)
+	p.flow.stream = p
+	p.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	p.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 }
 
 // AddFlowControl initialises flow control for
@@ -79,47 +78,25 @@ func (p *pushStream) AddFlowControl() {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (r *clientStream) AddFlowControl() {
+func (r *clientStreamV3) AddFlowControl() {
 	if r.flow != nil {
 		return
 	}
 
-	flow := new(flowControl)
-	initialWindow := r.conn.initialWindowSize
-	flow.streamID = r.streamID
-	flow.output = r.output
-	if r.version == 3 {
-		flow.active = true
-		flow.buffer = make([][]byte, 0, 10)
-		flow.initialWindow = initialWindow
-		flow.transferWindow = int64(initialWindow)
-		flow.stream = r
-		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	r.flow = new(flowControl)
+	initialWindow, err := r.conn.InitialWindowSize()
+	if err != nil {
+		log.Println(err)
+		return
 	}
-	r.flow = flow
-}
-
-// Active indicates whether flow control
-// is currently in effect. By default,
-// this is true for SPDY version 3 and
-// above, and false for version 1 or 2.
-func (f *flowControl) Active() bool {
-	return f.active
-}
-
-// Activate can be used to manually
-// activate flow control. This is
-// not recommended.
-func (f *flowControl) Activate() {
-	f.active = true
-}
-
-// Deactivate can be used to manually
-// deactivate flow control. This is
-// not recommended.
-func (f *flowControl) Deactivate() {
-	f.active = false
+	r.flow.streamID = r.streamID
+	r.flow.output = r.output
+	r.flow.buffer = make([][]byte, 0, 10)
+	r.flow.initialWindow = initialWindow
+	r.flow.transferWindow = int64(initialWindow)
+	r.flow.stream = r
+	r.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	r.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 }
 
 // CheckInitialWindow is used to handle the race
@@ -130,11 +107,11 @@ func (f *flowControl) Deactivate() {
 // The transfer window is updated retroactively,
 // if necessary.
 func (f *flowControl) CheckInitialWindow() {
-	if !f.active {
+	newWindow, err := f.stream.Conn().InitialWindowSize()
+	if err != nil {
+		log.Println(err)
 		return
 	}
-
-	newWindow := f.stream.Connection().InitialWindowSize()
 
 	if f.initialWindow != newWindow {
 		if f.initialWindow > newWindow {
@@ -149,96 +126,10 @@ func (f *flowControl) CheckInitialWindow() {
 	}
 }
 
-// Receive is called when data is received from
-// the other endpoint. This ensures that they
-// conform to the transfer window, regrows the
-// window, and sends errors if necessary.
-func (f *flowControl) Receive(data []byte) {
-	if !f.active {
-		return
-	}
-
-	// The transfer window shouldn't already be negative.
-	if f.transferWindowThere < 0 {
-		rst := new(RstStreamFrame)
-		rst.version = f.stream.Version()
-		rst.streamID = f.streamID
-		rst.StatusCode = RST_STREAM_FLOW_CONTROL_ERROR
-		f.output <- rst
-		return
-	}
-
-	// Update the window.
-	f.transferWindowThere -= int64(len(data))
-
-	// Regrow the window if it's half-empty.
-	if f.transferWindowThere <= int64(f.initialWindowThere/2) {
-		grow := new(WindowUpdateFrame)
-		grow.version = f.stream.Version()
-		grow.streamID = f.streamID
-		grow.DeltaWindowSize = uint32(int64(f.initialWindowThere) - f.transferWindowThere)
-		f.output <- grow
-	}
-}
-
-// UpdateWindow is called when an UPDATE_WINDOW frame is received,
-// and performs the growing of the transfer window.
-func (f *flowControl) UpdateWindow(deltaWindowSize uint32) error {
-	if int64(deltaWindowSize)+f.transferWindow > MAX_TRANSFER_WINDOW_SIZE {
-		return errors.New("Error: WINDOW_UPDATE delta window size overflows transfer window size.")
-	}
-
-	// Grow window and flush queue.
-	fmt.Printf("Flow: Growing window in stream %d by %d bytes.\n", f.streamID, deltaWindowSize)
-	f.transferWindow += int64(deltaWindowSize)
-
-	f.Flush()
-	return nil
-}
-
-// Write is used to send data to the connection. This
-// takes care of the windowing. Although data may be
-// buffered, rather than actually sent, this is not
-// visible to the caller.
-func (f *flowControl) Write(data []byte) (int, error) {
-	l := len(data)
-	if l == 0 {
-		return 0, nil
-	}
-
-	// Transfer window processing.
-	if f.active {
-		f.CheckInitialWindow()
-		if f.active && f.constrained {
-			f.Flush()
-		}
-		var window uint32
-		if f.transferWindow < 0 {
-			window = 0
-		} else {
-			window = uint32(f.transferWindow)
-		}
-
-		if uint32(len(data)) > window {
-			f.buffer = append(f.buffer, data[window:])
-			data = data[:window]
-			f.sent += window
-			f.transferWindow -= int64(window)
-			f.constrained = true
-			fmt.Printf("Stream %d is now constrained.\n", f.streamID)
-		}
-	}
-
-	if len(data) == 0 {
-		return l, nil
-	}
-
-	dataFrame := new(DataFrame)
-	dataFrame.streamID = f.streamID
-	dataFrame.Data = data
-
-	f.output <- dataFrame
-	return l, nil
+// Close nils any references held by the flowControl.
+func (f *flowControl) Close() {
+	f.buffer = nil
+	f.stream = nil
 }
 
 // Flush is used to send buffered data to
@@ -248,7 +139,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
 // sent with a single flush.
 func (f *flowControl) Flush() {
 	f.CheckInitialWindow()
-	if !f.active || !f.constrained || f.transferWindow == 0 {
+	if !f.constrained || f.transferWindow == 0 {
 		return
 	}
 
@@ -277,7 +168,7 @@ func (f *flowControl) Flush() {
 		fmt.Printf("Stream %d is no longer constrained.\n", f.streamID)
 	}
 
-	dataFrame := new(DataFrame)
+	dataFrame := new(dataFrameV3)
 	dataFrame.streamID = f.streamID
 	dataFrame.Data = out
 
@@ -290,5 +181,89 @@ func (f *flowControl) Flush() {
 // false.
 func (f *flowControl) Paused() bool {
 	f.CheckInitialWindow()
-	return f.active && f.constrained
+	return f.constrained
+}
+
+// Receive is called when data is received from
+// the other endpoint. This ensures that they
+// conform to the transfer window, regrows the
+// window, and sends errors if necessary.
+func (f *flowControl) Receive(data []byte) {
+	// The transfer window shouldn't already be negative.
+	if f.transferWindowThere < 0 {
+		rst := new(rstStreamFrameV3)
+		rst.streamID = f.streamID
+		rst.Status = RST_STREAM_FLOW_CONTROL_ERROR
+		f.output <- rst
+		return
+	}
+
+	// Update the window.
+	f.transferWindowThere -= int64(len(data))
+
+	// Regrow the window if it's half-empty.
+	if f.transferWindowThere <= int64(f.initialWindowThere/2) {
+		grow := new(windowUpdateFrameV3)
+		grow.streamID = f.streamID
+		grow.DeltaWindowSize = uint32(int64(f.initialWindowThere) - f.transferWindowThere)
+		f.output <- grow
+	}
+}
+
+// UpdateWindow is called when an UPDATE_WINDOW frame is received,
+// and performs the growing of the transfer window.
+func (f *flowControl) UpdateWindow(deltaWindowSize uint32) error {
+	if int64(deltaWindowSize)+f.transferWindow > MAX_TRANSFER_WINDOW_SIZE {
+		return errors.New("Error: WINDOW_UPDATE delta window size overflows transfer window size.")
+	}
+
+	// Grow window and flush queue.
+	debug.Printf("Flow: Growing window in stream %d by %d bytes.\n", f.streamID, deltaWindowSize)
+	f.transferWindow += int64(deltaWindowSize)
+
+	f.Flush()
+	return nil
+}
+
+// Write is used to send data to the connection. This
+// takes care of the windowing. Although data may be
+// buffered, rather than actually sent, this is not
+// visible to the caller.
+func (f *flowControl) Write(data []byte) (int, error) {
+	l := len(data)
+	if l == 0 {
+		return 0, nil
+	}
+
+	// Transfer window processing.
+	f.CheckInitialWindow()
+	if f.constrained {
+		f.Flush()
+	}
+	var window uint32
+	if f.transferWindow < 0 {
+		window = 0
+	} else {
+		window = uint32(f.transferWindow)
+	}
+
+	if uint32(len(data)) > window {
+		f.buffer = append(f.buffer, data[window:])
+		data = data[:window]
+		f.sent += window
+		f.transferWindow -= int64(window)
+		f.constrained = true
+		fmt.Printf("Stream %d is now constrained.\n", f.streamID)
+	}
+
+	if len(data) == 0 {
+		return l, nil
+	}
+
+	dataFrame := new(dataFrameV3)
+	dataFrame.streamID = f.streamID
+	dataFrame.Data = data
+
+	f.output <- dataFrame
+	return l, nil
 }
