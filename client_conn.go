@@ -8,6 +8,10 @@ import (
 	"net/http"
 )
 
+func init() {
+	http.DefaultClient = &http.Client{ Transport: new(Transport) }
+}
+
 func NewClientConn(conn net.Conn, push Receiver, version uint16) (spdyConn Conn, err error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")
