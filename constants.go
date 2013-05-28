@@ -212,18 +212,13 @@ func statusCodeIsFatal(code StatusCode) bool {
 	}
 }
 
-// defaultPriority returns the default request
+// DefaultPriority returns the default request
 // priority for the given target path. This is
 // currently in accordance with Google Chrome;
 // giving 0 for pages, 1 for CSS, 2 for JS, 3
 // for images. Other types default to 2.
-func defaultPriority(path string) int {
-	u, err := url.Parse(path)
-	if err != nil {
-		log.Printf("Failed to parse request path %q. Using priority 4.\n", path)
-		return 4
-	}
-	path = strings.ToLower(u.Path)
+func DefaultPriority(url *url.URL) Priority {
+	path := strings.ToLower(url.Path)
 	switch {
 	case strings.HasSuffix(path, "/"), strings.HasSuffix(path, ".html"), strings.HasSuffix(path, ".xhtml"):
 		return 0

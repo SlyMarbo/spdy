@@ -22,7 +22,7 @@ type Conn interface {
 	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
 	Push(url string, origin Stream) (http.ResponseWriter, error)
-	Request(request *http.Request, priority int) (Stream, error)
+	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
 	Run() error
 }
 
@@ -56,6 +56,27 @@ type Compressor interface {
 // Decompressor is used to decompress the text header of a SPDY frame.
 type Decompressor interface {
 	Decompress([]byte) (http.Header, error)
+}
+
+// Objects implementing the Receiver interface can be
+// registered to a specific request on the Client.
+//
+// ReceiveData is passed the original request, the data
+// to receive and a bool indicating whether this is the
+// final batch of data. If the bool is set to true, the
+// data may be empty, but should not be nil.
+//
+// ReceiveHeaders is passed the request and any sent
+// text headers. This may be called multiple times.
+//
+// ReceiveRequest is used when server pushes are sent.
+// The returned bool should inticate whether to accept
+// the push. The provided Request will be that sent by
+// the server with the push.
+type Receiver interface {
+	ReceiveData(request *http.Request, data []byte, final bool)
+	ReceiveHeader(request *http.Request, header http.Header)
+	ReceiveRequest(request *http.Request) bool
 }
 
 /********

@@ -23,7 +23,6 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 		out := new(connV3)
 		out.remoteAddr = conn.RemoteAddr().String()
 		out.server = server
-		out.client = nil
 		out.conn = conn
 		out.buf = bufio.NewReader(conn)
 		if tlsConn, ok := conn.(*tls.Conn); ok {
@@ -72,57 +71,64 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 	}
 }
 
-// Push is used to send server pushes with SPDY servers.
-// Push takes a ResponseWriter and the url of the resource
-// being pushed, and returns a ResponseWriter to which the
-// push should be written.
-//
-// If the underlying connection is using HTTP, and not SPDY,
-// Push will return the ErrNotSPDY error.
-//
-// A simple example of pushing a file is:
-//
-//      import (
-//              "github.com/SlyMarbo/spdy"
-//              "log"
-//              "net/http"
-//      )
-//
-//      func httpHandler(w http.ResponseWriter, req *http.Request) {
-//              push, err := spdy.Push(w, "/javascript.js")
-//              if err != nil {
-//                      // HTTP connection.
-//              } else {
-//                      http.ServeFile(push, req, "./javascript.js")
-//              }
-//              
-//      }
-//
-//      func main() {
-//              http.HandleFunc("/", httpHandler)
-//              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
-//              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
-//              if err != nil {
-//                      log.Fatal(err)
-//              }
-//      }
-func Push(w http.ResponseWriter, url string) (http.ResponseWriter, error) {
-	if stream, ok := w.(Stream); !ok {
-		return nil, ErrNotSPDY
+// AddSPDY adds SPDY support to srv, and must be called before srv begins serving.
+func AddSPDY(srv *http.Server) {
+	npnStrings := npn()
+	if len(npnStrings) <= 1 {
+		return
+	}
+	if srv.TLSConfig == nil {
+		srv.TLSConfig = new(tls.Config)
+	}
+	if srv.TLSConfig.NextProtos == nil {
+		srv.TLSConfig.NextProtos = npnStrings
 	} else {
-		return stream.Conn().Push(url, stream)
+		// Collect compatible alternative protocols.
+		others := make([]string, 0, len(srv.TLSConfig.NextProtos))
+		for _, other := range srv.TLSConfig.NextProtos {
+			if !strings.Contains(other, "spdy/") && !strings.Contains(other, "http/") {
+				others = append(others, other)
+			}
+		}
+
+		// Start with spdy.
+		srv.TLSConfig.NextProtos = make([]string, 0, len(others)+len(npnStrings))
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, npnStrings[:len(npnStrings)-1]...)
+
+		// Add the others.
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, others...)
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, "http/1.1")
+	}
+	if srv.TLSNextProto == nil {
+		srv.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	}
+	for _, str := range npnStrings {
+		switch str {
+		case "spdy/2":
+			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				conn, err := NewServerConn(tlsConn, s, 2)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				conn.Run()
+			}
+		case "spdy/3":
+			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				conn, err := NewServerConn(tlsConn, s, 3)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				conn.Run()
+			}
+		}
 	}
 }
 
 // ErrNotSPDY indicates that a SPDY-specific feature was attempted
 // with a ResponseWriter using a non-SPDY connection.
 var ErrNotSPDY = errors.New("Error: Not a SPDY connection.")
-
-// UsingSPDY indicates whether a given ResponseWriter is using SPDY.
-func UsingSPDY(w http.ResponseWriter) bool {
-	_, ok := w.(Stream)
-	return ok
-}
 
 // ListenAndServeTLS listens on the TCP network address addr
 // and then calls Serve with handler to handle requests on
@@ -194,57 +200,66 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 	return server.ListenAndServeTLS(certFile, keyFile)
 }
 
-// AddSPDY adds SPDY support to srv, and must be called before srv begins serving.
-func AddSPDY(srv *http.Server) {
-	npnStrings := npn()
-	if len(npnStrings) <= 1 {
-		return
-	}
-	if srv.TLSConfig == nil {
-		srv.TLSConfig = new(tls.Config)
-	}
-	if srv.TLSConfig.NextProtos == nil {
-		srv.TLSConfig.NextProtos = npnStrings
+// Push is used to send server pushes with SPDY servers.
+// Push takes a ResponseWriter and the url of the resource
+// being pushed, and returns a ResponseWriter to which the
+// push should be written.
+//
+// If the underlying connection is using HTTP, and not SPDY,
+// Push will return the ErrNotSPDY error.
+//
+// A simple example of pushing a file is:
+//
+//      import (
+//              "github.com/SlyMarbo/spdy"
+//              "log"
+//              "net/http"
+//      )
+//
+//      func httpHandler(w http.ResponseWriter, req *http.Request) {
+//              push, err := spdy.Push(w, "/javascript.js")
+//              if err != nil {
+//                      // HTTP connection.
+//              } else {
+//                      http.ServeFile(push, req, "./javascript.js")
+//              }
+//              
+//      }
+//
+//      func main() {
+//              http.HandleFunc("/", httpHandler)
+//              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
+//              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
+//              if err != nil {
+//                      log.Fatal(err)
+//              }
+//      }
+func Push(w http.ResponseWriter, url string) (http.ResponseWriter, error) {
+	if stream, ok := w.(Stream); !ok {
+		return nil, ErrNotSPDY
 	} else {
-		// Collect compatible alternative protocols.
-		others := make([]string, 0, len(srv.TLSConfig.NextProtos))
-		for _, other := range srv.TLSConfig.NextProtos {
-			if !strings.Contains(other, "spdy/") && !strings.Contains(other, "http/") {
-				others = append(others, other)
-			}
-		}
-
-		// Start with spdy.
-		srv.TLSConfig.NextProtos = make([]string, 0, len(others)+len(npnStrings))
-		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, npnStrings[:len(npnStrings)-1]...)
-
-		// Add the others.
-		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, others...)
-		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, "http/1.1")
+		return stream.Conn().Push(url, stream)
 	}
-	if srv.TLSNextProto == nil {
-		srv.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
-	}
-	for _, str := range npnStrings {
-		switch str {
-		case "spdy/2":
-			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 2)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
-		case "spdy/3":
-			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+}
+
+// SPDYversion returns the SPDY version being used in the underlying
+// connection used by the given http.ResponseWriter. This is 0 for
+// connections not using SPDY.
+func SPDYversion(w http.ResponseWriter) uint16 {
+	if stream, ok := w.(Stream); ok {
+		switch stream.Conn().(type) {
+		case *connV3:
+			return 3
+
+		default:
+			return 0
 		}
 	}
+	return 0
+}
+
+// UsingSPDY indicates whether a given ResponseWriter is using SPDY.
+func UsingSPDY(w http.ResponseWriter) bool {
+	_, ok := w.(Stream)
+	return ok
 }

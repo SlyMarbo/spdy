@@ -8,12 +8,9 @@ import (
 	"net/http"
 )
 
-func NewClientConn(conn net.Conn, client *http.Client, version uint16) (spdyConn Conn, err error) {
+func NewClientConn(conn net.Conn, push Receiver, version uint16) (spdyConn Conn, err error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")
-	}
-	if client == nil {
-		return nil, errors.New("Error: Connection initialised with nil client.")
 	}
 
 	switch version {
@@ -21,7 +18,6 @@ func NewClientConn(conn net.Conn, client *http.Client, version uint16) (spdyConn
 		out := new(connV3)
 		out.remoteAddr = conn.RemoteAddr().String()
 		out.server = nil
-		out.client = client
 		out.conn = conn
 		out.buf = bufio.NewReader(conn)
 		if tlsConn, ok := conn.(*tls.Conn); ok {
@@ -49,6 +45,7 @@ func NewClientConn(conn net.Conn, client *http.Client, version uint16) (spdyConn
 		out.initialWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 		out.requestStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
 		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
 		out.stop = make(chan struct{})
 

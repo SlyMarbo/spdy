@@ -180,13 +180,13 @@ func (frame *synStreamFrameV3) String() string {
 	buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
 	buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
 	buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
-	buf.WriteString(fmt.Sprintf("Header:               %v\n}\n", frame.Header))
+	buf.WriteString(fmt.Sprintf("Header:               %#v\n}\n", frame.Header))
 
 	return buf.String()
 }
 
 func (frame *synStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
-	if frame.rawHeader != nil {
+	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Headers not written.")
 	}
 	if !frame.streamID.Valid() {
@@ -339,7 +339,7 @@ func (frame *synReplyFrameV3) String() string {
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
-	buf.WriteString(fmt.Sprintf("Header:               %v\n}\n", frame.Header))
+	buf.WriteString(fmt.Sprintf("Header:               %#v\n}\n", frame.Header))
 
 	return buf.String()
 }
@@ -584,13 +584,13 @@ func (frame *settingsFrameV3) String() string {
 
 	buf.WriteString("SETTINGS {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", frame.Flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Settings:\n"))
 	settings := frame.Settings.Settings()
 	for _, setting := range settings {
-		buf.WriteString("\t\t" + setting.String())
+		buf.WriteString("\t\t" + setting.String() + "\n")
 	}
-	buf.WriteString("}\n")
+	buf.WriteString("\n")
 
 	return buf.String()
 }
@@ -836,7 +836,7 @@ func (frame *goawayFrameV3) String() string {
 	buf.WriteString("GOAWAY {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
 	buf.WriteString(fmt.Sprintf("Last good stream ID:  %d\n\t", frame.LastGoodStreamID))
-	buf.WriteString(fmt.Sprintf("Status code:          %s\n}\n", frame.Status))
+	buf.WriteString(fmt.Sprintf("Status code:          %s (%d)\n}\n", frame.Status, frame.Status))
 
 	return buf.String()
 }
@@ -985,7 +985,7 @@ func (frame *headersFrameV3) String() string {
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
-	buf.WriteString(fmt.Sprintf("Header:               %v\n}\n", frame.Header))
+	buf.WriteString(fmt.Sprintf("Header:               %#v\n}\n", frame.Header))
 
 	return buf.String()
 }

@@ -19,7 +19,6 @@ type connV3 struct {
 	sync.Mutex
 	remoteAddr          string
 	server              *http.Server
-	client              *http.Client
 	conn                net.Conn
 	buf                 *bufio.Reader
 	tlsState            *tls.ConnectionState
@@ -41,6 +40,7 @@ type connV3 struct {
 	vectorIndex         uint16                         // current limit on the credential vector size.
 	certificates        map[uint16][]*x509.Certificate // certificates received in CREDENTIAL frames and TLS handshake.
 	pushRequests        map[StreamID]*http.Request     // map of requests sent in server pushes.
+	pushReceiver        Receiver                       // Receiver to call for server Pushes.
 	stop                chan struct{}                  // this channel is closed when the connection closes.
 	init                func()                         // this function is called before the connection begins.
 }
@@ -190,12 +190,12 @@ func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, e
 	return out, nil
 }
 
-func (conn *connV3) Request(request *http.Request, priority int) (Stream, error) {
+func (conn *connV3) Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error) {
 	if conn.goaway {
 		return nil, errors.New("Error: GOAWAY received, so request could not be sent.")
 	}
 
-	if conn.client == nil {
+	if conn.server != nil {
 		return nil, errors.New("Error: Only clients can send requests.")
 	}
 
@@ -215,7 +215,7 @@ func (conn *connV3) Request(request *http.Request, priority int) (Stream, error)
 
 	// Prepare the SYN_STREAM.
 	syn := new(synStreamFrameV3)
-	syn.Priority = Priority(priority)
+	syn.Priority = priority
 	syn.Header = request.Header
 	syn.Header.Set(":method", request.Method)
 	syn.Header.Set(":path", url.Path)
@@ -258,7 +258,11 @@ func (conn *connV3) Request(request *http.Request, priority int) (Stream, error)
 
 	// Send.
 	conn.Lock()
-	conn.lastRequestStreamID += 2
+	if conn.lastRequestStreamID == 0 {
+		conn.lastRequestStreamID = 1
+	} else {
+		conn.lastRequestStreamID += 2
+	}
 	if conn.lastRequestStreamID > MAX_STREAM_ID {
 		conn.Unlock()
 		return nil, errors.New("Error: All client streams exhausted.")
@@ -272,23 +276,23 @@ func (conn *connV3) Request(request *http.Request, priority int) (Stream, error)
 	conn.Unlock()
 
 	// // Create the request stream.
-	// out := new(clientStreamV3)
-	// out.conn = conn
-	// out.streamID = syn.streamID
-	// out.state = new(StreamState)
-	// out.state.CloseHere()
-	// out.output = conn.output[0]
-	// out.request = req
-	// out.receiver = res
-	// out.header = make(http.Header)
-	// out.stop = conn.stop
-	// out.AddFlowControl()
-	// 
-	// // Store in the connection map.
-	// conn.streams[syn.streamID] = out
-	// 
-	// return out, nil
-	return nil, nil
+	out := new(clientStreamV3)
+	out.conn = conn
+	out.streamID = syn.streamID
+	out.state = new(StreamState)
+	out.state.CloseHere()
+	out.output = conn.output[0]
+	out.request = request
+	out.receiver = receiver
+	out.header = make(http.Header)
+	out.stop = conn.stop
+	out.finished = make(chan struct{})
+	out.AddFlowControl()
+
+	// Store in the connection map.
+	conn.streams[syn.streamID] = out
+
+	return out, nil
 }
 
 func (conn *connV3) Run() error {
@@ -355,11 +359,6 @@ func (conn *connV3) handleClientData(frame *dataFrameV3) {
 
 	// Send data to stream.
 	stream.ReceiveFrame(frame)
-
-	// Handle Flags.
-	if frame.Flags.FIN() {
-		stream.State().CloseThere()
-	}
 }
 
 // handleHeaders performs the processing of HEADERS frames.
@@ -370,10 +369,10 @@ func (conn *connV3) handleHeaders(frame *headersFrameV3) {
 	sid := frame.streamID
 
 	// Handle push headers.
-	if sid&1 == 0 && conn.client != nil {
+	if sid&1 == 0 && conn.server == nil {
 		// Ignore refused push headers.
-		if req := conn.pushRequests[sid]; req != nil {
-			//conn.pushReceiver.ReceiveHeaders(req, frame.Header) TODO
+		if req := conn.pushRequests[sid]; req != nil && conn.pushReceiver != nil {
+			conn.pushReceiver.ReceiveHeader(req, frame.Header)
 		}
 		return
 	}
@@ -390,11 +389,6 @@ func (conn *connV3) handleHeaders(frame *headersFrameV3) {
 
 	// Send headers to stream.
 	stream.ReceiveFrame(frame)
-
-	// Handle Flags.
-	if frame.Flags.FIN() {
-		stream.State().CloseThere()
-	}
 }
 
 // handlePush performs the processing of SYN_STREAM frames forming a server push.
@@ -410,7 +404,7 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 	sid := frame.streamID
 
 	// Push.
-	if conn.client == nil {
+	if conn.server != nil {
 		log.Println("Error: Only clients can receive server pushes.")
 		return
 	}
@@ -486,18 +480,20 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 	}
 
 	// Check whether the receiver wants this resource.
-	// if !conn.pushReceiver.ReceiveRequest(request) { TODO
-	// 	rst := new(rstStreamFrameV3)
-	// 	rst.streamID = sid
-	// 	rst.Status = RST_STREAM_REFUSED_STREAM
-	// 	conn.output[0] <- rst
-	// 	return
-	// }
+	if conn.pushReceiver != nil && !conn.pushReceiver.ReceiveRequest(request) {
+		rst := new(rstStreamFrameV3)
+		rst.streamID = sid
+		rst.Status = RST_STREAM_REFUSED_STREAM
+		conn.output[0] <- rst
+		return
+	}
 
 	// Create and start new stream.
-	//conn.pushReceiver.ReceiveHeaders(request, frame.Header) TODO
-	conn.pushRequests[sid] = request
-	conn.lastPushStreamID = sid
+	if conn.pushReceiver != nil {
+		conn.pushReceiver.ReceiveHeader(request, frame.Header)
+		conn.pushRequests[sid] = request
+		conn.lastPushStreamID = sid
+	}
 }
 
 // handleRequest performs the processing of SYN_STREAM request frames.
@@ -645,8 +641,8 @@ func (conn *connV3) handleServerData(frame *dataFrameV3) {
 	// Handle push data.
 	if sid&1 == 0 {
 		// Ignore refused push data.
-		if req := conn.pushRequests[sid]; req != nil {
-			//conn.pushReceiver.ReceiveData(req, frame.Data, frame.Flags.FIN()) TODO
+		if req := conn.pushRequests[sid]; req != nil && conn.pushReceiver != nil {
+			conn.pushReceiver.ReceiveData(req, frame.Data, frame.Flags.FIN())
 		}
 		return
 	}
@@ -663,11 +659,6 @@ func (conn *connV3) handleServerData(frame *dataFrameV3) {
 
 	// Send data to stream.
 	stream.ReceiveFrame(frame)
-
-	// Handle Flags.
-	if frame.Flags.FIN() {
-		stream.State().CloseThere()
-	}
 }
 
 // handleSynReply performs the processing of SYN_REPLY frames.
@@ -677,7 +668,7 @@ func (conn *connV3) handleSynReply(frame *synReplyFrameV3) {
 
 	sid := frame.streamID
 
-	if conn.client == nil {
+	if conn.server != nil {
 		log.Println("Error: Only clients can receive SYN_REPLY frames.")
 		conn.numBenignErrors++
 		return
@@ -707,11 +698,6 @@ func (conn *connV3) handleSynReply(frame *synReplyFrameV3) {
 
 	// Send headers to stream.
 	conn.streams[sid].ReceiveFrame(frame)
-
-	// Handle Flags.
-	if frame.Flags.FIN() {
-		conn.streams[sid].State().CloseThere()
-	}
 }
 
 // handleWindowUpdate performs the processing of WINDOW_UPDATE frames.
@@ -833,12 +819,12 @@ Loop:
 		if err != nil {
 			if err == io.EOF {
 				// Client has closed the TCP connection.
-				debug.Println("Note: Client has disconnected.")
+				debug.Println("Note: Endpoint has disconnected.")
 				conn.Close()
 				return
 			}
 
-			log.Printf("Error: Server encountered read error: %q\n", err.Error())
+			log.Printf("Error: Encountered read error: %q\n", err.Error())
 			conn.Close()
 			return
 		}
@@ -857,7 +843,7 @@ Loop:
 		switch frame := frame.(type) {
 
 		case *synStreamFrameV3:
-			if conn.client != nil {
+			if conn.server == nil {
 				conn.handlePush(frame)
 			} else {
 				conn.handleRequest(frame)
@@ -1060,13 +1046,13 @@ func (conn *connV3) send() {
 		if err != nil {
 			if err == io.EOF {
 				// Server has closed the TCP connection.
-				debug.Println("Note: Server has disconnected.")
+				debug.Println("Note: Endpoint has disconnected.")
 				conn.Close()
 				return
 			}
 
 			// Unexpected error which prevented a write.
-			log.Printf("Error: Server encountered write error: %q\n", err.Error())
+			log.Printf("Error: Encountered write error: %q\n", err.Error())
 			conn.Close()
 			return
 		}

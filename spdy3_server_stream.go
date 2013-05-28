@@ -44,12 +44,8 @@ func (s *serverStreamV3) Write(inputData []byte) (int, error) {
 		return 0, errors.New("Error: Stream is unidirectional.")
 	}
 
-	if s.state.ClosedHere() {
+	if s.closed() || s.state.ClosedHere() {
 		return 0, errors.New("Error: Stream already closed.")
-	}
-
-	if s.closed() {
-		return 0, errors.New("spdy: Stream has been cancelled.")
 	}
 
 	// Copy the data locally to avoid any pointer issues.
@@ -175,12 +171,16 @@ func (s *serverStreamV3) ReceiveFrame(frame Frame) error {
 	switch frame := frame.(type) {
 	case *dataFrameV3:
 		s.requestBody.Write(frame.Data)
+		s.flow.Receive(frame.Data)
 		if frame.Flags.FIN() {
-			s.flow.Receive(frame.Data)
+			s.state.CloseThere()
 		}
 
 	case *synReplyFrameV3:
 		updateHeader(s.header, frame.Header)
+		if frame.Flags.FIN() {
+			s.state.CloseThere()
+		}
 
 	case *headersFrameV3:
 		updateHeader(s.header, frame.Header)

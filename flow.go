@@ -78,26 +78,26 @@ func (p *pushStreamV3) AddFlowControl() {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-// func (r *clientStream) AddFlowControl() {
-// 	if r.flow != nil {
-// 		return
-// 	}
-// 
-// 	flow := new(flowControl)
-// 	initialWindow := r.conn.initialWindowSize
-// 	flow.streamID = r.streamID
-// 	flow.output = r.output
-// 	if r.version == 3 {
-// 		flow.active = true
-// 		flow.buffer = make([][]byte, 0, 10)
-// 		flow.initialWindow = initialWindow
-// 		flow.transferWindow = int64(initialWindow)
-// 		flow.stream = r
-// 		flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-// 		flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-// 	}
-// 	r.flow = flow
-// }
+func (r *clientStreamV3) AddFlowControl() {
+	if r.flow != nil {
+		return
+	}
+
+	r.flow = new(flowControl)
+	initialWindow, err := r.conn.InitialWindowSize()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	r.flow.streamID = r.streamID
+	r.flow.output = r.output
+	r.flow.buffer = make([][]byte, 0, 10)
+	r.flow.initialWindow = initialWindow
+	r.flow.transferWindow = int64(initialWindow)
+	r.flow.stream = r
+	r.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	r.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+}
 
 // CheckInitialWindow is used to handle the race
 // condition where the flow control is initialised
