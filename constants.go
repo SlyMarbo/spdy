@@ -21,24 +21,48 @@ const DEFAULT_SPDY_VERSION = 3
 // ending the session.
 var MaxBenignErrors = 10
 
-// Control types
+// Frame types in SPDY/2
 const (
-	CONTROL_FRAME = -1
-	DATA_FRAME    = -2
+	SYN_STREAMv2    = 1
+	SYN_REPLYv2     = 2
+	RST_STREAMv2    = 3
+	SETTINGSv2      = 4
+	NOOPv2          = 5
+	PINGv2          = 6
+	GOAWAYv2        = 7
+	HEADERSv2       = 8
+	WINDOW_UPDATEv2 = 9
+	CONTROL_FRAMEv2 = -1
+	DATA_FRAMEv2    = -2
 )
 
-// Frame types
+// Frame types in SPDY/3
 const (
-	SYN_STREAM    = 1
-	SYN_REPLY     = 2
-	RST_STREAM    = 3
-	SETTINGS      = 4
-	NOOP          = 5
-	PING          = 6
-	GOAWAY        = 7
-	HEADERS       = 8
-	WINDOW_UPDATE = 9
-	CREDENTIAL    = 10
+	SYN_STREAMv3    = 1
+	SYN_REPLYv3     = 2
+	RST_STREAMv3    = 3
+	SETTINGSv3      = 4
+	PINGv3          = 6
+	GOAWAYv3        = 7
+	HEADERSv3       = 8
+	WINDOW_UPDATEv3 = 9
+	CREDENTIALv3    = 10
+	CONTROL_FRAMEv3 = -1
+	DATA_FRAMEv3    = -2
+)
+
+// Frame types in SPDY/4 / HTTP/2.0
+const (
+	DATAv4             = 0
+	HEADERS_PRIORITYv4 = 1
+	RST_STREAMv4       = 3
+	SETTINGSv4         = 4
+	PUSH_PROMISEv4     = 5
+	PINGv4             = 6
+	GOAWAYv4           = 7
+	HEADERSv4          = 8
+	WINDOW_UPDATEv4    = 9
+	CREDENTIALv4       = 10
 )
 
 // Flags
@@ -321,10 +345,12 @@ func defaultSPDYServerSettings(v uint16, m uint32) Settings {
 	case 3:
 		return Settings{
 			SETTINGS_INITIAL_WINDOW_SIZE: &Setting{
+				Flags: FLAG_SETTINGS_PERSIST_VALUE,
 				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
 				Value: DEFAULT_INITIAL_WINDOW_SIZE,
 			},
 			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
+				Flags: FLAG_SETTINGS_PERSIST_VALUE,
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
@@ -332,6 +358,7 @@ func defaultSPDYServerSettings(v uint16, m uint32) Settings {
 	case 2:
 		return Settings{
 			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
+				Flags: FLAG_SETTINGS_PERSIST_VALUE,
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},

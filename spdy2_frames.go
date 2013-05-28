@@ -24,23 +24,23 @@ func readFrameV2(reader *bufio.Reader) (frame Frame, err error) {
 	}
 
 	switch bytesToUint16(start[2:4]) {
-	case SYN_STREAM:
+	case SYN_STREAMv2:
 		frame = new(synStreamFrameV2)
-	case SYN_REPLY:
+	case SYN_REPLYv2:
 		frame = new(synReplyFrameV2)
-	case RST_STREAM:
+	case RST_STREAMv2:
 		frame = new(rstStreamFrameV2)
-	case SETTINGS:
+	case SETTINGSv2:
 		frame = new(settingsFrameV2)
-	case NOOP:
+	case NOOPv2:
 		frame = new(noopFrameV2)
-	case PING:
+	case PINGv2:
 		frame = new(pingFrameV2)
-	case GOAWAY:
+	case GOAWAYv2:
 		frame = new(goawayFrameV2)
-	case HEADERS:
+	case HEADERSv2:
 		frame = new(headersFrameV2)
-	case WINDOW_UPDATE:
+	case WINDOW_UPDATEv2:
 		frame = new(windowUpdateFrameV2)
 
 	default:
@@ -100,12 +100,12 @@ func (frame *synStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 18, &incorrectFrame{DATA_FRAME, SYN_STREAM, 2}
+		return 18, &incorrectFrame{DATA_FRAMEv2, SYN_STREAMv2, 2}
 	}
 
 	// Check it's a SYN_STREAM.
-	if bytesToUint16(data[2:4]) != SYN_STREAM {
-		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_STREAM, 2}
+	if bytesToUint16(data[2:4]) != SYN_STREAMv2 {
+		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_STREAMv2, 2}
 	}
 
 	// Check version.
@@ -277,12 +277,12 @@ func (frame *synReplyFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 14, &incorrectFrame{DATA_FRAME, SYN_REPLY, 2}
+		return 14, &incorrectFrame{DATA_FRAMEv2, SYN_REPLYv2, 2}
 	}
 
 	// Check it's a SYN_REPLY.
-	if bytesToUint16(data[2:4]) != SYN_REPLY {
-		return 14, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_REPLY, 2}
+	if bytesToUint16(data[2:4]) != SYN_REPLYv2 {
+		return 14, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_REPLYv2, 2}
 	}
 
 	// Check version and adapt accordingly.
@@ -410,12 +410,12 @@ func (frame *rstStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAME, RST_STREAM, 2}
+		return 16, &incorrectFrame{DATA_FRAMEv2, RST_STREAMv2, 2}
 	}
 
 	// Check it's a RST_STREAM.
-	if bytesToUint16(data[2:4]) != RST_STREAM {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), RST_STREAM, 2}
+	if bytesToUint16(data[2:4]) != RST_STREAMv2 {
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), RST_STREAMv2, 2}
 	}
 
 	// Check version and adapt accordingly.
@@ -522,12 +522,12 @@ func (frame *settingsFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, SETTINGS, 2}
+		return 12, &incorrectFrame{DATA_FRAMEv2, SETTINGSv2, 2}
 	}
 
 	// Check it's a SETTINGS.
-	if bytesToUint16(data[2:4]) != SETTINGS {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SETTINGS, 2}
+	if bytesToUint16(data[2:4]) != SETTINGSv2 {
+		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SETTINGSv2, 2}
 	}
 
 	// Check version and adapt accordingly.
@@ -696,12 +696,12 @@ func (frame *noopFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 8, &incorrectFrame{DATA_FRAME, NOOP, 2}
+		return 8, &incorrectFrame{DATA_FRAMEv2, NOOPv2, 2}
 	}
 
 	// Check it's a PING.
-	if bytesToUint16(data[2:4]) != PING {
-		return 8, &incorrectFrame{int(bytesToUint16(data[2:4])), NOOP, 2}
+	if bytesToUint16(data[2:4]) != PINGv2 {
+		return 8, &incorrectFrame{int(bytesToUint16(data[2:4])), NOOPv2, 2}
 	}
 
 	// Check version and adapt accordingly.
@@ -759,12 +759,12 @@ func (frame *pingFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, PING, 2}
+		return 12, &incorrectFrame{DATA_FRAMEv2, PINGv2, 2}
 	}
 
 	// Check it's a PING.
-	if bytesToUint16(data[2:4]) != PING {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), PING, 2}
+	if bytesToUint16(data[2:4]) != PINGv2 {
+		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), PINGv2, 2}
 	}
 
 	// Check version and adapt accordingly.
@@ -854,12 +854,12 @@ func (frame *goawayFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, GOAWAY, 2}
+		return 12, &incorrectFrame{DATA_FRAMEv2, GOAWAYv2, 2}
 	}
 
 	// Check it's a GOAWAY.
-	if bytesToUint16(data[2:4]) != GOAWAY {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), GOAWAY, 2}
+	if bytesToUint16(data[2:4]) != GOAWAYv2 {
+		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), GOAWAYv2, 2}
 	}
 
 	// Check version and adapt accordingly.
@@ -982,12 +982,12 @@ func (frame *headersFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAME, HEADERS, 2}
+		return 16, &incorrectFrame{DATA_FRAMEv2, HEADERSv2, 2}
 	}
 
 	// Check it's a HEADERS.
-	if bytesToUint16(data[2:4]) != HEADERS {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), HEADERS, 2}
+	if bytesToUint16(data[2:4]) != HEADERSv2 {
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), HEADERSv2, 2}
 	}
 
 	// Check version and adapt accordingly.
@@ -1114,12 +1114,12 @@ func (frame *windowUpdateFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAME, WINDOW_UPDATE, 3}
+		return 16, &incorrectFrame{DATA_FRAMEv2, WINDOW_UPDATEv2, 3}
 	}
 
 	// Check it's a WINDOW_UPDATE.
-	if bytesToUint16(data[2:4]) != WINDOW_UPDATE {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), WINDOW_UPDATE, 3}
+	if bytesToUint16(data[2:4]) != WINDOW_UPDATEv2 {
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), WINDOW_UPDATEv2, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -1196,7 +1196,7 @@ func (frame *dataFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a data frame.
 	if data[0]&0x80 == 1 {
-		return 8, &incorrectFrame{CONTROL_FRAME, DATA_FRAME, 2}
+		return 8, &incorrectFrame{CONTROL_FRAMEv2, DATA_FRAMEv2, 2}
 	}
 
 	// Get and check length.

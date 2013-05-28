@@ -25,23 +25,23 @@ func readFrameV3(reader *bufio.Reader) (frame Frame, err error) {
 	}
 
 	switch bytesToUint16(start[2:4]) {
-	case SYN_STREAM:
+	case SYN_STREAMv3:
 		frame = new(synStreamFrameV3)
-	case SYN_REPLY:
+	case SYN_REPLYv3:
 		frame = new(synReplyFrameV3)
-	case RST_STREAM:
+	case RST_STREAMv3:
 		frame = new(rstStreamFrameV3)
-	case SETTINGS:
+	case SETTINGSv3:
 		frame = new(settingsFrameV3)
-	case PING:
+	case PINGv3:
 		frame = new(pingFrameV3)
-	case GOAWAY:
+	case GOAWAYv3:
 		frame = new(goawayFrameV3)
-	case HEADERS:
+	case HEADERSv3:
 		frame = new(headersFrameV3)
-	case WINDOW_UPDATE:
+	case WINDOW_UPDATEv3:
 		frame = new(windowUpdateFrameV3)
-	case CREDENTIAL:
+	case CREDENTIALv3:
 		frame = new(credentialFrameV3)
 
 	default:
@@ -102,12 +102,12 @@ func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 18, &incorrectFrame{DATA_FRAME, SYN_STREAM, 3}
+		return 18, &incorrectFrame{DATA_FRAMEv3, SYN_STREAMv3, 3}
 	}
 
 	// Check it's a SYN_STREAM.
-	if bytesToUint16(data[2:4]) != SYN_STREAM {
-		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_STREAM, 3}
+	if bytesToUint16(data[2:4]) != SYN_STREAMv3 {
+		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_STREAMv3, 3}
 	}
 
 	// Check version.
@@ -279,12 +279,12 @@ func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, SYN_REPLY, 3}
+		return 12, &incorrectFrame{DATA_FRAMEv3, SYN_REPLYv3, 3}
 	}
 
 	// Check it's a SYN_REPLY.
-	if bytesToUint16(data[2:4]) != SYN_REPLY {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_REPLY, 3}
+	if bytesToUint16(data[2:4]) != SYN_REPLYv3 {
+		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_REPLYv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -406,12 +406,12 @@ func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAME, RST_STREAM, 3}
+		return 16, &incorrectFrame{DATA_FRAMEv3, RST_STREAMv3, 3}
 	}
 
 	// Check it's a RST_STREAM.
-	if bytesToUint16(data[2:4]) != RST_STREAM {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), RST_STREAM, 3}
+	if bytesToUint16(data[2:4]) != RST_STREAMv3 {
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), RST_STREAMv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -518,12 +518,12 @@ func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, SETTINGS, 3}
+		return 12, &incorrectFrame{DATA_FRAMEv3, SETTINGSv3, 3}
 	}
 
 	// Check it's a SETTINGS.
-	if bytesToUint16(data[2:4]) != SETTINGS {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SETTINGS, 3}
+	if bytesToUint16(data[2:4]) != SETTINGSv3 {
+		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SETTINGSv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -694,12 +694,12 @@ func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, PING, 3}
+		return 12, &incorrectFrame{DATA_FRAMEv3, PINGv3, 3}
 	}
 
 	// Check it's a PING.
-	if bytesToUint16(data[2:4]) != PING {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), PING, 3}
+	if bytesToUint16(data[2:4]) != PINGv3 {
+		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), PINGv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -786,12 +786,12 @@ func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAME, GOAWAY, 3}
+		return 16, &incorrectFrame{DATA_FRAMEv3, GOAWAYv3, 3}
 	}
 
 	// Check it's a GOAWAY.
-	if bytesToUint16(data[2:4]) != GOAWAY {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), GOAWAY, 3}
+	if bytesToUint16(data[2:4]) != GOAWAYv3 {
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), GOAWAYv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -920,12 +920,12 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, HEADERS, 3}
+		return 12, &incorrectFrame{DATA_FRAMEv3, HEADERSv3, 3}
 	}
 
 	// Check it's a HEADERS.
-	if bytesToUint16(data[2:4]) != HEADERS {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), HEADERS, 3}
+	if bytesToUint16(data[2:4]) != HEADERSv3 {
+		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), HEADERSv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -1052,12 +1052,12 @@ func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAME, WINDOW_UPDATE, 3}
+		return 16, &incorrectFrame{DATA_FRAMEv3, WINDOW_UPDATEv3, 3}
 	}
 
 	// Check it's a WINDOW_UPDATE.
-	if bytesToUint16(data[2:4]) != WINDOW_UPDATE {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), WINDOW_UPDATE, 3}
+	if bytesToUint16(data[2:4]) != WINDOW_UPDATEv3 {
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), WINDOW_UPDATEv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -1158,12 +1158,12 @@ func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 18, &incorrectFrame{DATA_FRAME, CREDENTIAL, 3}
+		return 18, &incorrectFrame{DATA_FRAMEv3, CREDENTIALv3, 3}
 	}
 
 	// Check it's a CREDENTIAL.
-	if bytesToUint16(data[2:4]) != CREDENTIAL {
-		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), CREDENTIAL, 3}
+	if bytesToUint16(data[2:4]) != CREDENTIALv3 {
+		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), CREDENTIALv3, 3}
 	}
 
 	// Check version and adapt accordingly.
@@ -1309,7 +1309,7 @@ func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a data frame.
 	if data[0]&0x80 == 1 {
-		return 8, &incorrectFrame{CONTROL_FRAME, DATA_FRAME, 3}
+		return 8, &incorrectFrame{CONTROL_FRAMEv3, DATA_FRAMEv3, 3}
 	}
 
 	// Get and check length.

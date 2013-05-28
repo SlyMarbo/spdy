@@ -64,7 +64,6 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV3)
-			settings.Flags = FLAG_SETTINGS_PERSIST_VALUE
 			settings.Settings = defaultSPDYServerSettings(3, DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
@@ -106,7 +105,6 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV2)
-			settings.Flags = FLAG_SETTINGS_PERSIST_VALUE
 			settings.Settings = defaultSPDYServerSettings(2, DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
