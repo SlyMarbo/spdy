@@ -40,6 +40,8 @@ func readFrameV2(reader *bufio.Reader) (frame Frame, err error) {
 		frame = new(goawayFrameV2)
 	case HEADERS:
 		frame = new(headersFrameV2)
+	case WINDOW_UPDATE:
+		frame = new(windowUpdateFrameV2)
 
 	default:
 		return nil, errors.New("Error Failed to parse frame type.")
@@ -53,7 +55,7 @@ func readFrameV2(reader *bufio.Reader) (frame Frame, err error) {
  *** SYN_STREAM ***
  ******************/
 type synStreamFrameV2 struct {
-	flags         Flags
+	Flags         Flags
 	streamID      StreamID
 	AssocStreamID StreamID
 	Priority      Priority
@@ -88,10 +90,6 @@ func (frame *synStreamFrameV2) Decompress(decom Decompressor) error {
 	frame.Header = header
 	frame.rawHeader = nil
 	return nil
-}
-
-func (frame *synStreamFrameV2) Flags() Flags {
-	return frame.flags
 }
 
 func (frame *synStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
@@ -139,7 +137,7 @@ func (frame *synStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 18, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.streamID = StreamID(bytesToUint32(data[8:12]))
 	frame.AssocStreamID = StreamID(bytesToUint32(data[12:16]))
 	frame.Priority = Priority(data[16] >> 5)
@@ -161,22 +159,22 @@ func (frame *synStreamFrameV2) StreamID() StreamID {
 
 func (frame *synStreamFrameV2) String() string {
 	buf := new(bytes.Buffer)
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if frame.flags.UNIDIRECTIONAL() {
-		flags += " FLAG_UNIDIRECTIONAL"
+	if frame.Flags.UNIDIRECTIONAL() {
+		Flags += " FLAG_UNIDIRECTIONAL"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("SYN_STREAM {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              2\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
 	buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
@@ -186,7 +184,7 @@ func (frame *synStreamFrameV2) String() string {
 }
 
 func (frame *synStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
-	if frame.rawHeader != nil {
+	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Headers not written.")
 	}
 	if !frame.streamID.Valid() {
@@ -201,10 +199,10 @@ func (frame *synStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out := make([]byte, 18)
 
 	out[0] = 128                       // Control bit and Version
-	out[1] = 3                         // Version
+	out[1] = 2                         // Version
 	out[2] = 0                         // Type
 	out[3] = 1                         // Type
-	out[4] = byte(frame.flags)         // Flags
+	out[4] = byte(frame.Flags)         // Flags
 	out[5] = byte(length >> 16)        // Length
 	out[6] = byte(length >> 8)         // Length
 	out[7] = byte(length)              // Length
@@ -236,7 +234,7 @@ func (frame *synStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
  *** SYN_REPLY ***
  *****************/
 type synReplyFrameV2 struct {
-	flags     Flags
+	Flags     Flags
 	streamID  StreamID
 	Header    http.Header
 	rawHeader []byte
@@ -271,10 +269,6 @@ func (frame *synReplyFrameV2) Decompress(decom Decompressor) error {
 	return nil
 }
 
-func (frame *synReplyFrameV2) Flags() Flags {
-	return frame.flags
-}
-
 func (frame *synReplyFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 14)
 	if err != nil {
@@ -283,44 +277,44 @@ func (frame *synReplyFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAME, SYN_REPLY, 2}
+		return 14, &incorrectFrame{DATA_FRAME, SYN_REPLY, 2}
 	}
 
 	// Check it's a SYN_REPLY.
 	if bytesToUint16(data[2:4]) != SYN_REPLY {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_REPLY, 2}
+		return 14, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_REPLY, 2}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
 	if version != 2 {
-		return 12, unsupportedVersion(version)
+		return 14, unsupportedVersion(version)
 	}
 
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
-		return 12, &invalidField{"Unused", 1, 0}
+		return 14, &invalidField{"Unused", 1, 0}
 	} else if data[12] != 0 {
-		return 12, &invalidField{"Unused", int(data[12]), 0}
+		return 14, &invalidField{"Unused", int(data[12]), 0}
 	} else if data[13] != 0 {
-		return 12, &invalidField{"Unused", int(data[13]), 0}
+		return 14, &invalidField{"Unused", int(data[13]), 0}
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(data[5:8]))
 	if length < 8 {
-		return 12, &incorrectDataLength{length, 8}
+		return 14, &incorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return 12, frameTooLarge
+		return 14, frameTooLarge
 	}
 
 	// Read in data.
-	header, err := read(reader, length-4)
+	header, err := read(reader, length-6)
 	if err != nil {
-		return 12, err
+		return 14, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.streamID = StreamID(bytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
@@ -333,19 +327,19 @@ func (frame *synReplyFrameV2) StreamID() StreamID {
 
 func (frame *synReplyFrameV2) String() string {
 	buf := new(bytes.Buffer)
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("SYN_REPLY {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              2\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Header:               %v\n}\n", frame.Header))
 
@@ -365,10 +359,10 @@ func (frame *synReplyFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out := make([]byte, 14)
 
 	out[0] = 128                  // Control bit and Version
-	out[1] = 3                    // Version
+	out[1] = 2                    // Version
 	out[2] = 0                    // Type
 	out[3] = 2                    // Type
-	out[4] = byte(frame.flags)    // Flags
+	out[4] = byte(frame.Flags)    // Flags
 	out[5] = byte(length >> 16)   // Length
 	out[6] = byte(length >> 8)    // Length
 	out[7] = byte(length)         // Length
@@ -376,6 +370,8 @@ func (frame *synReplyFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out[9] = frame.streamID.b2()  // Stream ID
 	out[10] = frame.streamID.b3() // Stream ID
 	out[11] = frame.streamID.b4() // Stream ID
+	out[12] = 0                   // Unused
+	out[13] = 0                   // Unused
 
 	err := write(writer, out)
 	if err != nil {
@@ -387,7 +383,7 @@ func (frame *synReplyFrameV2) WriteTo(writer io.Writer) (int64, error) {
 		return 14, err
 	}
 
-	return int64(len(header) + 12), nil
+	return int64(len(header) + 14), nil
 }
 
 /******************
@@ -404,10 +400,6 @@ func (frame *rstStreamFrameV2) Compress(comp Compressor) error {
 
 func (frame *rstStreamFrameV2) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *rstStreamFrameV2) Flags() Flags {
-	return 0
 }
 
 func (frame *rstStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
@@ -478,9 +470,9 @@ func (frame *rstStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out := make([]byte, 16)
 
 	out[0] = 128                  // Control bit and Version
-	out[1] = 3                    // Version
+	out[1] = 2                    // Version
 	out[2] = 0                    // Type
-	out[3] = 3                    // Type
+	out[3] = 2                    // Type
 	out[4] = 0                    // Flags
 	out[5] = 0                    // Length
 	out[6] = 0                    // Length
@@ -506,12 +498,12 @@ func (frame *rstStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
  *** SETTINGS ***
  ****************/
 type settingsFrameV2 struct {
-	flags    Flags
+	Flags    Flags
 	Settings Settings
 }
 
-func (frame *settingsFrameV2) Add(flags Flags, id uint32, value uint32) {
-	frame.Settings[id] = &Setting{flags, id, value}
+func (frame *settingsFrameV2) Add(Flags Flags, id uint32, value uint32) {
+	frame.Settings[id] = &Setting{Flags, id, value}
 }
 
 func (frame *settingsFrameV2) Compress(comp Compressor) error {
@@ -520,10 +512,6 @@ func (frame *settingsFrameV2) Compress(comp Compressor) error {
 
 func (frame *settingsFrameV2) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *settingsFrameV2) Flags() Flags {
-	return frame.flags
 }
 
 func (frame *settingsFrameV2) ReadFrom(reader io.Reader) (int64, error) {
@@ -568,7 +556,7 @@ func (frame *settingsFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.Settings = make(Settings)
 	for i := 0; i < numSettings; i++ {
 		j := i * 8
@@ -588,25 +576,25 @@ func (frame *settingsFrameV2) StreamID() StreamID {
 
 func (frame *settingsFrameV2) String() string {
 	buf := new(bytes.Buffer)
-	flags := ""
-	if frame.flags.CLEAR_SETTINGS() {
-		flags += " FLAG_SETTINGS_CLEAR_SETTINGS"
+	Flags := ""
+	if frame.Flags.CLEAR_SETTINGS() {
+		Flags += " FLAG_SETTINGS_CLEAR_SETTINGS"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("SETTINGS {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              2\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", frame.flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Settings:\n"))
 	settings := frame.Settings.Settings()
 	for _, setting := range settings {
-		buf.WriteString("\t\t" + setting.String())
+		buf.WriteString("\t\t" + setting.String() + "\n")
 	}
-	buf.WriteString("}\n")
+	buf.WriteString("\n")
 
 	return buf.String()
 }
@@ -618,10 +606,10 @@ func (frame *settingsFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out := make([]byte, 12)
 
 	out[0] = 128                     // Control bit and Version
-	out[1] = 3                       // Version
+	out[1] = 2                       // Version
 	out[2] = 0                       // Type
 	out[3] = 4                       // Type
-	out[4] = byte(frame.flags)       // Flags
+	out[4] = byte(frame.Flags)       // Flags
 	out[5] = byte(length >> 16)      // Length
 	out[6] = byte(length >> 8)       // Length
 	out[7] = byte(length)            // Length
@@ -649,7 +637,7 @@ func decodeSettingV2(data []byte) *Setting {
 	}
 
 	setting := new(Setting)
-	setting.ID = bytesToUint24(data[0:]) // Might need to reverse this.
+	setting.ID = bytesToUint24Reverse(data[0:]) // Might need to reverse this.
 	setting.Flags = Flags(data[3])
 	setting.Value = bytesToUint32(data[4:])
 
@@ -673,9 +661,9 @@ func encodeSettingsV2(s Settings) []byte {
 	offset := 0
 	for _, id := range ids {
 		setting := s[uint32(id)]
-		out[offset] = byte(setting.ID >> 16)  // Might need to reverse this.
-		out[offset+1] = byte(setting.ID >> 8) // Might need to reverse this.
-		out[offset+2] = byte(setting.ID)      // Might need to reverse this.
+		out[offset] = byte(setting.ID)         // Might need to reverse this.
+		out[offset+1] = byte(setting.ID >> 8)  // Might need to reverse this.
+		out[offset+2] = byte(setting.ID >> 16) // Might need to reverse this.
 		out[offset+3] = byte(setting.Flags)
 		out[offset+4] = byte(setting.Value >> 24)
 		out[offset+5] = byte(setting.Value >> 16)
@@ -698,10 +686,6 @@ func (frame *noopFrameV2) Compress(comp Compressor) error {
 
 func (frame *noopFrameV2) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *noopFrameV2) Flags() Flags {
-	return 0
 }
 
 func (frame *noopFrameV2) ReadFrom(reader io.Reader) (int64, error) {
@@ -732,7 +716,7 @@ func (frame *noopFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 8, &incorrectDataLength{length, 0}
 	}
 
-	// Check flags.
+	// Check Flags.
 	if (data[4]) != 0 {
 		return 8, &invalidField{"Flags", int(data[4]), 0}
 	}
@@ -767,10 +751,6 @@ func (frame *pingFrameV2) Decompress(decomp Decompressor) error {
 	return nil
 }
 
-func (frame *pingFrameV2) Flags() Flags {
-	return 0
-}
-
 func (frame *pingFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 12)
 	if err != nil {
@@ -799,7 +779,7 @@ func (frame *pingFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, &incorrectDataLength{length, 4}
 	}
 
-	// Check flags.
+	// Check Flags.
 	if (data[4]) != 0 {
 		return 12, &invalidField{"Flags", int(data[4]), 0}
 	}
@@ -827,7 +807,7 @@ func (frame *pingFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out := make([]byte, 12)
 
 	out[0] = 128                      // Control bit and Version
-	out[1] = 3                        // Version
+	out[1] = 2                        // Version
 	out[2] = 0                        // Type
 	out[3] = 6                        // Type
 	out[4] = 0                        // Flags
@@ -899,7 +879,7 @@ func (frame *goawayFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, &invalidField{"Unused", 1, 0}
 	}
 
-	// Check flags.
+	// Check Flags.
 	if (data[4]) != 0 {
 		return 12, &invalidField{"Flags", int(data[4]), 0}
 	}
@@ -935,7 +915,7 @@ func (frame *goawayFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out := make([]byte, 12)
 
 	out[0] = 128                          // Control bit and Version
-	out[1] = 3                            // Version
+	out[1] = 2                            // Version
 	out[2] = 0                            // Type
 	out[3] = 7                            // Type
 	out[4] = 0                            // Flags
@@ -959,7 +939,7 @@ func (frame *goawayFrameV2) WriteTo(writer io.Writer) (int64, error) {
  *** HEADERS ***
  ***************/
 type headersFrameV2 struct {
-	flags     Flags
+	Flags     Flags
 	streamID  StreamID
 	Header    http.Header
 	rawHeader []byte
@@ -994,52 +974,48 @@ func (frame *headersFrameV2) Decompress(decom Decompressor) error {
 	return nil
 }
 
-func (frame *headersFrameV2) Flags() Flags {
-	return frame.flags
-}
-
 func (frame *headersFrameV2) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := read(reader, 14)
+	data, err := read(reader, 16)
 	if err != nil {
 		return 0, err
 	}
 
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return 14, &incorrectFrame{DATA_FRAME, HEADERS, 2}
+		return 16, &incorrectFrame{DATA_FRAME, HEADERS, 2}
 	}
 
 	// Check it's a HEADERS.
 	if bytesToUint16(data[2:4]) != HEADERS {
-		return 14, &incorrectFrame{int(bytesToUint16(data[2:4])), HEADERS, 2}
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), HEADERS, 2}
 	}
 
 	// Check version and adapt accordingly.
 	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
 	if version != 2 {
-		return 14, unsupportedVersion(version)
+		return 16, unsupportedVersion(version)
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(data[5:8]))
 	if length < 6 {
-		return 14, &incorrectDataLength{length, 6}
+		return 16, &incorrectDataLength{length, 6}
 	} else if length > MAX_FRAME_SIZE-8 {
-		return 14, frameTooLarge
+		return 16, frameTooLarge
 	}
 
 	// Check unused space.
 	if (data[8] >> 7) != 0 {
-		return 14, &invalidField{"Unused", 1, 0}
+		return 16, &invalidField{"Unused", 1, 0}
 	}
 
 	// Read in data.
-	header, err := read(reader, length-6)
+	header, err := read(reader, length-8)
 	if err != nil {
-		return 14, err
+		return 16, err
 	}
 
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	frame.streamID = StreamID(bytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
@@ -1057,19 +1033,19 @@ func (frame *headersFrameV2) StreamID() StreamID {
 func (frame *headersFrameV2) String() string {
 	buf := new(bytes.Buffer)
 
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("HEADERS {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              2\n\t"))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
 	buf.WriteString(fmt.Sprintf("Header:               %v\n}\n", frame.Header))
 
@@ -1086,13 +1062,13 @@ func (frame *headersFrameV2) WriteTo(writer io.Writer) (int64, error) {
 
 	header := frame.rawHeader
 	length := 4 + len(header)
-	out := make([]byte, 14)
+	out := make([]byte, 16)
 
 	out[0] = 128                  // Control bit and Version
-	out[1] = 3                    // Version
+	out[1] = 2                    // Version
 	out[2] = 0                    // Type
 	out[3] = 8                    // Type
-	out[4] = byte(frame.flags)    // Flags
+	out[4] = byte(frame.Flags)    // Flags
 	out[5] = byte(length >> 16)   // Length
 	out[6] = byte(length >> 8)    // Length
 	out[7] = byte(length)         // Length
@@ -1108,10 +1084,91 @@ func (frame *headersFrameV2) WriteTo(writer io.Writer) (int64, error) {
 
 	err = write(writer, header)
 	if err != nil {
-		return 14, err
+		return 16, err
 	}
 
 	return int64(length + 8), nil
+}
+
+/*********************
+ *** WINDOW_UPDATE ***
+ *********************/
+type windowUpdateFrameV2 struct {
+	streamID        StreamID
+	DeltaWindowSize uint32
+}
+
+func (frame *windowUpdateFrameV2) Compress(comp Compressor) error {
+	return nil
+}
+
+func (frame *windowUpdateFrameV2) Decompress(decomp Decompressor) error {
+	return nil
+}
+
+func (frame *windowUpdateFrameV2) ReadFrom(reader io.Reader) (int64, error) {
+	data, err := read(reader, 16)
+	if err != nil {
+		return 0, err
+	}
+
+	// Check it's a control frame.
+	if data[0] != 128 {
+		return 16, &incorrectFrame{DATA_FRAME, WINDOW_UPDATE, 3}
+	}
+
+	// Check it's a WINDOW_UPDATE.
+	if bytesToUint16(data[2:4]) != WINDOW_UPDATE {
+		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), WINDOW_UPDATE, 3}
+	}
+
+	// Check version and adapt accordingly.
+	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	if version != 2 {
+		return 16, unsupportedVersion(version)
+	}
+
+	// Get and check length.
+	length := int(bytesToUint24(data[5:8]))
+	if length != 8 {
+		return 16, &incorrectDataLength{length, 8}
+	}
+
+	// Check unused space.
+	if (data[8]>>7)|(data[12]>>7) != 0 {
+		return 16, &invalidField{"Unused", 1, 0}
+	}
+
+	frame.streamID = StreamID(bytesToUint32(data[8:12]))
+	frame.DeltaWindowSize = bytesToUint32(data[12:16])
+
+	if !frame.streamID.Valid() {
+		return 16, streamIDTooLarge
+	}
+	if frame.DeltaWindowSize > MAX_DELTA_WINDOW_SIZE {
+		return 16, errors.New("Error: Delta Window Size too large.")
+	}
+
+	return 16, nil
+}
+
+func (frame *windowUpdateFrameV2) StreamID() StreamID {
+	return frame.streamID
+}
+
+func (frame *windowUpdateFrameV2) String() string {
+	buf := new(bytes.Buffer)
+
+	buf.WriteString("WINDOW_UPDATE {\n\t")
+	buf.WriteString(fmt.Sprintf("Version:              2\n\t"))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
+	buf.WriteString(fmt.Sprintf("Delta window size:    %d\n}\n", frame.DeltaWindowSize))
+
+	return buf.String()
+}
+
+func (frame *windowUpdateFrameV2) WriteTo(writer io.Writer) (int64, error) {
+	return 0, nil
 }
 
 /************
@@ -1119,7 +1176,7 @@ func (frame *headersFrameV2) WriteTo(writer io.Writer) (int64, error) {
  ************/
 type dataFrameV2 struct {
 	streamID StreamID
-	flags    Flags
+	Flags    Flags
 	Data     []byte
 }
 
@@ -1129,10 +1186,6 @@ func (frame *dataFrameV2) Compress(comp Compressor) error {
 
 func (frame *dataFrameV2) Decompress(decomp Decompressor) error {
 	return nil
-}
-
-func (frame *dataFrameV2) Flags() Flags {
-	return 0
 }
 
 func (frame *dataFrameV2) ReadFrom(reader io.Reader) (int64, error) {
@@ -1148,9 +1201,7 @@ func (frame *dataFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Get and check length.
 	length := int(bytesToUint24(data[5:8]))
-	if length == 0 && data[4] == 0 {
-		return 8, &incorrectDataLength{length, 1}
-	} else if length > MAX_FRAME_SIZE-8 {
+	if length > MAX_FRAME_SIZE-8 {
 		return 8, frameTooLarge
 	}
 
@@ -1163,7 +1214,7 @@ func (frame *dataFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	frame.streamID = StreamID(bytesToUint32(data[0:4]))
-	frame.flags = Flags(data[4])
+	frame.Flags = Flags(data[4])
 	if frame.Data == nil {
 		frame.Data = []byte{}
 	}
@@ -1178,19 +1229,19 @@ func (frame *dataFrameV2) StreamID() StreamID {
 func (frame *dataFrameV2) String() string {
 	buf := new(bytes.Buffer)
 
-	flags := ""
-	if frame.flags.FIN() {
-		flags += " FLAG_FIN"
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
 	}
-	if flags == "" {
-		flags = "[NONE]"
+	if Flags == "" {
+		Flags = "[NONE]"
 	} else {
-		flags = flags[1:]
+		Flags = Flags[1:]
 	}
 
 	buf.WriteString("DATA {\n\t")
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
-	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", flags))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Length:               %d\n\t", len(frame.Data)))
 	buf.WriteString(fmt.Sprintf("Data:                 %v\n}\n", frame.Data))
 
@@ -1202,7 +1253,7 @@ func (frame *dataFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	if length > MAX_DATA_SIZE {
 		return 0, errors.New("Error: Data size too large.")
 	}
-	if length == 0 && !frame.flags.FIN() {
+	if length == 0 && !frame.Flags.FIN() {
 		return 0, errors.New("Error: Data is empty.")
 	}
 
@@ -1212,7 +1263,7 @@ func (frame *dataFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out[1] = frame.streamID.b2() // Stream ID
 	out[2] = frame.streamID.b3() // Stream ID
 	out[3] = frame.streamID.b4() // Stream ID
-	out[4] = byte(frame.flags)   // Flags
+	out[4] = byte(frame.Flags)   // Flags
 	out[5] = byte(length >> 16)  // Length
 	out[6] = byte(length >> 8)   // Length
 	out[7] = byte(length)        // Length

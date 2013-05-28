@@ -177,7 +177,9 @@ type Priority byte
 func (p Priority) Byte(version uint16) byte {
 	switch version {
 	case 3:
-		return byte((p & 0x7) << 5)
+		return byte((p & 7) << 5)
+	case 2:
+		return byte((p & 3) << 6)
 	default:
 		return 0
 	}
@@ -189,6 +191,8 @@ func (p Priority) Valid(version uint16) bool {
 	switch version {
 	case 3:
 		return p <= 7
+	case 2:
+		return p <= 3
 	default:
 		return false
 	}

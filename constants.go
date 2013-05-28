@@ -236,7 +236,7 @@ func DefaultPriority(url *url.URL) Priority {
 
 // Version factors.
 var supportedVersions = map[uint16]struct{}{
-	//2: struct{}{},
+	2: struct{}{},
 	3: struct{}{},
 }
 

@@ -136,8 +136,6 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		}
 	}
 
-	debug.Printf("Headers decompressed from %d bytes to %d.\n", len(data), length)
-
 	return headers, nil
 }
 

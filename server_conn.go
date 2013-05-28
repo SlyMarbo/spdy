@@ -71,6 +71,48 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 
 		return out, nil
 
+	case 2:
+		out := new(connV2)
+		out.remoteAddr = conn.RemoteAddr().String()
+		out.server = server
+		out.conn = conn
+		out.buf = bufio.NewReader(conn)
+		if tlsConn, ok := conn.(*tls.Conn); ok {
+			out.tlsState = new(tls.ConnectionState)
+			*out.tlsState = tlsConn.ConnectionState()
+		}
+		out.streams = make(map[StreamID]Stream)
+		out.output = [8]chan Frame{}
+		out.output[0] = make(chan Frame)
+		out.output[1] = make(chan Frame)
+		out.output[2] = make(chan Frame)
+		out.output[3] = make(chan Frame)
+		out.output[4] = make(chan Frame)
+		out.output[5] = make(chan Frame)
+		out.output[6] = make(chan Frame)
+		out.output[7] = make(chan Frame)
+		out.pings = make(map[uint32]chan<- Ping)
+		out.nextPingID = 2
+		out.compressor = NewCompressor(2)
+		out.decompressor = NewDecompressor(2)
+		out.receivedSettings = make(Settings)
+		out.lastPushStreamID = 0
+		out.lastRequestStreamID = 0
+		out.oddity = 0
+		out.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
+		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
+		out.stop = make(chan struct{})
+		out.init = func() {
+			// Initialise the connection by sending the connection settings.
+			settings := new(settingsFrameV2)
+			settings.Flags = FLAG_SETTINGS_PERSIST_VALUE
+			settings.Settings = defaultSPDYServerSettings(2, DEFAULT_STREAM_LIMIT)
+			out.output[0] <- settings
+		}
+
+		return out, nil
+
 	default:
 		return nil, errors.New("Error: Unsupported SPDY version.")
 	}
@@ -374,6 +416,9 @@ func SPDYversion(w http.ResponseWriter) uint16 {
 		switch stream.Conn().(type) {
 		case *connV3:
 			return 3
+
+		case *connV2:
+			return 2
 
 		default:
 			return 0

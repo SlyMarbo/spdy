@@ -57,6 +57,55 @@ func NewClientConn(conn net.Conn, push Receiver, version uint16) (spdyConn Conn,
 		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
 		out.stop = make(chan struct{})
+		out.init = func() {
+			// Initialise the connection by sending the connection settings.
+			settings := new(settingsFrameV3)
+			settings.Settings = defaultSPDYClientSettings(3, DEFAULT_STREAM_LIMIT)
+			out.output[0] <- settings
+		}
+
+		return out, nil
+
+	case 2:
+		out := new(connV2)
+		out.remoteAddr = conn.RemoteAddr().String()
+		out.server = nil
+		out.conn = conn
+		out.buf = bufio.NewReader(conn)
+		if tlsConn, ok := conn.(*tls.Conn); ok {
+			out.tlsState = new(tls.ConnectionState)
+			*out.tlsState = tlsConn.ConnectionState()
+		}
+		out.streams = make(map[StreamID]Stream)
+		out.output = [8]chan Frame{}
+		out.output[0] = make(chan Frame)
+		out.output[1] = make(chan Frame)
+		out.output[2] = make(chan Frame)
+		out.output[3] = make(chan Frame)
+		out.output[4] = make(chan Frame)
+		out.output[5] = make(chan Frame)
+		out.output[6] = make(chan Frame)
+		out.output[7] = make(chan Frame)
+		out.pings = make(map[uint32]chan<- Ping)
+		out.nextPingID = 2
+		out.compressor = NewCompressor(2)
+		out.decompressor = NewDecompressor(2)
+		out.receivedSettings = make(Settings)
+		out.lastPushStreamID = 0
+		out.lastRequestStreamID = 0
+		out.oddity = 1
+		out.initialWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+		out.requestStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
+		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushReceiver = push
+		out.pushRequests = make(map[StreamID]*http.Request)
+		out.stop = make(chan struct{})
+		out.init = func() {
+			// Initialise the connection by sending the connection settings.
+			settings := new(settingsFrameV2)
+			settings.Settings = defaultSPDYClientSettings(2, DEFAULT_STREAM_LIMIT)
+			out.output[0] <- settings
+		}
 
 		return out, nil
 
