@@ -2,7 +2,6 @@ package spdy
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	logging "log"
@@ -86,12 +85,6 @@ const (
 	stateClosed
 )
 
-// Stream priority values.
-const (
-	MAX_PRIORITY = 0
-	MIN_PRIORITY = 7
-)
-
 // Maximum frame size (2 ** 24 -1).
 const MAX_FRAME_SIZE = 0xffffff
 
@@ -109,13 +102,10 @@ const DEFAULT_INITIAL_WINDOW_SIZE = 65536
 // The default initial transfer window sent by the client.
 const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
 
-// The default maximum number of concurrent streams.
-const DEFAULT_MAX_CONCURRENT_STREAMS = 1000
-
 // Maximum delta window size field for WINDOW_UPDATE.
 const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
-var statusCodeText = map[int]string{
+var statusCodeText = map[StatusCode]string{
 	RST_STREAM_PROTOCOL_ERROR:        "PROTOCOL_ERROR",
 	RST_STREAM_INVALID_STREAM:        "INVALID_STREAM",
 	RST_STREAM_REFUSED_STREAM:        "REFUSED_STREAM",
@@ -129,6 +119,17 @@ var statusCodeText = map[int]string{
 	RST_STREAM_FRAME_TOO_LARGE:       "FRAME_TOO_LARGE",
 }
 
+var settingText = map[uint32]string{
+	SETTINGS_UPLOAD_BANDWIDTH:               "UPLOAD_BANDWIDTH",
+	SETTINGS_DOWNLOAD_BANDWIDTH:             "DOWNLOAD_BANDWIDTH",
+	SETTINGS_ROUND_TRIP_TIME:                "ROUND_TRIP_TIME",
+	SETTINGS_MAX_CONCURRENT_STREAMS:         "MAX_CONCURRENT_STREAMS",
+	SETTINGS_CURRENT_CWND:                   "CURRENT_CWND",
+	SETTINGS_DOWNLOAD_RETRANS_RATE:          "DOWNLOAD_RETRANS_RATE",
+	SETTINGS_INITIAL_WINDOW_SIZE:            "INITIAL_WINDOW_SIZE",
+	SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE: "CLIENT_CERTIFICATE_VECTOR_SIZE",
+}
+
 // streamLimit is used to add and enforce
 // a limit on the number of concurrently
 // active streams.
@@ -137,6 +138,15 @@ type streamLimit struct {
 	limit   uint32
 	current uint32
 }
+
+func newStreamLimit(limit uint32) *streamLimit {
+	out := new(streamLimit)
+	out.limit = limit
+	return out
+}
+
+// The default maximum number of concurrent streams.
+const DEFAULT_STREAM_LIMIT = 1000
 
 // NO_STREAM_LIMIT can be used to disable the stream limit.
 const NO_STREAM_LIMIT = 0x80000000
@@ -180,7 +190,7 @@ func (s *streamLimit) Close() {
 // indicating whether receiving the
 // given status code would end the
 // connection.
-func statusCodeIsFatal(code int) bool {
+func statusCodeIsFatal(code StatusCode) bool {
 	switch code {
 	case RST_STREAM_PROTOCOL_ERROR:
 		return true
@@ -196,95 +206,13 @@ func statusCodeIsFatal(code int) bool {
 	}
 }
 
-// StreamState is used to store and query
-// the stream's state. The active methods
-// do not directly affect the stream's
-// state, but it will use that information
-// to affect the changes.
-type StreamState struct {
-	sync.RWMutex
-	s uint8
-}
-
-// Check whether the stream is open.
-func (s *StreamState) Open() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateOpen
-}
-
-// Check whether the stream is closed.
-func (s *StreamState) Closed() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateClosed
-}
-
-// Check whether the stream is half-closed at the other endpoint.
-func (s *StreamState) ClosedThere() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateClosed || s.s == stateHalfClosedThere
-}
-
-// Check whether the stream is open at the other endpoint.
-func (s *StreamState) OpenThere() bool {
-	return !s.ClosedThere()
-}
-
-// Check whether the stream is half-closed at the other endpoint.
-func (s *StreamState) ClosedHere() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.s == stateClosed || s.s == stateHalfClosedHere
-}
-
-// Check whether the stream is open locally.
-func (s *StreamState) OpenHere() bool {
-	return !s.ClosedHere()
-}
-
-// Closes the stream.
-func (s *StreamState) Close() {
-	s.Lock()
-	s.s = stateClosed
-	s.Unlock()
-}
-
-// Half-close the stream locally.
-func (s *StreamState) CloseHere() {
-	s.Lock()
-	if s.s == stateOpen {
-		s.s = stateHalfClosedHere
-	} else if s.s == stateHalfClosedThere {
-		s.s = stateClosed
-	}
-	s.Unlock()
-}
-
-// Half-close the stream at the other endpoint.
-func (s *StreamState) CloseThere() {
-	s.Lock()
-	if s.s == stateOpen {
-		s.s = stateHalfClosedThere
-	} else if s.s == stateHalfClosedHere {
-		s.s = stateClosed
-	}
-	s.Unlock()
-}
-
-// defaultPriority returns the default request
+// DefaultPriority returns the default request
 // priority for the given target path. This is
 // currently in accordance with Google Chrome;
 // giving 0 for pages, 1 for CSS, 2 for JS, 3
 // for images. Other types default to 2.
-func defaultPriority(path string) int {
-	u, err := url.Parse(path)
-	if err != nil {
-		log.Printf("Failed to parse request path %q. Using priority 4.\n", path)
-		return 4
-	}
-	path = strings.ToLower(u.Path)
+func DefaultPriority(url *url.URL) Priority {
+	path := strings.ToLower(url.Path)
 	switch {
 	case strings.HasSuffix(path, "/"), strings.HasSuffix(path, ".html"), strings.HasSuffix(path, ".xhtml"):
 		return 0
@@ -308,12 +236,12 @@ func defaultPriority(path string) int {
 
 // Version factors.
 var supportedVersions = map[uint16]struct{}{
-	2: struct{}{},
+	//2: struct{}{},
 	3: struct{}{},
 }
 
-const maxVersion = 3
 const minVersion = 2
+const maxVersion = 3
 
 // SupportedVersions will return a slice of supported SPDY versions.
 // The returned versions are sorted into order of most recent first.
@@ -326,15 +254,20 @@ func SupportedVersions() []int {
 	return s
 }
 
-// NpnStrings returns the NPN version strings for the SPDY versions
+var npnStrings = map[uint16]string{
+	2: "spdy/2",
+	3: "spdy/3",
+}
+
+// npn returns the NPN version strings for the SPDY versions
 // currently enabled, plus HTTP/1.1.
-//
-//		fmt.Println(spdy.NpnStrings()) // => ["spdy/3" "spdy/2" "http/1.1"]
-func NpnStrings() []string {
+func npn() []string {
 	v := SupportedVersions()
 	s := make([]string, 0, len(v)+1)
 	for _, v := range v {
-		s = append(s, fmt.Sprintf("spdy/%d", v))
+		if str := npnStrings[uint16(v)]; str != "" {
+			s = append(s, str)
+		}
 	}
 	s = append(s, "http/1.1")
 	return s
@@ -383,22 +316,22 @@ func DisableSpdyVersion(v uint16) error {
 
 // defaultSPDYServerSettings are used in initialising the connection.
 // It takes the SPDY version and max concurrent streams.
-func defaultSPDYServerSettings(v uint16, m uint32) []*Setting {
+func defaultSPDYServerSettings(v uint16, m uint32) Settings {
 	switch v {
 	case 3:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_INITIAL_WINDOW_SIZE: &Setting{
 				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
 				Value: DEFAULT_INITIAL_WINDOW_SIZE,
 			},
-			&Setting{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
 		}
 	case 2:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
@@ -409,22 +342,22 @@ func defaultSPDYServerSettings(v uint16, m uint32) []*Setting {
 
 // defaultSPDYClientSettings are used in initialising the connection.
 // It takes the SPDY version and max concurrent streams.
-func defaultSPDYClientSettings(v uint16, m uint32) []*Setting {
+func defaultSPDYClientSettings(v uint16, m uint32) Settings {
 	switch v {
 	case 3:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_INITIAL_WINDOW_SIZE: &Setting{
 				ID:    SETTINGS_INITIAL_WINDOW_SIZE,
 				Value: DEFAULT_INITIAL_CLIENT_WINDOW_SIZE,
 			},
-			&Setting{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
 		}
 	case 2:
-		return []*Setting{
-			&Setting{
+		return Settings{
+			SETTINGS_MAX_CONCURRENT_STREAMS: &Setting{
 				ID:    SETTINGS_MAX_CONCURRENT_STREAMS,
 				Value: m,
 			},
