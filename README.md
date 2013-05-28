@@ -2,17 +2,15 @@ spdy
 ====
 
 A full-featured SPDY library for the Go language (still under very active development).
-
-So far, servers and clients are ready, although there is an outstanding issue with the SPDY/2 client.
  
-Note that this implementation currently supports SPDY drafts 2 and 3.
+Note that this implementation currently supports SPDY draft 3, and support for SPDY/2, SPDY/4, and HTTP/2.0 is upcoming.
 
 The GoDoc for this package can be found at http://godoc.org/github.com/SlyMarbo/spdy.
 
 Servers
 -------
 
-Adding SPDY support to an existing Go server doesn't take much work.
+Adding SPDY support to an existing Go server requires minimal work.
 
 Modifying a simple example server like the following:
 ```go
@@ -22,14 +20,14 @@ import (
 	"net/http"
 )
 
-func ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func Serve(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, HTTP!"))
 }
 
 func main() {
 	
 	// Register handler.
-	http.HandleFunc("/", ServeHTTP)
+	http.HandleFunc("/", Serve)
 
 	err := http.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
 	if err != nil {
@@ -48,52 +46,15 @@ import (
 )
 
 // This handler will now serve HTTP, HTTPS, and SPDY requests.
-func ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func Serve(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Hello, HTTP!"))
 }
 
 func main() {
 	
-	// Register handler.
-	http.HandleFunc("/", ServeHTTP)
+	http.HandleFunc("/", Serve)
 
 	// Use spdy's ListenAndServe.
-	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
-	if err != nil {
-		// handle error.
-	}
-}
-```
-
-SPDY now supports reuse of HTTP handlers, as demonstrated above. Although this allows you to use just one set of
-handlers, it means there is no way to use the SPDY-specific capabilities provided by `spdy.ResponseWriter`, such as
-server pushes, or to know which protocol is being used.
-
-Making full use of the SPDY protocol simple requires adding an extra handler:
-```go
-package main
-
-import (
-	"github.com/SlyMarbo/spdy"
-	"net/http"
-)
-
-// This now only serves HTTP/HTTPS requests.
-func ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello, HTTP!"))
-}
-
-// Add a SPDY handler.
-func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello, SPDY!"))
-}
-
-func main() {
-	
-	// Register handlers.
-	http.HandleFunc("/", ServeHTTP)
-	spdy.HandleFunc("/", ServeSPDY)
-
 	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
 	if err != nil {
 		// handle error.
@@ -110,19 +71,19 @@ import (
 	"net/http"
 )
 
-func ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "." + r.RequestURI)
-}
-
-func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
+func Serve(w http.ResponseWriter, r *http.Request) {
+	if spdy.UsingSPDY(w) {
+		// Using SPDY.
+	} else {
+		// Using HTTP(S).
+	}
 	http.ServeFile(w, r, "." + r.RequestURI)
 }
 
 func main() {
 	
-	// Register handlers.
-	http.HandleFunc("/", ServeHTTP)
-	spdy.HandleFunc("/", ServeSPDY)
+	// Register handler.
+	http.HandleFunc("/", Serve)
 
 	err := spdy.ListenAndServeTLS("localhost:443", "cert.pem", "key.pem", nil)
 	if err != nil {
@@ -135,7 +96,7 @@ func main() {
 
 The following examples use features specific to SPDY.
 
-Just the SPDY handler is shown.
+Just the handler is shown.
 
 Use SPDY's pinging features to test the connection:
 ```go
@@ -143,16 +104,20 @@ package main
 
 import (
 	"github.com/SlyMarbo/spdy"
+	"net/http"
 	"time"
 )
 
-func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
+func Serve(w http.ResponseWriter, r *http.Request) {
 	// Ping returns a channel which will send a bool.
-	ping := w.Ping()
+	ping, err := spdy.PingClient(w)
+	if err != nil {
+		// Not using SPDY.
+	}
 	
 	select {
-	case success := <- ping:
-		if success {
+	case _, ok := <- ping:
+		if ok {
 			// Connection is fine.
 		} else {
 			// Something went wrong.
@@ -173,42 +138,18 @@ Sending a server push:
 ```go
 package main
 
-import "github.com/SlyMarbo/spdy"
+import (
+	"github.com/SlyMarbo/spdy"
+	"net/http"
+)
 
-func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
-	
-	// Push a whole file automatically.
-	spdy.PushFile(w, r, otherFile)
-	
-	// or
-	
-	// Push returns a PushWriter (similar to a ResponseWriter) and an error.
-	push, err := w.Push()
+func Serve(w http.ResponseWriter, r *http.Request) {
+	// Push returns a separate http.ResponseWriter and an error.
+	push, err := spdy.Push("/example.js")
 	if err != nil {
-		// Handle the error.
+		// Not using SPDY.
 	}
-	push.Write([]byte("Some stuff."))   // Push data manually.
-	
-	// ...
-}
-```
-
-
-
-Sending SPDY settings:
-```go
-package main
-
-import "github.com/SlyMarbo/spdy"
-
-func ServeSPDY(w spdy.ResponseWriter, r *http.Request) {
-	
-	setting := new(spdy.Setting)
-	setting.Flags = spdy.FLAG_SETTINGS_PERSIST_VALUE
-	setting.ID = spdy.SETTINGS_MAX_CONCURRENT_STREAMS
-	setting.Value = 500
-	
-	w.WriteSettings(setting)
+	http.ServeFile(push, r, "./content/example.js")
 	
 	// ...
 }
@@ -227,12 +168,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/SlyMarbo/spdy"
+	"github.com/SlyMarbo/spdy" // Simply import SPDY.
 	"io/ioutil"
 )
 
 func main() {
-	res, err := spdy.Get("https://example.com/")
+	res, err := http.Get("https://example.com/") // http.Get (and .Post etc) can now use SPDY.
 	if err != nil {
 		// handle the error.
 	}
