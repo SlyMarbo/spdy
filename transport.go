@@ -131,8 +131,8 @@ func (t *Transport) doHTTP(conn net.Conn, req *http.Request) (*http.Response, er
 }
 
 // RoundTrip handles the actual request; ensuring a connection is
-// made, determining which protocol to use, and performing
-// the request.
+// made, determining which protocol to use, and performing the
+// request.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	u := req.URL
 
@@ -229,12 +229,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 				}
 			}
 
+			// Ensure the negotiated protocol is supported.
 			if !supported {
 				msg := fmt.Sprintf("Error: Unsupported negotiated protocol %q.", state.NegotiatedProtocol)
 				t.m.Unlock()
 				return nil, errors.New(msg)
 			}
 
+			// Handle the protocol.
 			switch state.NegotiatedProtocol {
 			case "http/1.1", "":
 				t.m.Unlock()
@@ -296,6 +298,13 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return res.Response(), nil
 }
 
+// response is used in handling responses; storing
+// the data as it's received, and producing an
+// http.Response once complete.
+//
+// response may be given a Receiver to enable live
+// handling of the response data. This is provided
+// by setting spdy.Transport.Receiver.
 type response struct {
 	StatusCode int
 	Header     http.Header

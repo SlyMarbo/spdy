@@ -8,10 +8,15 @@ import (
 	"net/http"
 )
 
+// init modifies http.DefaultClient to use a spdy.Transport, enabling
+// support for SPDY in functions like http.Get.
 func init() {
-	http.DefaultClient = &http.Client{ Transport: new(Transport) }
+	http.DefaultClient = &http.Client{Transport: new(Transport)}
 }
 
+// NewClientConn is used to create a SPDY connection, using the given
+// net.Conn for the underlying connection, and the given Receiver to
+// receive server pushes.
 func NewClientConn(conn net.Conn, push Receiver, version uint16) (spdyConn Conn, err error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")

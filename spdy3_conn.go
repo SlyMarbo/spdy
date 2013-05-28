@@ -15,6 +15,9 @@ import (
 	"time"
 )
 
+// connV3 is a spdy.Conn implementing SPDY/3. This is used in both
+// servers and clients, and is created with either NewServerConn,
+// or NewClientConn.
 type connV3 struct {
 	sync.Mutex
 	remoteAddr          string
@@ -45,6 +48,8 @@ type connV3 struct {
 	init                func()                         // this function is called before the connection begins.
 }
 
+// Close ends the connection, cleaning up relevant resources.
+// Close can be called multiple times safely.
 func (conn *connV3) Close() (err error) {
 	conn.Lock()
 	defer conn.Unlock()
@@ -95,10 +100,14 @@ func (conn *connV3) Close() (err error) {
 	return nil
 }
 
+// InitialWindowSize gives the most recently-received value for
+// the INITIAL_WINDOW_SIZE setting.
 func (conn *connV3) InitialWindowSize() (uint32, error) {
 	return conn.initialWindowSize, nil
 }
 
+// Ping is used by spdy.PingServer and spdy.PingClient to send
+// SPDY PINGs.
 func (conn *connV3) Ping() (<-chan Ping, error) {
 	conn.Lock()
 	defer conn.Unlock()
@@ -126,6 +135,8 @@ func (conn *connV3) Ping() (<-chan Ping, error) {
 	return c, nil
 }
 
+// Push is used to issue a server push to the client. Note that this cannot be performed
+// by clients.
 func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, error) {
 	if conn.goaway {
 		return nil, errors.New("Error: GOAWAY received, so push could not be sent.")
@@ -190,6 +201,7 @@ func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, e
 	return out, nil
 }
 
+// Request is used to make a client request.
 func (conn *connV3) Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error) {
 	if conn.goaway {
 		return nil, errors.New("Error: GOAWAY received, so request could not be sent.")
@@ -204,7 +216,7 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
 	}
 
-	if priority < MAX_PRIORITY || priority > MIN_PRIORITY {
+	if !priority.Valid(3) {
 		return nil, errors.New("Error: Priority must be in the range 0 - 7.")
 	}
 
@@ -311,6 +323,8 @@ func (conn *connV3) Run() error {
 	return conn.Close()
 }
 
+// closed indicates whether the connection has
+// been closed.
 func (conn *connV3) closed() bool {
 	select {
 	case _ = <-conn.stop:
@@ -442,7 +456,7 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 		return
 	}
 
-	if !frame.Priority.Valid() {
+	if !frame.Priority.Valid(3) {
 		log.Printf("Error: Received SYN_STREAM with invalid priority %d.\n", frame.Priority)
 		conn.protocolError(sid)
 		return
@@ -547,7 +561,7 @@ func (conn *connV3) handleRequest(frame *synStreamFrameV3) {
 	}
 
 	// Check request priority.
-	if !frame.Priority.Valid() {
+	if !frame.Priority.Valid(3) {
 		log.Printf("Error: Received SYN_STREAM with invalid priority %d.\n", frame.Priority)
 		conn.protocolError(sid)
 		return

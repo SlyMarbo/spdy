@@ -7,9 +7,13 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
+// NewServerConn is used to create a SPDY connection, using the given
+// net.Conn for the underlying connection, and the given http.Server to
+// configure the request serving.
 func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn Conn, err error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")
@@ -130,6 +134,10 @@ func AddSPDY(srv *http.Server) {
 // with a ResponseWriter using a non-SPDY connection.
 var ErrNotSPDY = errors.New("Error: Not a SPDY connection.")
 
+// ErrNotConnected indicates that a SPDY-specific feature was
+// attempted with a Client not connected to the given server.
+var ErrNotConnected = errors.New("Error: Not connected to given server.")
+
 // ListenAndServeTLS listens on the TCP network address addr
 // and then calls Serve with handler to handle requests on
 // incoming connections.  Handler is typically nil, in which
@@ -200,6 +208,113 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 	return server.ListenAndServeTLS(certFile, keyFile)
 }
 
+// PingClient is used to send PINGs with SPDY servers.
+// PingClient takes a ResponseWriter and returns a channel on
+// which a spdy.Ping will be sent when the PING response is
+// received. If the channel is closed before a spdy.Ping has
+// been sent, this indicates that the PING was unsuccessful.
+//
+// If the underlying connection is using HTTP, and not SPDY,
+// PingClient will return the ErrNotSPDY error.
+//
+// A simple example of sending a ping is:
+//
+//      import (
+//              "github.com/SlyMarbo/spdy"
+//              "log"
+//              "net/http"
+//      )
+//
+//      func httpHandler(w http.ResponseWriter, req *http.Request) {
+//              ping, err := spdy.PingClient(w)
+//              if err != nil {
+//                      // Non-SPDY connection.
+//              } else {
+//                      resp, ok <- ping
+//                      if ok {
+//                              // Ping was successful.
+//                      }
+//              }
+//              
+//      }
+//
+//      func main() {
+//              http.HandleFunc("/", httpHandler)
+//              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
+//              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
+//              if err != nil {
+//                      log.Fatal(err)
+//              }
+//      }
+func PingClient(w http.ResponseWriter) (<-chan Ping, error) {
+	if stream, ok := w.(Stream); !ok {
+		return nil, ErrNotSPDY
+	} else {
+		return stream.Conn().Ping()
+	}
+}
+
+// PingServer is used to send PINGs with http.Clients using.
+// SPDY. PingServer takes a ResponseWriter and returns a
+// channel onwhich a spdy.Ping will be sent when the PING
+// response is received. If the channel is closed before a
+// spdy.Ping has been sent, this indicates that the PING was
+// unsuccessful.
+//
+// If the underlying connection is using HTTP, and not SPDY,
+// PingServer will return the ErrNotSPDY error.
+//
+// If an underlying connection has not been made to the given
+// server, PingServer will return the ErrNotConnected error.
+//
+// A simple example of sending a ping is:
+//
+//      import (
+//              "github.com/SlyMarbo/spdy"
+//              "net/http"
+//      )
+//
+//      func main() {
+//              resp, err := http.Get("https://example.com/")
+//              
+//              // ...
+//              
+//              ping, err := spdy.PingServer(http.DefaultClient, "https://example.com")
+//              if err != nil {
+//                      // No SPDY connection.
+//              } else {
+//                      resp, ok <- ping
+//                      if ok {
+//                              // Ping was successful.
+//                      }
+//              }
+//      }
+func PingServer(c http.Client, server string) (<-chan Ping, error) {
+	if transport, ok := c.Transport.(*Transport); !ok {
+		return nil, ErrNotSPDY
+	} else {
+		u, err := url.Parse(server)
+		if err != nil {
+			return nil, err
+		}
+		// Make sure the URL host contains the port.
+		if !strings.Contains(u.Host, ":") {
+			switch u.Scheme {
+			case "http":
+				u.Host += ":80"
+
+			case "https":
+				u.Host += ":443"
+			}
+		}
+		conn, ok := transport.spdyConns[u.Host]
+		if !ok || conn == nil {
+			return nil, ErrNotConnected
+		}
+		return conn.Ping()
+	}
+}
+
 // Push is used to send server pushes with SPDY servers.
 // Push takes a ResponseWriter and the url of the resource
 // being pushed, and returns a ResponseWriter to which the
@@ -219,9 +334,9 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 //      func httpHandler(w http.ResponseWriter, req *http.Request) {
 //              push, err := spdy.Push(w, "/javascript.js")
 //              if err != nil {
-//                      // HTTP connection.
+//                      // Non-SPDY connection.
 //              } else {
-//                      http.ServeFile(push, req, "./javascript.js")
+//                      http.ServeFile(push, req, "./javascript.js") // Push the given file.
 //              }
 //              
 //      }

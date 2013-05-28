@@ -59,7 +59,7 @@ type Decompressor interface {
 }
 
 // Objects implementing the Receiver interface can be
-// registered to a specific request on the Client.
+// registered to receive requests on the Client.
 //
 // ReceiveData is passed the original request, the data
 // to receive and a bool indicating whether this is the
@@ -172,18 +172,35 @@ func (f Flags) UNIDIRECTIONAL() bool {
 // Priority represents a stream's priority.
 type Priority byte
 
-func (p Priority) Byte() byte {
-	return byte((p & 0x7) << 5)
+// Byte returns the priority in binary form, adjusted
+// for the given SPDY version.
+func (p Priority) Byte(version uint16) byte {
+	switch version {
+	case 3:
+		return byte((p & 0x7) << 5)
+	default:
+		return 0
+	}
 }
 
-func (p Priority) Valid() bool {
-	return p <= MIN_PRIORITY
+// Valid indicates whether the priority is in the valid
+// range for the given SPDY version.
+func (p Priority) Valid(version uint16) bool {
+	switch version {
+	case 3:
+		return p <= 7
+	default:
+		return false
+	}
 }
 
 /**************
  * StatusCode *
  **************/
 
+// StatusCode represents a status code sent in
+// certain SPDY frames, such as RST_STREAM and
+// GOAWAY.
 type StatusCode uint32
 
 func (r StatusCode) b1() byte {
@@ -202,6 +219,7 @@ func (r StatusCode) b4() byte {
 	return byte(r)
 }
 
+// String gives the StatusCode in text form.
 func (r StatusCode) String() string {
 	return statusCodeText[r]
 }
@@ -210,12 +228,15 @@ func (r StatusCode) String() string {
  * Settings *
  ************/
 
+// Setting represents a single setting as sent
+// in a SPDY SETTINGS frame.
 type Setting struct {
 	Flags Flags
 	ID    uint32
 	Value uint32
 }
 
+// String gives the textual representation of a Setting.
 func (s *Setting) String() string {
 	id := settingText[s.ID] + ":"
 	Flags := ""
@@ -234,8 +255,13 @@ func (s *Setting) String() string {
 	return fmt.Sprintf("%-31s %-10d %s", id, s.Value, Flags)
 }
 
+// Settings represents a series of settings, stored in a map
+// by setting ID. This ensures that duplicate settings are
+// not sent, since the new value will replace the old.
 type Settings map[uint32]*Setting
 
+// Settings returns a slice of Setting, sorted into order by
+// ID, as in the SPDY specification.
 func (s Settings) Settings() []*Setting {
 	if len(s) == 0 {
 		return []*Setting{}
@@ -413,6 +439,9 @@ func bytesToUint32(b []byte) uint32 {
 	return (uint32(b[0]) << 24) + (uint32(b[1]) << 16) + (uint32(b[2]) << 8) + uint32(b[3])
 }
 
+// read is used to ensure that the given number of bytes
+// are read if possible, even if multiple calls to Read
+// are required.
 func read(r io.Reader, i int) ([]byte, error) {
 	out := make([]byte, i)
 	in := out[:]
@@ -427,6 +456,9 @@ func read(r io.Reader, i int) ([]byte, error) {
 	return out, nil
 }
 
+// write is used to ensure that the given data is written
+// if possible, even if multiple calls to Write are
+// required.
 func write(w io.Writer, data []byte) error {
 	i := len(data)
 	for i > 0 {

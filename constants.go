@@ -85,12 +85,6 @@ const (
 	stateClosed
 )
 
-// Stream priority values.
-const (
-	MAX_PRIORITY = 0
-	MIN_PRIORITY = 7
-)
-
 // Maximum frame size (2 ** 24 -1).
 const MAX_FRAME_SIZE = 0xffffff
 
@@ -242,12 +236,12 @@ func DefaultPriority(url *url.URL) Priority {
 
 // Version factors.
 var supportedVersions = map[uint16]struct{}{
-	2: struct{}{},
+	//2: struct{}{},
 	3: struct{}{},
 }
 
-const maxVersion = 3
 const minVersion = 2
+const maxVersion = 3
 
 // SupportedVersions will return a slice of supported SPDY versions.
 // The returned versions are sorted into order of most recent first.
@@ -267,8 +261,6 @@ var npnStrings = map[uint16]string{
 
 // npn returns the NPN version strings for the SPDY versions
 // currently enabled, plus HTTP/1.1.
-//
-//		fmt.Println(spdy.npn()) // => ["spdy/3" "spdy/2" "http/1.1"]
 func npn() []string {
 	v := SupportedVersions()
 	s := make([]string, 0, len(v)+1)

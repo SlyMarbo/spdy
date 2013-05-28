@@ -216,7 +216,7 @@ func (frame *synStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	out[13] = frame.AssocStreamID.b2() // Associated Stream ID
 	out[14] = frame.AssocStreamID.b3() // Associated Stream ID
 	out[15] = frame.AssocStreamID.b4() // Associated Stream ID
-	out[16] = frame.Priority.Byte()    // Priority and Unused
+	out[16] = frame.Priority.Byte(2)   // Priority and Unused
 	out[17] = 0                        // Unused
 
 	err := write(writer, out)
