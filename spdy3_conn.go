@@ -45,6 +45,7 @@ type connV3 struct {
 	pushRequests        map[StreamID]*http.Request     // map of requests sent in server pushes.
 	pushReceiver        Receiver                       // Receiver to call for server Pushes.
 	stop                chan struct{}                  // this channel is closed when the connection closes.
+	sending             chan struct{}                  // this channel is used to ensure pending frames are sent.
 	init                func()                         // this function is called before the connection begins.
 }
 
@@ -56,6 +57,21 @@ func (conn *connV3) Close() (err error) {
 
 	if conn.closed() {
 		return nil
+	}
+
+	// Inform the other endpoint that the connection is closing.
+	goaway := new(goawayFrameV3)
+	if conn.server != nil {
+		goaway.LastGoodStreamID = conn.lastRequestStreamID
+	} else {
+		goaway.LastGoodStreamID = conn.lastPushStreamID
+	}
+	conn.output[0] <- goaway
+
+	// Ensure any pending frames are sent.
+	if conn.sending == nil {
+		conn.sending = make(chan struct{})
+		<-conn.sending
 	}
 
 	select {
@@ -1005,6 +1021,14 @@ func (conn *connV3) selectFrameToSend() (frame Frame) {
 			return frame
 		default:
 		}
+	}
+
+	// No frames are immediately pending, so if the
+	// connection is being closed, cease sending
+	// safely.
+	if conn.sending != nil {
+		close(conn.sending)
+		runtime.Goexit()
 	}
 
 	// Wait for any frame.
