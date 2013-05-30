@@ -140,7 +140,7 @@ func (frame *synStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	frame.Flags = Flags(data[4])
 	frame.streamID = StreamID(bytesToUint32(data[8:12]))
 	frame.AssocStreamID = StreamID(bytesToUint32(data[12:16]))
-	frame.Priority = Priority(data[16] >> 5)
+	frame.Priority = Priority(data[16] >> 6)
 	frame.rawHeader = header
 
 	if !frame.streamID.Valid() {
