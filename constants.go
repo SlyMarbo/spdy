@@ -130,7 +130,7 @@ const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
 const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
 // Header sent by the client to initiate the connection.
-const SPDY4_CLIENT_CONNECTION_HEADER = "FOO * HTTP/2.0\r\n\r\nBAR\r\n\r\n"
+const SPDY4_CLIENT_CONNECTION_HEADER = "FOO * HTTP/2.0\r\n\r\nBA\r\n\r\n"
 
 var statusCodeText = map[StatusCode]string{
 	RST_STREAM_PROTOCOL_ERROR:        "PROTOCOL_ERROR",
