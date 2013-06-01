@@ -3,7 +3,7 @@ spdy
 
 A full-featured SPDY library for the Go language (still under very active development).
  
-Note that this implementation currently supports SPDY draft 3, and support for SPDY/2, SPDY/4, and HTTP/2.0 is upcoming.
+Note that this implementation currently supports SPDY drafts 2 and 3, and support for SPDY/4, and HTTP/2.0 is upcoming.
 
 The GoDoc for this package can be found at http://godoc.org/github.com/SlyMarbo/spdy.
 
@@ -109,15 +109,15 @@ import (
 )
 
 func Serve(w http.ResponseWriter, r *http.Request) {
-	// Ping returns a channel which will send a bool.
+	// Ping returns a channel which will send an empty struct.
 	ping, err := spdy.PingClient(w)
 	if err != nil {
 		// Not using SPDY.
 	}
 	
 	select {
-	case _, ok := <- ping:
-		if ok {
+	case response := <- ping:
+		if response != nil {
 			// Connection is fine.
 		} else {
 			// Something went wrong.
