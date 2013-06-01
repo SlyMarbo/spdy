@@ -3,6 +3,8 @@ Package spdy is a full-featured SPDY library for the Go language (still under ve
  
 Note that this implementation currently supports SPDY drafts 2 and 3, and support for SPDY/4, and HTTP/2.0 is upcoming.
 
+-------------------------------
+
 		Servers
 
 Adding SPDY support to an existing Go server requires minimal work.
@@ -144,6 +146,7 @@ Sending a server push:
 			// ...
 		}
 
+-------------------------------
 
 		Clients
 
