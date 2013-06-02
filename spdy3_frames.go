@@ -154,10 +154,6 @@ func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *synStreamFrameV3) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *synStreamFrameV3) String() string {
 	buf := new(bytes.Buffer)
 	Flags := ""
@@ -319,10 +315,6 @@ func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *synReplyFrameV3) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *synReplyFrameV3) String() string {
 	buf := new(bytes.Buffer)
 	Flags := ""
@@ -443,10 +435,6 @@ func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *rstStreamFrameV3) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *rstStreamFrameV3) String() string {
 	buf := new(bytes.Buffer)
 
@@ -564,10 +552,6 @@ func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	return int64(length), nil
-}
-
-func (frame *settingsFrameV3) streamID() StreamID {
-	return 0
 }
 
 func (frame *settingsFrameV3) String() string {
@@ -724,10 +708,6 @@ func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return 12, nil
 }
 
-func (frame *pingFrameV3) streamID() StreamID {
-	return 0
-}
-
 func (frame *pingFrameV3) String() string {
 	buf := new(bytes.Buffer)
 
@@ -824,10 +804,6 @@ func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	return 16, nil
-}
-
-func (frame *goawayFrameV3) streamID() StreamID {
-	return 0
 }
 
 func (frame *goawayFrameV3) String() string {
@@ -964,10 +940,6 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return 18, nil
 }
 
-func (frame *headersFrameV3) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *headersFrameV3) String() string {
 	buf := new(bytes.Buffer)
 
@@ -1088,10 +1060,6 @@ func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	return 16, nil
-}
-
-func (frame *windowUpdateFrameV3) streamID() StreamID {
-	return frame.StreamID
 }
 
 func (frame *windowUpdateFrameV3) String() string {
@@ -1219,10 +1187,6 @@ func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *credentialFrameV3) streamID() StreamID {
-	return 0
-}
-
 func (frame *credentialFrameV3) String() string {
 	buf := new(bytes.Buffer)
 
@@ -1335,10 +1299,6 @@ func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	return int64(length + 8), nil
-}
-
-func (frame *dataFrameV3) streamID() StreamID {
-	return frame.StreamID
 }
 
 func (frame *dataFrameV3) String() string {

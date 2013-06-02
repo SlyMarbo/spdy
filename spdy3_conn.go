@@ -863,7 +863,7 @@ Loop:
 		err = frame.Decompress(conn.decompressor)
 		if err != nil {
 			log.Println("Error in decompression: ", err)
-			conn.protocolError(frame.streamID())
+			conn.protocolError(0)
 		}
 
 		debug.Println("Received Frame:")
@@ -885,7 +885,7 @@ Loop:
 		case *rstStreamFrameV3:
 			if statusCodeIsFatal(frame.Status) {
 				code := statusCodeText[frame.Status]
-				log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.streamID())
+				log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID)
 				conn.Close()
 				return
 			}

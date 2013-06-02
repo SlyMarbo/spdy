@@ -153,10 +153,6 @@ func (frame *synStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *synStreamFrameV2) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *synStreamFrameV2) String() string {
 	buf := new(bytes.Buffer)
 	Flags := ""
@@ -321,10 +317,6 @@ func (frame *synReplyFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *synReplyFrameV2) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *synReplyFrameV2) String() string {
 	buf := new(bytes.Buffer)
 	Flags := ""
@@ -447,10 +439,6 @@ func (frame *rstStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *rstStreamFrameV2) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *rstStreamFrameV2) String() string {
 	buf := new(bytes.Buffer)
 
@@ -568,10 +556,6 @@ func (frame *settingsFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	return int64(length), nil
-}
-
-func (frame *settingsFrameV2) streamID() StreamID {
-	return 0
 }
 
 func (frame *settingsFrameV2) String() string {
@@ -724,10 +708,6 @@ func (frame *noopFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	return 8, nil
 }
 
-func (frame *noopFrameV2) streamID() StreamID {
-	return 0
-}
-
 func (frame *noopFrameV2) String() string {
 	return "NOOP {\n\tVersion:              2\n}\n"
 }
@@ -787,10 +767,6 @@ func (frame *pingFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	frame.PingID = bytesToUint32(data[8:12])
 
 	return 12, nil
-}
-
-func (frame *pingFrameV2) streamID() StreamID {
-	return 0
 }
 
 func (frame *pingFrameV2) String() string {
@@ -891,10 +867,6 @@ func (frame *goawayFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	return 12, nil
-}
-
-func (frame *goawayFrameV2) streamID() StreamID {
-	return 0
 }
 
 func (frame *goawayFrameV2) String() string {
@@ -1026,10 +998,6 @@ func (frame *headersFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *headersFrameV2) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *headersFrameV2) String() string {
 	buf := new(bytes.Buffer)
 
@@ -1152,10 +1120,6 @@ func (frame *windowUpdateFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *windowUpdateFrameV2) streamID() StreamID {
-	return frame.StreamID
-}
-
 func (frame *windowUpdateFrameV2) String() string {
 	buf := new(bytes.Buffer)
 
@@ -1220,10 +1184,6 @@ func (frame *dataFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	return int64(length + 8), nil
-}
-
-func (frame *dataFrameV2) streamID() StreamID {
-	return frame.StreamID
 }
 
 func (frame *dataFrameV2) String() string {
