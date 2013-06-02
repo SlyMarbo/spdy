@@ -51,7 +51,7 @@ func (p *pushStreamV2) Write(inputData []byte) (int, error) {
 	written := 0
 	for len(data) > MAX_DATA_SIZE {
 		dataFrame := new(dataFrameV2)
-		dataFrame.streamID = p.streamID
+		dataFrame.StreamID = p.streamID
 		dataFrame.Data = data[:MAX_DATA_SIZE]
 		p.output <- dataFrame
 
@@ -64,7 +64,7 @@ func (p *pushStreamV2) Write(inputData []byte) (int, error) {
 	}
 
 	dataFrame := new(dataFrameV2)
-	dataFrame.streamID = p.streamID
+	dataFrame.StreamID = p.streamID
 	dataFrame.Data = data
 	p.output <- dataFrame
 
@@ -162,7 +162,7 @@ func (p *pushStreamV2) writeHeader() {
 	}
 
 	header := new(headersFrameV2)
-	header.streamID = p.streamID
+	header.StreamID = p.streamID
 	header.Header = cloneHeader(p.header)
 	for name := range header.Header {
 		p.header.Del(name)

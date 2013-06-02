@@ -150,7 +150,7 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
 		if err != nil {
 			reply := new(rstStreamFrameV3)
-			reply.streamID = s.streamID
+			reply.StreamID = s.streamID
 			reply.Status = RST_STREAM_FLOW_CONTROL_ERROR
 			s.output <- reply
 		}
@@ -211,7 +211,7 @@ func (s *clientStreamV3) writeHeader() {
 
 	// Create the HEADERS frame.
 	header := new(headersFrameV3)
-	header.streamID = s.streamID
+	header.StreamID = s.streamID
 	header.Header = cloneHeader(s.header)
 
 	// Clear the headers that have been sent.

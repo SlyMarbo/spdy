@@ -44,7 +44,7 @@ type Frame interface {
 	io.WriterTo
 	Compress(Compressor) error
 	Decompress(Decompressor) error
-	StreamID() StreamID
+	streamID() StreamID
 }
 
 // Compressor is used to compress the text header of a SPDY frame.

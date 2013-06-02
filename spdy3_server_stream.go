@@ -98,7 +98,7 @@ func (s *serverStreamV3) WriteHeader(code int) {
 
 	// Create the response SYN_REPLY.
 	synReply := new(synReplyFrameV3)
-	synReply.streamID = s.streamID
+	synReply.StreamID = s.streamID
 	synReply.Header = cloneHeader(s.header)
 
 	// Clear the headers that have been sent.
@@ -189,7 +189,7 @@ func (s *serverStreamV3) ReceiveFrame(frame Frame) error {
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
 		if err != nil {
 			reply := new(rstStreamFrameV3)
-			reply.streamID = s.streamID
+			reply.StreamID = s.streamID
 			reply.Status = RST_STREAM_FLOW_CONTROL_ERROR
 			s.output <- reply
 			return err
@@ -240,14 +240,14 @@ func (s *serverStreamV3) Run() error {
 			// Create the response SYN_REPLY.
 			synReply := new(synReplyFrameV3)
 			synReply.Flags = FLAG_FIN
-			synReply.streamID = s.streamID
+			synReply.StreamID = s.streamID
 			synReply.Header = s.header
 
 			s.output <- synReply
 		} else if s.state.OpenHere() {
 			// Create the DATA.
 			data := new(dataFrameV3)
-			data.streamID = s.streamID
+			data.StreamID = s.streamID
 			data.Flags = FLAG_FIN
 			data.Data = []byte{}
 
@@ -288,7 +288,7 @@ func (s *serverStreamV3) writeHeader() {
 
 	// Create the HEADERS frame.
 	header := new(headersFrameV3)
-	header.streamID = s.streamID
+	header.StreamID = s.streamID
 	header.Header = cloneHeader(s.header)
 
 	// Clear the headers that have been sent.

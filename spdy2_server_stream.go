@@ -63,7 +63,7 @@ func (s *serverStreamV2) Write(inputData []byte) (int, error) {
 	written := 0
 	for len(data) > MAX_DATA_SIZE {
 		dataFrame := new(dataFrameV2)
-		dataFrame.streamID = s.streamID
+		dataFrame.StreamID = s.streamID
 		dataFrame.Data = data[:MAX_DATA_SIZE]
 		s.output <- dataFrame
 
@@ -76,7 +76,7 @@ func (s *serverStreamV2) Write(inputData []byte) (int, error) {
 	}
 
 	dataFrame := new(dataFrameV2)
-	dataFrame.streamID = s.streamID
+	dataFrame.StreamID = s.streamID
 	dataFrame.Data = data
 	s.output <- dataFrame
 
@@ -102,7 +102,7 @@ func (s *serverStreamV2) WriteHeader(code int) {
 
 	// Create the response SYN_REPLY.
 	synReply := new(synReplyFrameV2)
-	synReply.streamID = s.streamID
+	synReply.StreamID = s.streamID
 	synReply.Header = cloneHeader(s.header)
 
 	// Clear the headers that have been sent.
@@ -223,14 +223,14 @@ func (s *serverStreamV2) Run() error {
 			// Create the response SYN_REPLY.
 			synReply := new(synReplyFrameV2)
 			synReply.Flags = FLAG_FIN
-			synReply.streamID = s.streamID
+			synReply.StreamID = s.streamID
 			synReply.Header = s.header
 
 			s.output <- synReply
 		} else if s.state.OpenHere() {
 			// Create the DATA.
 			data := new(dataFrameV2)
-			data.streamID = s.streamID
+			data.StreamID = s.streamID
 			data.Flags = FLAG_FIN
 			data.Data = []byte{}
 
@@ -271,7 +271,7 @@ func (s *serverStreamV2) writeHeader() {
 
 	// Create the HEADERS frame.
 	header := new(headersFrameV2)
-	header.streamID = s.streamID
+	header.StreamID = s.streamID
 	header.Header = cloneHeader(s.header)
 
 	// Clear the headers that have been sent.

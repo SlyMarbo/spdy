@@ -49,7 +49,7 @@ func (s *clientStreamV2) Write(inputData []byte) (int, error) {
 	written := 0
 	for len(data) > MAX_DATA_SIZE {
 		dataFrame := new(dataFrameV2)
-		dataFrame.streamID = s.streamID
+		dataFrame.StreamID = s.streamID
 		dataFrame.Data = data[:MAX_DATA_SIZE]
 		s.output <- dataFrame
 
@@ -62,7 +62,7 @@ func (s *clientStreamV2) Write(inputData []byte) (int, error) {
 	}
 
 	dataFrame := new(dataFrameV2)
-	dataFrame.streamID = s.streamID
+	dataFrame.StreamID = s.streamID
 	dataFrame.Data = data
 	s.output <- dataFrame
 
@@ -196,7 +196,7 @@ func (s *clientStreamV2) writeHeader() {
 
 	// Create the HEADERS frame.
 	header := new(headersFrameV2)
-	header.streamID = s.streamID
+	header.StreamID = s.streamID
 	header.Header = cloneHeader(s.header)
 
 	// Clear the headers that have been sent.

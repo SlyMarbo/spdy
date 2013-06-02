@@ -124,7 +124,7 @@ func (p *pushStreamV3) ReceiveFrame(frame Frame) error {
 		err := p.flow.UpdateWindow(frame.DeltaWindowSize)
 		if err != nil {
 			reply := new(rstStreamFrameV3)
-			reply.streamID = p.streamID
+			reply.StreamID = p.streamID
 			reply.Status = RST_STREAM_FLOW_CONTROL_ERROR
 			p.output <- reply
 			return err
@@ -169,7 +169,7 @@ func (p *pushStreamV3) writeHeader() {
 	}
 
 	header := new(headersFrameV3)
-	header.streamID = p.streamID
+	header.StreamID = p.streamID
 	header.Header = cloneHeader(p.header)
 	for name := range header.Header {
 		p.header.Del(name)

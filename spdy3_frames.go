@@ -57,7 +57,7 @@ func readFrameV3(reader *bufio.Reader) (frame Frame, err error) {
  ******************/
 type synStreamFrameV3 struct {
 	Flags         Flags
-	streamID      StreamID
+	StreamID      StreamID
 	AssocStreamID StreamID
 	Priority      Priority
 	Slot          byte
@@ -138,13 +138,13 @@ func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	frame.Flags = Flags(data[4])
-	frame.streamID = StreamID(bytesToUint32(data[8:12]))
+	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
 	frame.AssocStreamID = StreamID(bytesToUint32(data[12:16]))
 	frame.Priority = Priority(data[16] >> 5)
 	frame.Slot = data[17]
 	frame.rawHeader = header
 
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 18, streamIDTooLarge
 	}
 	if !frame.AssocStreamID.Valid() {
@@ -154,8 +154,8 @@ func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *synStreamFrameV3) StreamID() StreamID {
-	return frame.streamID
+func (frame *synStreamFrameV3) streamID() StreamID {
+	return frame.StreamID
 }
 
 func (frame *synStreamFrameV3) String() string {
@@ -176,7 +176,7 @@ func (frame *synStreamFrameV3) String() string {
 	buf.WriteString("SYN_STREAM {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
-	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
 	buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
 	buf.WriteString(fmt.Sprintf("Slot:                 %d\n\t", frame.Slot))
@@ -189,7 +189,7 @@ func (frame *synStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Headers not written.")
 	}
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 0, streamIDTooLarge
 	}
 	if !frame.AssocStreamID.Valid() {
@@ -208,10 +208,10 @@ func (frame *synStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[5] = byte(length >> 16)        // Length
 	out[6] = byte(length >> 8)         // Length
 	out[7] = byte(length)              // Length
-	out[8] = frame.streamID.b1()       // Stream ID
-	out[9] = frame.streamID.b2()       // Stream ID
-	out[10] = frame.streamID.b3()      // Stream ID
-	out[11] = frame.streamID.b4()      // Stream ID
+	out[8] = frame.StreamID.b1()       // Stream ID
+	out[9] = frame.StreamID.b2()       // Stream ID
+	out[10] = frame.StreamID.b3()      // Stream ID
+	out[11] = frame.StreamID.b4()      // Stream ID
 	out[12] = frame.AssocStreamID.b1() // Associated Stream ID
 	out[13] = frame.AssocStreamID.b2() // Associated Stream ID
 	out[14] = frame.AssocStreamID.b3() // Associated Stream ID
@@ -237,7 +237,7 @@ func (frame *synStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
  *****************/
 type synReplyFrameV3 struct {
 	Flags     Flags
-	streamID  StreamID
+	StreamID  StreamID
 	Header    http.Header
 	rawHeader []byte
 }
@@ -313,14 +313,14 @@ func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	frame.Flags = Flags(data[4])
-	frame.streamID = StreamID(bytesToUint32(data[8:12]))
+	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
 	return int64(length + 8), nil
 }
 
-func (frame *synReplyFrameV3) StreamID() StreamID {
-	return frame.streamID
+func (frame *synReplyFrameV3) streamID() StreamID {
+	return frame.StreamID
 }
 
 func (frame *synReplyFrameV3) String() string {
@@ -338,7 +338,7 @@ func (frame *synReplyFrameV3) String() string {
 	buf.WriteString("SYN_REPLY {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
-	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Header:               %#v\n}\n", frame.Header))
 
 	return buf.String()
@@ -348,7 +348,7 @@ func (frame *synReplyFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Header not written.")
 	}
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 0, streamIDTooLarge
 	}
 
@@ -364,10 +364,10 @@ func (frame *synReplyFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[5] = byte(length >> 16)   // Length
 	out[6] = byte(length >> 8)    // Length
 	out[7] = byte(length)         // Length
-	out[8] = frame.streamID.b1()  // Stream ID
-	out[9] = frame.streamID.b2()  // Stream ID
-	out[10] = frame.streamID.b3() // Stream ID
-	out[11] = frame.streamID.b4() // Stream ID
+	out[8] = frame.StreamID.b1()  // Stream ID
+	out[9] = frame.StreamID.b2()  // Stream ID
+	out[10] = frame.StreamID.b3() // Stream ID
+	out[11] = frame.StreamID.b4() // Stream ID
 
 	err := write(writer, out)
 	if err != nil {
@@ -386,7 +386,7 @@ func (frame *synReplyFrameV3) WriteTo(writer io.Writer) (int64, error) {
  *** RST_STREAM ***
  ******************/
 type rstStreamFrameV3 struct {
-	streamID StreamID
+	StreamID StreamID
 	Status   StatusCode
 }
 
@@ -433,18 +433,18 @@ func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 16, &invalidField{"Unused", 1, 0}
 	}
 
-	frame.streamID = StreamID(bytesToUint32(data[8:12]))
+	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
 	frame.Status = StatusCode(bytesToUint32(data[12:16]))
 
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 16, streamIDTooLarge
 	}
 
 	return 16, nil
 }
 
-func (frame *rstStreamFrameV3) StreamID() StreamID {
-	return frame.streamID
+func (frame *rstStreamFrameV3) streamID() StreamID {
+	return frame.StreamID
 }
 
 func (frame *rstStreamFrameV3) String() string {
@@ -452,14 +452,14 @@ func (frame *rstStreamFrameV3) String() string {
 
 	buf.WriteString("RST_STREAM {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
-	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Status code:          %s\n}\n", frame.Status))
 
 	return buf.String()
 }
 
 func (frame *rstStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 0, streamIDTooLarge
 	}
 
@@ -473,10 +473,10 @@ func (frame *rstStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[5] = 0                    // Length
 	out[6] = 0                    // Length
 	out[7] = 8                    // Length
-	out[8] = frame.streamID.b1()  // Stream ID
-	out[9] = frame.streamID.b2()  // Stream ID
-	out[10] = frame.streamID.b3() // Stream ID
-	out[11] = frame.streamID.b4() // Stream ID
+	out[8] = frame.StreamID.b1()  // Stream ID
+	out[9] = frame.StreamID.b2()  // Stream ID
+	out[10] = frame.StreamID.b3() // Stream ID
+	out[11] = frame.StreamID.b4() // Stream ID
 	out[12] = frame.Status.b1()   // Status
 	out[13] = frame.Status.b2()   // Status
 	out[14] = frame.Status.b3()   // Status
@@ -566,7 +566,7 @@ func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length), nil
 }
 
-func (frame *settingsFrameV3) StreamID() StreamID {
+func (frame *settingsFrameV3) streamID() StreamID {
 	return 0
 }
 
@@ -724,7 +724,7 @@ func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return 12, nil
 }
 
-func (frame *pingFrameV3) StreamID() StreamID {
+func (frame *pingFrameV3) streamID() StreamID {
 	return 0
 }
 
@@ -826,7 +826,7 @@ func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *goawayFrameV3) StreamID() StreamID {
+func (frame *goawayFrameV3) streamID() StreamID {
 	return 0
 }
 
@@ -878,7 +878,7 @@ func (frame *goawayFrameV3) WriteTo(writer io.Writer) (int64, error) {
  ***************/
 type headersFrameV3 struct {
 	Flags     Flags
-	streamID  StreamID
+	StreamID  StreamID
 	Header    http.Header
 	rawHeader []byte
 }
@@ -954,18 +954,18 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	}
 
 	frame.Flags = Flags(data[4])
-	frame.streamID = StreamID(bytesToUint32(data[8:12]))
+	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 18, streamIDTooLarge
 	}
 
 	return 18, nil
 }
 
-func (frame *headersFrameV3) StreamID() StreamID {
-	return frame.streamID
+func (frame *headersFrameV3) streamID() StreamID {
+	return frame.StreamID
 }
 
 func (frame *headersFrameV3) String() string {
@@ -984,7 +984,7 @@ func (frame *headersFrameV3) String() string {
 	buf.WriteString("HEADERS {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
-	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Header:               %#v\n}\n", frame.Header))
 
 	return buf.String()
@@ -994,7 +994,7 @@ func (frame *headersFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Headers not written.")
 	}
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 0, streamIDTooLarge
 	}
 
@@ -1010,10 +1010,10 @@ func (frame *headersFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[5] = byte(length >> 16)   // Length
 	out[6] = byte(length >> 8)    // Length
 	out[7] = byte(length)         // Length
-	out[8] = frame.streamID.b1()  // Stream ID
-	out[9] = frame.streamID.b2()  // Stream ID
-	out[10] = frame.streamID.b3() // Stream ID
-	out[11] = frame.streamID.b4() // Stream ID
+	out[8] = frame.StreamID.b1()  // Stream ID
+	out[9] = frame.StreamID.b2()  // Stream ID
+	out[10] = frame.StreamID.b3() // Stream ID
+	out[11] = frame.StreamID.b4() // Stream ID
 
 	err := write(writer, out)
 	if err != nil {
@@ -1032,7 +1032,7 @@ func (frame *headersFrameV3) WriteTo(writer io.Writer) (int64, error) {
  *** WINDOW_UPDATE ***
  *********************/
 type windowUpdateFrameV3 struct {
-	streamID        StreamID
+	StreamID        StreamID
 	DeltaWindowSize uint32
 }
 
@@ -1077,10 +1077,10 @@ func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 16, &invalidField{"Unused", 1, 0}
 	}
 
-	frame.streamID = StreamID(bytesToUint32(data[8:12]))
+	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
 	frame.DeltaWindowSize = bytesToUint32(data[12:16])
 
-	if !frame.streamID.Valid() {
+	if !frame.StreamID.Valid() {
 		return 16, streamIDTooLarge
 	}
 	if frame.DeltaWindowSize > MAX_DELTA_WINDOW_SIZE {
@@ -1090,8 +1090,8 @@ func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *windowUpdateFrameV3) StreamID() StreamID {
-	return frame.streamID
+func (frame *windowUpdateFrameV3) streamID() StreamID {
+	return frame.StreamID
 }
 
 func (frame *windowUpdateFrameV3) String() string {
@@ -1099,7 +1099,7 @@ func (frame *windowUpdateFrameV3) String() string {
 
 	buf.WriteString("WINDOW_UPDATE {\n\t")
 	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
-	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Delta window size:    %d\n}\n", frame.DeltaWindowSize))
 
 	return buf.String()
@@ -1116,10 +1116,10 @@ func (frame *windowUpdateFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[5] = 0                                       // Length
 	out[6] = 0                                       // Length
 	out[7] = 8                                       // Length
-	out[8] = frame.streamID.b1()                     // Stream ID
-	out[9] = frame.streamID.b2()                     // Stream ID
-	out[10] = frame.streamID.b3()                    // Stream ID
-	out[11] = frame.streamID.b4()                    // Stream ID
+	out[8] = frame.StreamID.b1()                     // Stream ID
+	out[9] = frame.StreamID.b2()                     // Stream ID
+	out[10] = frame.StreamID.b3()                    // Stream ID
+	out[11] = frame.StreamID.b4()                    // Stream ID
 	out[12] = byte(frame.DeltaWindowSize>>24) & 0x7f // Delta Window Size
 	out[13] = byte(frame.DeltaWindowSize >> 16)      // Delta Window Size
 	out[14] = byte(frame.DeltaWindowSize >> 8)       // Delta Window Size
@@ -1219,7 +1219,7 @@ func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *credentialFrameV3) StreamID() StreamID {
+func (frame *credentialFrameV3) streamID() StreamID {
 	return 0
 }
 
@@ -1288,7 +1288,7 @@ func (frame *credentialFrameV3) WriteTo(writer io.Writer) (int64, error) {
  *** DATA ***
  ************/
 type dataFrameV3 struct {
-	streamID StreamID
+	StreamID StreamID
 	Flags    Flags
 	Data     []byte
 }
@@ -1328,7 +1328,7 @@ func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		}
 	}
 
-	frame.streamID = StreamID(bytesToUint32(data[0:4]))
+	frame.StreamID = StreamID(bytesToUint32(data[0:4]))
 	frame.Flags = Flags(data[4])
 	if frame.Data == nil {
 		frame.Data = []byte{}
@@ -1337,8 +1337,8 @@ func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *dataFrameV3) StreamID() StreamID {
-	return frame.streamID
+func (frame *dataFrameV3) streamID() StreamID {
+	return frame.StreamID
 }
 
 func (frame *dataFrameV3) String() string {
@@ -1355,7 +1355,7 @@ func (frame *dataFrameV3) String() string {
 	}
 
 	buf.WriteString("DATA {\n\t")
-	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.streamID))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Length:               %d\n\t", len(frame.Data)))
 	buf.WriteString(fmt.Sprintf("Data:                 %v\n}\n", frame.Data))
@@ -1374,10 +1374,10 @@ func (frame *dataFrameV3) WriteTo(writer io.Writer) (int64, error) {
 
 	out := make([]byte, 8)
 
-	out[0] = frame.streamID.b1() // Control bit and Stream ID
-	out[1] = frame.streamID.b2() // Stream ID
-	out[2] = frame.streamID.b3() // Stream ID
-	out[3] = frame.streamID.b4() // Stream ID
+	out[0] = frame.StreamID.b1() // Control bit and Stream ID
+	out[1] = frame.StreamID.b2() // Stream ID
+	out[2] = frame.StreamID.b3() // Stream ID
+	out[3] = frame.StreamID.b4() // Stream ID
 	out[4] = byte(frame.Flags)   // Flags
 	out[5] = byte(length >> 16)  // Length
 	out[6] = byte(length >> 8)   // Length

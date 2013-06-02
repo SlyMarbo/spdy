@@ -1,6 +1,6 @@
 /*
 Package spdy is a full-featured SPDY library for the Go language (still under very active development).
- 
+
 Note that this implementation currently supports SPDY drafts 2 and 3, and support for SPDY/4, and HTTP/2.0 is upcoming.
 
 -------------------------------
@@ -22,7 +22,7 @@ Modifying a simple example server like the following:
 		}
 
 		func main() {
-	
+
 			// Register handler.
 			http.HandleFunc("/", Serve)
 
@@ -47,7 +47,7 @@ Simply requires the following changes:
 		}
 
 		func main() {
-	
+
 			http.HandleFunc("/", Serve)
 
 			// Use spdy's ListenAndServe.
@@ -77,7 +77,7 @@ A very simple file server for both SPDY and HTTPS:
 		}
 
 		func main() {
-	
+
 			// Register handler.
 			http.HandleFunc("/", Serve)
 
@@ -108,7 +108,7 @@ Use SPDY's pinging features to test the connection:
 			if err != nil {
 				// Not using SPDY.
 			}
-	
+
 			select {
 			case _, ok := <- ping:
 				if ok {
@@ -116,12 +116,12 @@ Use SPDY's pinging features to test the connection:
 				} else {
 					// Something went wrong.
 				}
-		
+
 			case <-time.After(timeout):
 				// Ping took too long.
-		
+
 			}
-	
+
 			// ...
 		}
 
@@ -142,7 +142,7 @@ Sending a server push:
 				// Not using SPDY.
 			}
 			http.ServeFile(push, r, "./content/example.js")
-	
+
 			// ...
 		}
 
@@ -169,13 +169,13 @@ Here's a simple example that will fetch the requested page over HTTP, HTTPS, or 
 			if err != nil {
 				// handle the error.
 			}
-	
+
 			bytes, err := ioutil.ReadAll(res.Body)
 			if err != nil {
 				// handle the error.
 			}
 			res.Body.Close()
-	
+
 			fmt.Printf("Received: %s\n", bytes)
 		}
 

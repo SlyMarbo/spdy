@@ -196,7 +196,7 @@ func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, e
 		return nil, errors.New("Error: All server streams exhausted.")
 	}
 	newID := conn.lastPushStreamID
-	push.streamID = newID
+	push.StreamID = newID
 	conn.output[0] <- push
 	conn.Unlock()
 
@@ -295,10 +295,10 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 		conn.Unlock()
 		return nil, errors.New("Error: All client streams exhausted.")
 	}
-	syn.streamID = conn.lastRequestStreamID
+	syn.StreamID = conn.lastRequestStreamID
 	conn.output[0] <- syn
 	for _, frame := range body {
-		frame.streamID = syn.streamID
+		frame.StreamID = syn.StreamID
 		conn.output[0] <- frame
 	}
 	conn.Unlock()
@@ -306,7 +306,7 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	// // Create the request stream.
 	out := new(clientStreamV3)
 	out.conn = conn
-	out.streamID = syn.streamID
+	out.streamID = syn.StreamID
 	out.state = new(StreamState)
 	out.state.CloseHere()
 	out.output = conn.output[0]
@@ -318,7 +318,7 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	out.AddFlowControl()
 
 	// Store in the connection map.
-	conn.streams[syn.streamID] = out
+	conn.streams[syn.StreamID] = out
 
 	return out, nil
 }
@@ -355,7 +355,7 @@ func (conn *connV3) handleClientData(frame *dataFrameV3) {
 	conn.Lock()
 	defer conn.Unlock()
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	if conn.server == nil {
 		log.Println("Error: Requests can only be received by the server.")
@@ -396,7 +396,7 @@ func (conn *connV3) handleHeaders(frame *headersFrameV3) {
 	conn.Lock()
 	defer conn.Unlock()
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	// Handle push headers.
 	if sid&1 == 0 && conn.server == nil {
@@ -431,7 +431,7 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 		return
 	}
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	// Push.
 	if conn.server != nil {
@@ -466,7 +466,7 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 	// Check stream limit would allow the new stream.
 	if !conn.pushStreamLimit.Add() {
 		rst := new(rstStreamFrameV3)
-		rst.streamID = sid
+		rst.StreamID = sid
 		rst.Status = RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
 		return
@@ -512,7 +512,7 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 	// Check whether the receiver wants this resource.
 	if conn.pushReceiver != nil && !conn.pushReceiver.ReceiveRequest(request) {
 		rst := new(rstStreamFrameV3)
-		rst.streamID = sid
+		rst.StreamID = sid
 		rst.Status = RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
 		return
@@ -536,7 +536,7 @@ func (conn *connV3) handleRequest(frame *synStreamFrameV3) {
 		return
 	}
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	if conn.server == nil {
 		log.Println("Error: Only servers can receive requests.")
@@ -570,7 +570,7 @@ func (conn *connV3) handleRequest(frame *synStreamFrameV3) {
 	// Check stream limit would allow the new stream.
 	if !conn.requestStreamLimit.Add() {
 		rst := new(rstStreamFrameV3)
-		rst.streamID = sid
+		rst.StreamID = sid
 		rst.Status = RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
 		return
@@ -609,7 +609,7 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 	conn.Lock()
 	defer conn.Unlock()
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	// Determine the status code and react accordingly.
 	switch frame.Status {
@@ -666,7 +666,7 @@ func (conn *connV3) handleServerData(frame *dataFrameV3) {
 	conn.Lock()
 	defer conn.Unlock()
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	// Handle push data.
 	if sid&1 == 0 {
@@ -696,7 +696,7 @@ func (conn *connV3) handleSynReply(frame *synReplyFrameV3) {
 	conn.Lock()
 	defer conn.Unlock()
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	if conn.server != nil {
 		log.Println("Error: Only clients can receive SYN_REPLY frames.")
@@ -735,7 +735,7 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 	conn.Lock()
 	defer conn.Unlock()
 
-	sid := frame.streamID
+	sid := frame.StreamID
 
 	if !sid.Valid() {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
@@ -768,7 +768,7 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 func (conn *connV3) newStream(frame *synStreamFrameV3, output chan<- Frame) *serverStreamV3 {
 	stream := new(serverStreamV3)
 	stream.conn = conn
-	stream.streamID = frame.streamID
+	stream.streamID = frame.StreamID
 	stream.state = new(StreamState)
 	stream.output = output
 	stream.header = make(http.Header)
@@ -818,7 +818,7 @@ func (conn *connV3) newStream(frame *synStreamFrameV3, output chan<- Frame) *ser
 // occurred, stops all running streams, and ends the connection.
 func (conn *connV3) protocolError(streamID StreamID) {
 	reply := new(rstStreamFrameV3)
-	reply.streamID = streamID
+	reply.StreamID = streamID
 	reply.Status = RST_STREAM_PROTOCOL_ERROR
 	conn.output[0] <- reply
 
@@ -863,7 +863,7 @@ Loop:
 		err = frame.Decompress(conn.decompressor)
 		if err != nil {
 			log.Println("Error in decompression: ", err)
-			conn.protocolError(frame.StreamID())
+			conn.protocolError(frame.streamID())
 		}
 
 		debug.Println("Received Frame:")
@@ -885,7 +885,7 @@ Loop:
 		case *rstStreamFrameV3:
 			if statusCodeIsFatal(frame.Status) {
 				code := statusCodeText[frame.Status]
-				log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID())
+				log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.streamID())
 				conn.Close()
 				return
 			}

@@ -169,7 +169,7 @@ func (f *flowControl) Flush() {
 	}
 
 	dataFrame := new(dataFrameV3)
-	dataFrame.streamID = f.streamID
+	dataFrame.StreamID = f.streamID
 	dataFrame.Data = out
 
 	f.output <- dataFrame
@@ -192,7 +192,7 @@ func (f *flowControl) Receive(data []byte) {
 	// The transfer window shouldn't already be negative.
 	if f.transferWindowThere < 0 {
 		rst := new(rstStreamFrameV3)
-		rst.streamID = f.streamID
+		rst.StreamID = f.streamID
 		rst.Status = RST_STREAM_FLOW_CONTROL_ERROR
 		f.output <- rst
 		return
@@ -204,7 +204,7 @@ func (f *flowControl) Receive(data []byte) {
 	// Regrow the window if it's half-empty.
 	if f.transferWindowThere <= int64(f.initialWindowThere/2) {
 		grow := new(windowUpdateFrameV3)
-		grow.streamID = f.streamID
+		grow.StreamID = f.streamID
 		grow.DeltaWindowSize = uint32(int64(f.initialWindowThere) - f.transferWindowThere)
 		f.output <- grow
 	}
@@ -261,7 +261,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
 	}
 
 	dataFrame := new(dataFrameV3)
-	dataFrame.streamID = f.streamID
+	dataFrame.StreamID = f.streamID
 	dataFrame.Data = data
 
 	f.output <- dataFrame
