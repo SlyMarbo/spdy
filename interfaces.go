@@ -541,4 +541,6 @@ func (i *invalidField) Error() string {
 	return fmt.Sprintf("Error: Field %q recieved invalid data %d, expecting %d.", i.field, i.got, i.expected)
 }
 
-var streamIDTooLarge = errors.New("Error: Stream ID is too large.")
+var streamIdTooLarge = errors.New("Error: Stream ID is too large.")
+
+var streamIdIsZero = errors.New("Error: Stream ID is zero.")

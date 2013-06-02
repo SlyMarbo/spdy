@@ -144,10 +144,13 @@ func (frame *synStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	frame.rawHeader = header
 
 	if !frame.StreamID.Valid() {
-		return 18, streamIDTooLarge
+		return 18, streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return 18, streamIdIsZero
 	}
 	if !frame.AssocStreamID.Valid() {
-		return 18, streamIDTooLarge
+		return 18, streamIdTooLarge
 	}
 
 	return int64(length + 8), nil
@@ -184,10 +187,13 @@ func (frame *synStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
 		return 0, errors.New("Error: Headers not written.")
 	}
 	if !frame.StreamID.Valid() {
-		return 0, streamIDTooLarge
+		return 0, streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return 0, streamIdIsZero
 	}
 	if !frame.AssocStreamID.Valid() {
-		return 0, streamIDTooLarge
+		return 0, streamIdTooLarge
 	}
 
 	header := frame.rawHeader
@@ -343,7 +349,10 @@ func (frame *synReplyFrameV2) WriteTo(writer io.Writer) (int64, error) {
 		return 0, errors.New("Error: Header not written.")
 	}
 	if !frame.StreamID.Valid() {
-		return 0, streamIDTooLarge
+		return 0, streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return 0, streamIdIsZero
 	}
 
 	header := frame.rawHeader
@@ -433,7 +442,7 @@ func (frame *rstStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	frame.Status = StatusCode(bytesToUint32(data[12:16]))
 
 	if !frame.StreamID.Valid() {
-		return 16, streamIDTooLarge
+		return 16, streamIdTooLarge
 	}
 
 	return 16, nil
@@ -452,7 +461,7 @@ func (frame *rstStreamFrameV2) String() string {
 
 func (frame *rstStreamFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	if !frame.StreamID.Valid() {
-		return 0, streamIDTooLarge
+		return 0, streamIdTooLarge
 	}
 
 	out := make([]byte, 16)
@@ -863,7 +872,7 @@ func (frame *goawayFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	frame.LastGoodStreamID = StreamID(bytesToUint32(data[8:12]))
 
 	if !frame.LastGoodStreamID.Valid() {
-		return 12, streamIDTooLarge
+		return 12, streamIdTooLarge
 	}
 
 	return 12, nil
@@ -881,7 +890,7 @@ func (frame *goawayFrameV2) String() string {
 
 func (frame *goawayFrameV2) WriteTo(writer io.Writer) (int64, error) {
 	if !frame.LastGoodStreamID.Valid() {
-		return 0, streamIDTooLarge
+		return 0, streamIdTooLarge
 	}
 
 	out := make([]byte, 12)
@@ -992,7 +1001,10 @@ func (frame *headersFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	frame.rawHeader = header
 
 	if !frame.StreamID.Valid() {
-		return int64(length + 8), streamIDTooLarge
+		return int64(length + 8), streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return int64(length + 8), streamIdIsZero
 	}
 
 	return int64(length + 8), nil
@@ -1025,7 +1037,10 @@ func (frame *headersFrameV2) WriteTo(writer io.Writer) (int64, error) {
 		return 0, errors.New("Error: Headers not written.")
 	}
 	if !frame.StreamID.Valid() {
-		return 0, streamIDTooLarge
+		return 0, streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return 0, streamIdIsZero
 	}
 
 	header := frame.rawHeader
@@ -1111,7 +1126,10 @@ func (frame *windowUpdateFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 	frame.DeltaWindowSize = bytesToUint32(data[12:16])
 
 	if !frame.StreamID.Valid() {
-		return 16, streamIDTooLarge
+		return 16, streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return 16, streamIdIsZero
 	}
 	if frame.DeltaWindowSize > MAX_DELTA_WINDOW_SIZE {
 		return 16, errors.New("Error: Delta Window Size too large.")
