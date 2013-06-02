@@ -177,7 +177,7 @@ func (conn *connV2) Push(resource string, origin Stream) (http.ResponseWriter, e
 	push := new(synStreamFrameV2)
 	push.Flags = FLAG_UNIDIRECTIONAL
 	push.AssocStreamID = origin.StreamID()
-	push.Priority = 0
+	push.Priority = 3
 	push.Header = make(http.Header)
 	push.Header.Set("scheme", url.Scheme)
 	push.Header.Set("host", url.Host)
@@ -203,7 +203,7 @@ func (conn *connV2) Push(resource string, origin Stream) (http.ResponseWriter, e
 	out.streamID = newID
 	out.origin = origin
 	out.state = new(StreamState)
-	out.output = conn.output[7]
+	out.output = conn.output[3]
 	out.header = make(http.Header)
 	out.stop = conn.stop
 
@@ -360,14 +360,14 @@ func (conn *connV2) handleClientData(frame *dataFrameV2) {
 
 	// Handle push data.
 	if sid&1 != 0 {
-		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be odd.\n", sid)
+		log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
 
 	// Check stream ID is valid.
 	if !sid.Valid() {
-		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
+		log.Printf("Error: Received DATA with Stream ID %d, which exceeds the limit.\n", sid)
 		conn.protocolError(sid)
 		return
 	}
@@ -707,7 +707,7 @@ func (conn *connV2) handleSynReply(frame *synReplyFrameV2) {
 	}
 
 	if !sid.Valid() {
-		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
+		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which exceeds the limit.\n", sid)
 		conn.protocolError(sid)
 		return
 	}
@@ -783,8 +783,6 @@ func (conn *connV2) protocolError(streamID StreamID) {
 	reply.Status = RST_STREAM_PROTOCOL_ERROR
 	conn.output[0] <- reply
 
-	// Leave time for the message to be sent and received.
-	time.Sleep(50 * time.Millisecond)
 	conn.Close()
 }
 

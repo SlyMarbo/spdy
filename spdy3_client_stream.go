@@ -74,8 +74,7 @@ func (s *clientStreamV3) WriteHeader(int) {
  * io.ReadCloser *
  *****************/
 
-// Cancel is used to cancel a mid-air
-// request.
+// Close is used to stop the stream safely.
 func (s *clientStreamV3) Close() error {
 	s.Lock()
 	defer s.Unlock()
@@ -112,6 +111,7 @@ func (s *clientStreamV3) Conn() Conn {
 func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 	s.Lock()
 	defer s.Unlock()
+
 	if frame == nil {
 		return errors.New("Nil frame received.")
 	}
