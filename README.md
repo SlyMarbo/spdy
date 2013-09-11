@@ -168,7 +168,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/SlyMarbo/spdy" // Simply import SPDY.
+	_ "github.com/SlyMarbo/spdy" // Simply import SPDY.
 	"io/ioutil"
 )
 
