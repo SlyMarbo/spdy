@@ -237,7 +237,7 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	}
 
 	url := request.URL
-	if url == nil || url.Path == "" {
+	if url == nil || url.Scheme == "" || url.Host == "" || url.Path == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
 	}
 
