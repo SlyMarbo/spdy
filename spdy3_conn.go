@@ -256,7 +256,7 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	if request.Body != nil {
 		buf := make([]byte, 32*1024)
 		n, err := request.Body.Read(buf)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
 		total := n
