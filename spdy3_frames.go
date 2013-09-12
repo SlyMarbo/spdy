@@ -583,7 +583,7 @@ func (frame *settingsFrameV3) String() string {
 	for _, setting := range settings {
 		buf.WriteString("\t\t" + setting.String() + "\n")
 	}
-	buf.WriteString("\n")
+	buf.WriteString("}\n")
 
 	return buf.String()
 }
