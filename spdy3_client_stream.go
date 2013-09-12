@@ -62,9 +62,12 @@ func (s *clientStreamV3) Write(inputData []byte) (int, error) {
 	if len(data) > 0 {
 		n, err := s.flow.Write(data)
 		written += n
+		if err != nil {
+			return written, err
+		}
 	}
 
-	return written, err
+	return written, nil
 }
 
 // WriteHeader is used to set the HTTP status code.
@@ -160,11 +163,6 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 			reply.StreamID = s.streamID
 			reply.Status = RST_STREAM_FLOW_CONTROL_ERROR
 			s.output <- reply
-		}
-
-		if frame.Flags.FIN() {
-			s.state.CloseThere()
-			close(s.finished)
 		}
 
 	default:
