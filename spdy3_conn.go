@@ -365,7 +365,6 @@ func (conn *connV3) handleClientData(frame *dataFrameV3) {
 
 	// Handle request data.
 	if sid&1 == 0 {
-		// TODO: POST/PUT requests.
 		log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n", sid)
 		conn.numBenignErrors++
 		return
