@@ -2,7 +2,6 @@ package spdy
 
 import (
 	"errors"
-	"fmt"
 )
 
 // flowControl is used by Streams to ensure that
@@ -165,7 +164,7 @@ func (f *flowControl) Flush() {
 
 	if f.transferWindow > 0 {
 		f.constrained = false
-		fmt.Printf("Stream %d is no longer constrained.\n", f.streamID)
+		log.Printf("Stream %d is no longer constrained.\n", f.streamID)
 	}
 
 	dataFrame := new(dataFrameV3)
@@ -253,7 +252,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
 		f.sent += window
 		f.transferWindow -= int64(window)
 		f.constrained = true
-		fmt.Printf("Stream %d is now constrained.\n", f.streamID)
+		log.Printf("Stream %d is now constrained.\n", f.streamID)
 	}
 
 	if len(data) == 0 {

@@ -59,8 +59,10 @@ func (s *clientStreamV3) Write(inputData []byte) (int, error) {
 		data = data[MAX_DATA_SIZE:]
 	}
 
-	n, err := s.flow.Write(data)
-	written += n
+	if len(data) > 0 {
+		n, err := s.flow.Write(data)
+		written += n
+	}
 
 	return written, err
 }
@@ -146,6 +148,11 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 	case *headersFrameV3:
 		s.receiver.ReceiveHeader(s.request, frame.Header)
 
+		if frame.Flags.FIN() {
+			s.state.CloseThere()
+			close(s.finished)
+		}
+
 	case *windowUpdateFrameV3:
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
 		if err != nil {
@@ -153,6 +160,11 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 			reply.StreamID = s.streamID
 			reply.Status = RST_STREAM_FLOW_CONTROL_ERROR
 			s.output <- reply
+		}
+
+		if frame.Flags.FIN() {
+			s.state.CloseThere()
+			close(s.finished)
 		}
 
 	default:
