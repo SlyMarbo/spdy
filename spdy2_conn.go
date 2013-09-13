@@ -238,11 +238,18 @@ func (conn *connV2) Request(request *http.Request, receiver Receiver, priority P
 	}
 
 	// Prepare the SYN_STREAM.
+	path := url.Path
+	if url.RawQuery != "" {
+		path += "?" + url.RawQuery
+	}
+	if url.Fragment != "" {
+		path += "#" + url.Fragment
+	}
 	syn := new(synStreamFrameV2)
 	syn.Priority = priority
 	syn.Header = request.Header
 	syn.Header.Set("method", request.Method)
-	syn.Header.Set("url", url.Path)
+	syn.Header.Set("url", path)
 	syn.Header.Set("version", "HTTP/1.1")
 	syn.Header.Set("host", url.Host)
 	syn.Header.Set("scheme", url.Scheme)
