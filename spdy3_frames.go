@@ -1092,7 +1092,7 @@ func (frame *windowUpdateFrameV3) String() string {
 }
 
 func (frame *windowUpdateFrameV3) WriteTo(writer io.Writer) (int64, error) {
-	out := make([]byte, 12)
+	out := make([]byte, 16)
 
 	out[0] = 128                                     // Control bit and Version
 	out[1] = 3                                       // Version
