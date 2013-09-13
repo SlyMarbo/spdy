@@ -85,6 +85,13 @@ func (s *clientStreamV2) Close() error {
 	defer s.Unlock()
 	s.writeHeader()
 	if s.state != nil {
+		if s.state.OpenThere() {
+			// Send the RST_STREAM.
+			rst := new(rstStreamFrameV2)
+			rst.StreamID = s.streamID
+			rst.Status = RST_STREAM_CANCEL
+			s.output <- rst
+		}
 		s.state.Close()
 		s.state = nil
 	}
