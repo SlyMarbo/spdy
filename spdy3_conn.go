@@ -752,7 +752,7 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
-	if !ok || stream == nil || stream.State().ClosedThere() {
+	if !ok || stream == nil || stream.State().ClosedHere() {
 		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
@@ -864,6 +864,29 @@ Loop:
 			return
 		}
 
+		switch frame.(type) {
+		case *synStreamFrameV3:
+			debug.Println("Receiving SYN_STREAM:")
+		case *synReplyFrameV3:
+			debug.Println("Receiving SYN_REPLY:")
+		case *rstStreamFrameV3:
+			debug.Println("Receiving RST_STREAM:")
+		case *settingsFrameV3:
+			debug.Println("Receiving SETTINGS:")
+		case *pingFrameV3:
+			debug.Println("Receiving PING:")
+		case *goawayFrameV3:
+			debug.Println("Receiving GOAWAY:")
+		case *headersFrameV3:
+			debug.Println("Receiving HEADERS:")
+		case *windowUpdateFrameV3:
+			debug.Println("Receiving WINDOW_UPDATE:")
+		case *credentialFrameV3:
+			debug.Println("Receiving CREDENTIAL:")
+		case *dataFrameV3:
+			debug.Println("Receiving DATA:")
+		}
+
 		// Decompress the frame's headers, if there are any.
 		err = frame.Decompress(conn.decompressor)
 		if err != nil {
@@ -871,7 +894,6 @@ Loop:
 			conn.protocolError(0)
 		}
 
-		debug.Println("Received Frame:")
 		debug.Println(frame)
 
 		// This is the main frame handling section.
@@ -978,36 +1000,67 @@ Loop:
 	}
 }
 
-// Add timeouts if requested by the server.
-func (conn *connV3) refreshTimeouts() {
-	if conn.server == nil {
-		return
-	}
-	if d := conn.server.ReadTimeout; d != 0 {
-		conn.conn.SetReadDeadline(time.Now().Add(d))
-	}
-	if d := conn.server.WriteTimeout; d != 0 {
-		conn.conn.SetWriteDeadline(time.Now().Add(d))
-	}
-}
+// send is run in a separate goroutine. It's used
+// to ensure clear interleaving of frames and to
+// provide assurances of priority and structure.
+func (conn *connV3) send() {
+	// Enter the processing loop.
+	for {
+		frame := conn.selectFrameToSend()
 
-// Add timeouts if requested by the server.
-func (conn *connV3) refreshReadTimeout() {
-	if conn.server == nil {
-		return
-	}
-	if d := conn.server.ReadTimeout; d != 0 {
-		conn.conn.SetReadDeadline(time.Now().Add(d))
-	}
-}
+		if frame == nil {
+			conn.Close()
+			return
+		}
 
-// Add timeouts if requested by the server.
-func (conn *connV3) refreshWriteTimeout() {
-	if conn.server == nil {
-		return
-	}
-	if d := conn.server.WriteTimeout; d != 0 {
-		conn.conn.SetWriteDeadline(time.Now().Add(d))
+		// Compress any name/value header blocks.
+		err := frame.Compress(conn.compressor)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		switch frame.(type) {
+		case *synStreamFrameV3:
+			debug.Println("Sending SYN_STREAM")
+		case *synReplyFrameV3:
+			debug.Println("Sending SYN_REPLY")
+		case *rstStreamFrameV3:
+			debug.Println("Sending RST_STREAM")
+		case *settingsFrameV3:
+			debug.Println("Sending SETTINGS")
+		case *pingFrameV3:
+			debug.Println("Sending PING")
+		case *goawayFrameV3:
+			debug.Println("Sending GOAWAY")
+		case *headersFrameV3:
+			debug.Println("Sending HEADERS")
+		case *windowUpdateFrameV3:
+			debug.Println("Sending WINDOW_UPDATE")
+		case *credentialFrameV3:
+			debug.Println("Sending CREDENTIAL")
+		case *dataFrameV3:
+			debug.Println("Sending DATA")
+		}
+		debug.Println(frame)
+
+		// Leave the specifics of writing to the
+		// connection up to the frame.
+		_, err = frame.WriteTo(conn.conn)
+		conn.refreshWriteTimeout()
+		if err != nil {
+			if err == io.EOF {
+				// Server has closed the TCP connection.
+				debug.Println("Note: Endpoint has disconnected.")
+				conn.Close()
+				return
+			}
+
+			// Unexpected error which prevented a write.
+			log.Printf("Error: Encountered write error: %q\n", err.Error())
+			conn.Close()
+			return
+		}
 	}
 }
 
@@ -1059,45 +1112,35 @@ func (conn *connV3) selectFrameToSend() (frame Frame) {
 	}
 }
 
-// send is run in a separate goroutine. It's used
-// to ensure clear interleaving of frames and to
-// provide assurances of priority and structure.
-func (conn *connV3) send() {
-	// Enter the processing loop.
-	for {
-		frame := conn.selectFrameToSend()
+// Add timeouts if requested by the server.
+func (conn *connV3) refreshTimeouts() {
+	if conn.server == nil {
+		return
+	}
+	if d := conn.server.ReadTimeout; d != 0 {
+		conn.conn.SetReadDeadline(time.Now().Add(d))
+	}
+	if d := conn.server.WriteTimeout; d != 0 {
+		conn.conn.SetWriteDeadline(time.Now().Add(d))
+	}
+}
 
-		if frame == nil {
-			conn.Close()
-			return
-		}
+// Add timeouts if requested by the server.
+func (conn *connV3) refreshReadTimeout() {
+	if conn.server == nil {
+		return
+	}
+	if d := conn.server.ReadTimeout; d != 0 {
+		conn.conn.SetReadDeadline(time.Now().Add(d))
+	}
+}
 
-		// Compress any name/value header blocks.
-		err := frame.Compress(conn.compressor)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		debug.Println("Sending Frame:")
-		debug.Println(frame)
-
-		// Leave the specifics of writing to the
-		// connection up to the frame.
-		_, err = frame.WriteTo(conn.conn)
-		conn.refreshWriteTimeout()
-		if err != nil {
-			if err == io.EOF {
-				// Server has closed the TCP connection.
-				debug.Println("Note: Endpoint has disconnected.")
-				conn.Close()
-				return
-			}
-
-			// Unexpected error which prevented a write.
-			log.Printf("Error: Encountered write error: %q\n", err.Error())
-			conn.Close()
-			return
-		}
+// Add timeouts if requested by the server.
+func (conn *connV3) refreshWriteTimeout() {
+	if conn.server == nil {
+		return
+	}
+	if d := conn.server.WriteTimeout; d != 0 {
+		conn.conn.SetWriteDeadline(time.Now().Add(d))
 	}
 }
