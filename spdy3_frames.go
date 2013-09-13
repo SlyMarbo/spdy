@@ -937,19 +937,20 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	if err != nil {
 		return 12, err
 	}
+	log.Printf("Length = %d, data = (%d) %q\n", length, len(header), header)
 
 	frame.Flags = Flags(data[4])
 	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
 	if !frame.StreamID.Valid() {
-		return 18, streamIdTooLarge
+		return int64(length) + 8, streamIdTooLarge
 	}
 	if frame.StreamID.Zero() {
-		return 18, streamIdIsZero
+		return int64(length) + 8, streamIdIsZero
 	}
 
-	return 18, nil
+	return int64(length) + 8, nil
 }
 
 func (frame *headersFrameV3) String() string {

@@ -81,7 +81,6 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 
 	// Read in the number of name/value pairs.
 	if _, err = d.out.Read(chunk); err != nil {
-		panic(err)
 		return nil, err
 	}
 	numNameValuePairs := dechunk(chunk)
