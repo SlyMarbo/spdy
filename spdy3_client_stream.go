@@ -93,11 +93,14 @@ func (s *clientStreamV3) Close() error {
 			s.output <- rst
 		}
 		s.state.Close()
-		s.state = nil
 	}
 	if s.flow != nil {
 		s.flow.Close()
-		s.flow = nil
+	}
+	select {
+	case <-s.finished:
+	default:
+		close(s.finished)
 	}
 	s.output = nil
 	s.request = nil

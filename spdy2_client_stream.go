@@ -78,7 +78,7 @@ func (s *clientStreamV2) WriteHeader(int) {
  * io.ReadCloser *
  *****************/
 
-// Cancel is used to cancel a mid-air
+// Close is used to cancel a mid-air
 // request.
 func (s *clientStreamV2) Close() error {
 	s.Lock()
@@ -93,7 +93,11 @@ func (s *clientStreamV2) Close() error {
 			s.output <- rst
 		}
 		s.state.Close()
-		s.state = nil
+	}
+	select {
+	case <-s.finished:
+	default:
+		close(s.finished)
 	}
 	s.output = nil
 	s.request = nil
