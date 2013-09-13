@@ -104,13 +104,11 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 
 		name := make([]byte, nameLength)
 		if _, err = d.out.Read(name); err != nil {
-			panic(err)
 			return nil, err
 		}
 
 		// Get the value.
 		if _, err = d.out.Read(chunk); err != nil {
-			panic(err)
 			return nil, err
 		}
 		valueLength = dechunk(chunk)

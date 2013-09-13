@@ -94,6 +94,10 @@ func (frame *synStreamFrameV3) Decompress(decom Decompressor) error {
 	return nil
 }
 
+func (frame *synStreamFrameV3) Name() string {
+	return "SYN_STREAM"
+}
+
 func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 18)
 	if err != nil {
@@ -273,6 +277,10 @@ func (frame *synReplyFrameV3) Decompress(decom Decompressor) error {
 	return nil
 }
 
+func (frame *synReplyFrameV3) Name() string {
+	return "SYN_REPLY"
+}
+
 func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 12)
 	if err != nil {
@@ -399,6 +407,10 @@ func (frame *rstStreamFrameV3) Decompress(decomp Decompressor) error {
 	return nil
 }
 
+func (frame *rstStreamFrameV3) Name() string {
+	return "RST_STREAM"
+}
+
 func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 16)
 	if err != nil {
@@ -505,6 +517,10 @@ func (frame *settingsFrameV3) Compress(comp Compressor) error {
 
 func (frame *settingsFrameV3) Decompress(decomp Decompressor) error {
 	return nil
+}
+
+func (frame *settingsFrameV3) Name() string {
+	return "SETTINGS"
 }
 
 func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -679,6 +695,10 @@ func (frame *pingFrameV3) Decompress(decomp Decompressor) error {
 	return nil
 }
 
+func (frame *pingFrameV3) Name() string {
+	return "PING"
+}
+
 func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 12)
 	if err != nil {
@@ -765,6 +785,10 @@ func (frame *goawayFrameV3) Compress(comp Compressor) error {
 
 func (frame *goawayFrameV3) Decompress(decomp Decompressor) error {
 	return nil
+}
+
+func (frame *goawayFrameV3) Name() string {
+	return "GOAWAY"
 }
 
 func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -897,6 +921,10 @@ func (frame *headersFrameV3) Decompress(decom Decompressor) error {
 	return nil
 }
 
+func (frame *headersFrameV3) Name() string {
+	return "HEADERS"
+}
+
 func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 12)
 	if err != nil {
@@ -937,7 +965,6 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	if err != nil {
 		return 12, err
 	}
-	log.Printf("Length = %d, data = (%d) %q\n", length, len(header), header)
 
 	frame.Flags = Flags(data[4])
 	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
@@ -1032,6 +1059,10 @@ func (frame *windowUpdateFrameV3) Decompress(decomp Decompressor) error {
 	return nil
 }
 
+func (frame *windowUpdateFrameV3) Name() string {
+	return "WINDOW_UPDATE"
+}
+
 func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := read(reader, 16)
 	if err != nil {
@@ -1098,7 +1129,7 @@ func (frame *windowUpdateFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[0] = 128                                     // Control bit and Version
 	out[1] = 3                                       // Version
 	out[2] = 0                                       // Type
-	out[3] = 8                                       // Type
+	out[3] = 9                                       // Type
 	out[4] = 0                                       // Flags
 	out[5] = 0                                       // Length
 	out[6] = 0                                       // Length
@@ -1135,6 +1166,10 @@ func (frame *credentialFrameV3) Compress(comp Compressor) error {
 
 func (frame *credentialFrameV3) Decompress(decomp Decompressor) error {
 	return nil
+}
+
+func (frame *credentialFrameV3) Name() string {
+	return "CREDENTIAL"
 }
 
 func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
@@ -1282,6 +1317,10 @@ func (frame *dataFrameV3) Compress(comp Compressor) error {
 
 func (frame *dataFrameV3) Decompress(decomp Decompressor) error {
 	return nil
+}
+
+func (frame *dataFrameV3) Name() string {
+	return "DATA"
 }
 
 func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {

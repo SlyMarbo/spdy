@@ -753,7 +753,10 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedHere() {
-		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
+		debug.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
+		if stream != nil {
+			debug.Printf("Stream state is %q.\n", stream.State())
+		}
 		conn.numBenignErrors++
 		return
 	}
@@ -864,28 +867,8 @@ Loop:
 			return
 		}
 
-		switch frame.(type) {
-		case *synStreamFrameV3:
-			debug.Println("Receiving SYN_STREAM:")
-		case *synReplyFrameV3:
-			debug.Println("Receiving SYN_REPLY:")
-		case *rstStreamFrameV3:
-			debug.Println("Receiving RST_STREAM:")
-		case *settingsFrameV3:
-			debug.Println("Receiving SETTINGS:")
-		case *pingFrameV3:
-			debug.Println("Receiving PING:")
-		case *goawayFrameV3:
-			debug.Println("Receiving GOAWAY:")
-		case *headersFrameV3:
-			debug.Println("Receiving HEADERS:")
-		case *windowUpdateFrameV3:
-			debug.Println("Receiving WINDOW_UPDATE:")
-		case *credentialFrameV3:
-			debug.Println("Receiving CREDENTIAL:")
-		case *dataFrameV3:
-			debug.Println("Receiving DATA:")
-		}
+		// Print frame type.
+		debug.Printf("Receiving %s:\n", frame.Name())
 
 		// Decompress the frame's headers, if there are any.
 		err = frame.Decompress(conn.decompressor)
@@ -894,6 +877,7 @@ Loop:
 			conn.protocolError(0)
 		}
 
+		// Print frame once the content's been decompressed.
 		debug.Println(frame)
 
 		// This is the main frame handling section.
@@ -1020,28 +1004,7 @@ func (conn *connV3) send() {
 			continue
 		}
 
-		switch frame.(type) {
-		case *synStreamFrameV3:
-			debug.Println("Sending SYN_STREAM")
-		case *synReplyFrameV3:
-			debug.Println("Sending SYN_REPLY")
-		case *rstStreamFrameV3:
-			debug.Println("Sending RST_STREAM")
-		case *settingsFrameV3:
-			debug.Println("Sending SETTINGS")
-		case *pingFrameV3:
-			debug.Println("Sending PING")
-		case *goawayFrameV3:
-			debug.Println("Sending GOAWAY")
-		case *headersFrameV3:
-			debug.Println("Sending HEADERS")
-		case *windowUpdateFrameV3:
-			debug.Println("Sending WINDOW_UPDATE")
-		case *credentialFrameV3:
-			debug.Println("Sending CREDENTIAL")
-		case *dataFrameV3:
-			debug.Println("Sending DATA")
-		}
+		debug.Printf("Sending %s:\n", frame.Name())
 		debug.Println(frame)
 
 		// Leave the specifics of writing to the

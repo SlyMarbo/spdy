@@ -44,6 +44,7 @@ type Frame interface {
 	io.WriterTo
 	Compress(Compressor) error
 	Decompress(Decompressor) error
+	Name() string
 }
 
 // Compressor is used to compress the text header of a SPDY frame.
@@ -363,6 +364,22 @@ func (s *StreamState) CloseThere() {
 		s.s = stateClosed
 	}
 	s.Unlock()
+}
+
+// State description.
+func (s *StreamState) String() string {
+	var str string
+	if s.OpenHere() {
+		str = "open here, "
+	} else {
+		str = "closed here, "
+	}
+	if s.OpenThere() {
+		str += "open there"
+	} else {
+		str += "closed there"
+	}
+	return str
 }
 
 /********************
