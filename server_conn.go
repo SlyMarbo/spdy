@@ -67,6 +67,12 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 			settings.Settings = defaultSPDYServerSettings(3, DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
+		if d := server.ReadTimeout; d != 0 {
+			out.SetReadTimeout(d)
+		}
+		if d := server.WriteTimeout; d != 0 {
+			out.SetWriteTimeout(d)
+		}
 
 		return out, nil
 
@@ -107,6 +113,12 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 			settings := new(settingsFrameV2)
 			settings.Settings = defaultSPDYServerSettings(2, DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
+		}
+		if d := server.ReadTimeout; d != 0 {
+			out.SetReadTimeout(d)
+		}
+		if d := server.WriteTimeout; d != 0 {
+			out.SetWriteTimeout(d)
 		}
 
 		return out, nil
@@ -284,7 +296,7 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 //                              // Ping was successful.
 //                      }
 //              }
-//              
+//
 //      }
 //
 //      func main() {
@@ -325,9 +337,9 @@ func PingClient(w http.ResponseWriter) (<-chan Ping, error) {
 //
 //      func main() {
 //              resp, err := http.Get("https://example.com/")
-//              
+//
 //              // ...
-//              
+//
 //              ping, err := spdy.PingServer(http.DefaultClient, "https://example.com")
 //              if err != nil {
 //                      // No SPDY connection.
@@ -387,7 +399,7 @@ func PingServer(c http.Client, server string) (<-chan Ping, error) {
 //              } else {
 //                      http.ServeFile(push, req, "./javascript.js") // Push the given file.
 //              }
-//              
+//
 //      }
 //
 //      func main() {

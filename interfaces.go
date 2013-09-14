@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 )
 
 /**************
@@ -24,6 +25,9 @@ type Conn interface {
 	Push(url string, origin Stream) (http.ResponseWriter, error)
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
 	Run() error
+	SetTimeout(time.Duration)
+	SetReadTimeout(time.Duration)
+	SetWriteTimeout(time.Duration)
 }
 
 // Stream contains a single SPDY stream.

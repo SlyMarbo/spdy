@@ -47,6 +47,8 @@ type connV3 struct {
 	stop                chan struct{}                  // this channel is closed when the connection closes.
 	sending             chan struct{}                  // this channel is used to ensure pending frames are sent.
 	init                func()                         // this function is called before the connection begins.
+	readTimeout         time.Duration
+	writeTimeout        time.Duration
 }
 
 // Close ends the connection, cleaning up relevant resources.
@@ -112,7 +114,6 @@ func (conn *connV3) Close() (err error) {
 		}
 	}
 
-	runtime.Goexit()
 	return nil
 }
 
@@ -220,7 +221,7 @@ func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, e
 // Request is used to make a client request.
 func (conn *connV3) Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error) {
 	if conn.goaway {
-		return nil, errors.New("Error: GOAWAY received, so request could not be sent.")
+		return nil, ErrGoaway
 	}
 
 	if conn.server != nil {
@@ -344,6 +345,25 @@ func (conn *connV3) Run() error {
 
 	// Cleanup before the connection closes.
 	return conn.Close()
+}
+
+func (c *connV3) SetTimeout(d time.Duration) {
+	c.Lock()
+	c.readTimeout = d
+	c.writeTimeout = d
+	c.Unlock()
+}
+
+func (c *connV3) SetReadTimeout(d time.Duration) {
+	c.Lock()
+	c.readTimeout = d
+	c.Unlock()
+}
+
+func (c *connV3) SetWriteTimeout(d time.Duration) {
+	c.Lock()
+	c.writeTimeout = d
+	c.Unlock()
 }
 
 // closed indicates whether the connection has
@@ -852,8 +872,8 @@ Loop:
 		}
 
 		// ReadFrame takes care of the frame parsing for us.
-		frame, err := readFrameV3(conn.buf)
 		conn.refreshReadTimeout()
+		frame, err := readFrameV3(conn.buf)
 		if err != nil {
 			if err == io.EOF {
 				// Client has closed the TCP connection.
@@ -1009,8 +1029,8 @@ func (conn *connV3) send() {
 
 		// Leave the specifics of writing to the
 		// connection up to the frame.
-		_, err = frame.WriteTo(conn.conn)
 		conn.refreshWriteTimeout()
+		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
 			if err == io.EOF {
 				// Server has closed the TCP connection.
@@ -1077,33 +1097,24 @@ func (conn *connV3) selectFrameToSend() (frame Frame) {
 
 // Add timeouts if requested by the server.
 func (conn *connV3) refreshTimeouts() {
-	if conn.server == nil {
-		return
-	}
-	if d := conn.server.ReadTimeout; d != 0 {
+	if d := conn.readTimeout; d != 0 {
 		conn.conn.SetReadDeadline(time.Now().Add(d))
 	}
-	if d := conn.server.WriteTimeout; d != 0 {
+	if d := conn.writeTimeout; d != 0 {
 		conn.conn.SetWriteDeadline(time.Now().Add(d))
 	}
 }
 
 // Add timeouts if requested by the server.
 func (conn *connV3) refreshReadTimeout() {
-	if conn.server == nil {
-		return
-	}
-	if d := conn.server.ReadTimeout; d != 0 {
+	if d := conn.readTimeout; d != 0 {
 		conn.conn.SetReadDeadline(time.Now().Add(d))
 	}
 }
 
 // Add timeouts if requested by the server.
 func (conn *connV3) refreshWriteTimeout() {
-	if conn.server == nil {
-		return
-	}
-	if d := conn.server.WriteTimeout; d != 0 {
+	if d := conn.writeTimeout; d != 0 {
 		conn.conn.SetWriteDeadline(time.Now().Add(d))
 	}
 }

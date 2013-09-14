@@ -12,6 +12,11 @@ import (
 	"sync"
 )
 
+// Important errors.
+var (
+	ErrGoaway = errors.New("Error: GOAWAY received.")
+)
+
 // SPDY version of this implementation.
 const DEFAULT_SPDY_VERSION = 3
 
