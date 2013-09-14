@@ -878,6 +878,12 @@ Loop:
 			if err == io.EOF {
 				// Client has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
+
+				// Make sure conn.Close succeeds and sending stops.
+				if conn.sending == nil {
+					conn.sending = make(chan struct{})
+				}
+
 				conn.Close()
 				return
 			}
@@ -1032,7 +1038,7 @@ func (conn *connV3) send() {
 		conn.refreshWriteTimeout()
 		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
-			if err == io.EOF {
+			if err == io.EOF || err == ErrConnNil {
 				// Server has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
 				conn.Close()
@@ -1097,24 +1103,24 @@ func (conn *connV3) selectFrameToSend() (frame Frame) {
 
 // Add timeouts if requested by the server.
 func (conn *connV3) refreshTimeouts() {
-	if d := conn.readTimeout; d != 0 {
+	if d := conn.readTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetReadDeadline(time.Now().Add(d))
 	}
-	if d := conn.writeTimeout; d != 0 {
+	if d := conn.writeTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetWriteDeadline(time.Now().Add(d))
 	}
 }
 
 // Add timeouts if requested by the server.
 func (conn *connV3) refreshReadTimeout() {
-	if d := conn.readTimeout; d != 0 {
+	if d := conn.readTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetReadDeadline(time.Now().Add(d))
 	}
 }
 
 // Add timeouts if requested by the server.
 func (conn *connV3) refreshWriteTimeout() {
-	if d := conn.writeTimeout; d != 0 {
+	if d := conn.writeTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetWriteDeadline(time.Now().Add(d))
 	}
 }

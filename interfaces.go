@@ -501,6 +501,9 @@ func read(r io.Reader, i int) ([]byte, error) {
 func write(w io.Writer, data []byte) error {
 	i := len(data)
 	for i > 0 {
+		if w == nil {
+			return ErrConnNil
+		}
 		if n, err := w.Write(data); err != nil {
 			return err
 		} else {

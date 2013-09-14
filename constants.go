@@ -14,7 +14,8 @@ import (
 
 // Important errors.
 var (
-	ErrGoaway = errors.New("Error: GOAWAY received.")
+	ErrGoaway  = errors.New("Error: GOAWAY received.")
+	ErrConnNil = errors.New("Error: Connection is nil.")
 )
 
 // SPDY version of this implementation.
