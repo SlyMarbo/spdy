@@ -702,7 +702,7 @@ func (conn *connV2) handleServerData(frame *dataFrameV2) {
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedThere() {
-		log.Printf("Error: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
+		debug.Printf("Warning: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}

@@ -707,7 +707,7 @@ func (conn *connV3) handleServerData(frame *dataFrameV3) {
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedThere() {
-		log.Printf("Error: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
+		debug.Printf("Warning: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
@@ -774,9 +774,6 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedHere() {
 		debug.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
-		if stream != nil {
-			debug.Printf("Stream state is %q.\n", stream.State())
-		}
 		conn.numBenignErrors++
 		return
 	}

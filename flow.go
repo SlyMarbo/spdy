@@ -234,6 +234,10 @@ func (f *flowControl) Write(data []byte) (int, error) {
 		return 0, nil
 	}
 
+	if f.buffer == nil || f.stream == nil {
+		return 0, errors.New("Error: Stream closed.")
+	}
+
 	// Transfer window processing.
 	f.CheckInitialWindow()
 	if f.constrained {
