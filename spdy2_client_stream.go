@@ -12,6 +12,7 @@ import (
 // is used for responding to client requests.
 type clientStreamV2 struct {
 	sync.Mutex
+	recvMutex    sync.Mutex
 	conn         Conn
 	streamID     StreamID
 	state        *StreamState
@@ -121,8 +122,9 @@ func (s *clientStreamV2) Conn() Conn {
 }
 
 func (s *clientStreamV2) ReceiveFrame(frame Frame) error {
-	s.Lock()
-	defer s.Unlock()
+	s.recvMutex.Lock()
+	defer s.recvMutex.Unlock()
+
 	if frame == nil {
 		return errors.New("Nil frame received.")
 	}

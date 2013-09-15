@@ -125,11 +125,9 @@ func (s *serverStreamV3) Close() error {
 	s.writeHeader()
 	if s.state != nil {
 		s.state.Close()
-		s.state = nil
 	}
 	if s.flow != nil {
 		s.flow.Close()
-		s.flow = nil
 	}
 	if s.requestBody != nil {
 		s.requestBody.Reset()
