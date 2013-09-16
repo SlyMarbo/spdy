@@ -160,8 +160,9 @@ Here's a simple example that will fetch the requested page over HTTP, HTTPS, or 
 
 		import (
 			"fmt"
-			"github.com/SlyMarbo/spdy" // Simply import SPDY.
+			_ "github.com/SlyMarbo/spdy" // Simply import SPDY.
 			"io/ioutil"
+			"net/http"
 		)
 
 		func main() {

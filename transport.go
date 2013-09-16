@@ -209,8 +209,18 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if !t.TLSClientConfig.InsecureSkipVerify {
 				err = tlsConn.VerifyHostname(req.URL.Host)
 				if err != nil {
-					t.m.Unlock()
-					return nil, err
+					// Also try verifying the hostname with/without a port number.
+					var modifiedHost string
+					if i := strings.Index(req.URL.Host, ":"); i < 0 {
+						modifiedHost = req.URL.Host + ":443"
+					} else {
+						modifiedHost = req.URL.Host[:i]
+					}
+					err = tlsConn.VerifyHostname(modifiedHost)
+					if err != nil {
+						t.m.Unlock()
+						return nil, err
+					}
 				}
 			}
 

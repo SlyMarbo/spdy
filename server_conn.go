@@ -130,6 +130,10 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 
 // AddSPDY adds SPDY support to srv, and must be called before srv begins serving.
 func AddSPDY(srv *http.Server) {
+	if srv == nil {
+		return
+	}
+
 	npnStrings := npn()
 	if len(npnStrings) <= 1 {
 		return
