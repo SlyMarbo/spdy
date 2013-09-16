@@ -170,6 +170,7 @@ import (
 	"fmt"
 	_ "github.com/SlyMarbo/spdy" // Simply import SPDY.
 	"io/ioutil"
+	"net/http"
 )
 
 func main() {
