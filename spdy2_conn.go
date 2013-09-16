@@ -836,7 +836,7 @@ Loop:
 
 		// This is the mechanism for handling too many benign errors.
 		// Default MaxBenignErrors is 10.
-		if conn.numBenignErrors > MaxBenignErrors {
+		if conn.numBenignErrors > MaxBenignErrors && MaxBenignErrors > 0 {
 			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
 			conn.protocolError(0)
 		}

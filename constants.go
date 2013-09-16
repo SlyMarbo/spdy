@@ -25,6 +25,12 @@ const DEFAULT_SPDY_VERSION = 3
 // number of minor errors each
 // connection will allow without
 // ending the session.
+//
+// Setting MaxBenignErrors to 0 or
+// less will disable checks, allowing
+// minor errors to go unchecked,
+// although they will still be
+// reported to the debug logger.
 var MaxBenignErrors = 10
 
 // Frame types in SPDY/2
