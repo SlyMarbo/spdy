@@ -106,6 +106,10 @@ func (r *clientStreamV3) AddFlowControl() {
 // The transfer window is updated retroactively,
 // if necessary.
 func (f *flowControl) CheckInitialWindow() {
+	if f.stream == nil || f.stream.Conn() == nil {
+		return
+	}
+
 	newWindow, err := f.stream.Conn().InitialWindowSize()
 	if err != nil {
 		log.Println(err)

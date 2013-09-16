@@ -407,8 +407,12 @@ func (conn *connV3) handleClientData(frame *dataFrameV3) {
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedThere() {
-		log.Printf("Error: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
-		conn.numBenignErrors++
+		if ok {
+			debug.Printf("Warning: Received DATA with Stream ID %d, which is closed.\n", sid)
+		} else {
+			debug.Printf("Error: Received DATA with Stream ID %d, which is unopened.\n", sid)
+			conn.numBenignErrors++
+		}
 		return
 	}
 
@@ -437,8 +441,12 @@ func (conn *connV3) handleHeaders(frame *headersFrameV3) {
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedThere() {
-		log.Printf("Error: Received HEADERS with Stream ID %d, which is closed or unopened.\n", sid)
-		conn.numBenignErrors++
+		if ok {
+			debug.Printf("Warning: Received HEADERS with Stream ID %d, which is closed.\n", sid)
+		} else {
+			debug.Printf("Error: Received HEADERS with Stream ID %d, which is unopened.\n", sid)
+			conn.numBenignErrors++
+		}
 		return
 	}
 
@@ -707,8 +715,12 @@ func (conn *connV3) handleServerData(frame *dataFrameV3) {
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedThere() {
-		debug.Printf("Warning: Received DATA with Stream ID %d, which is closed or unopened.\n", sid)
-		conn.numBenignErrors++
+		if ok {
+			debug.Printf("Warning: Received DATA with Stream ID %d, which is closed.\n", sid)
+		} else {
+			debug.Printf("Error: Received DATA with Stream ID %d, which is unopened.\n", sid)
+			conn.numBenignErrors++
+		}
 		return
 	}
 
@@ -864,7 +876,7 @@ Loop:
 		// This is the mechanism for handling too many benign errors.
 		// Default MaxBenignErrors is 10.
 		if conn.numBenignErrors > MaxBenignErrors {
-			log.Println("Error: Too many invalid stream IDs received. Ending connection.")
+			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
 			conn.protocolError(0)
 		}
 
@@ -886,6 +898,10 @@ Loop:
 			}
 
 			log.Printf("Error: Encountered read error: %q\n", err.Error())
+			// Make sure conn.Close succeeds and sending stops.
+			if conn.sending == nil {
+				conn.sending = make(chan struct{})
+			}
 			conn.Close()
 			return
 		}
