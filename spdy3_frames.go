@@ -1376,7 +1376,7 @@ func (frame *dataFrameV3) String() string {
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Length:               %d\n\t", len(frame.Data)))
-	buf.WriteString(fmt.Sprintf("Data:                 %v\n}\n", frame.Data))
+	buf.WriteString(fmt.Sprintf("Data:                 [% x]\n}\n", frame.Data))
 
 	return buf.String()
 }
