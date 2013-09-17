@@ -191,34 +191,40 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 	h.Del("Proxy-Connection")
 	h.Del("Transfer-Encoding")
 
-	length := 4
+	length := 4 // The 4-byte number of name/value pairs.
 	num := len(h)
 	lens := make(map[string]int)
 	for name, values := range h {
-		length += len(name) + 8
-		lens[name] = len(values) - 1
+		if _, ok := lens[name]; ok {
+			return nil, errors.New("Error: Duplicate header name discovered.")
+		}
+
+		lens[name] = len(values) - 1 // +1 for each null separator, (fence post)
+		if len(values) == 0 {
+			lens[name] = 0 // No separator.
+		}
+
 		for _, value := range values {
-			length += len(value)
 			lens[name] += len(value)
 		}
+		length += len(name) + lens[name] + 8 // +4 for len(name), +4 for len(values).
 	}
 
 	out := make([]byte, length)
+	var offset int
 	switch c.version {
 	case 3:
 		out[0] = byte(num >> 24)
 		out[1] = byte(num >> 16)
 		out[2] = byte(num >> 8)
 		out[3] = byte(num)
+		offset = 4
 	case 2:
 		out[0] = byte(num >> 8)
 		out[1] = byte(num)
-	}
-
-	offset := 4
-	if c.version == 2 {
 		offset = 2
 	}
+
 	for name, values := range h {
 		nLen := len(name)
 		switch c.version {
@@ -261,7 +267,7 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 			offset += len(value)
 			if n < len(values)-1 {
 				out[offset] = '\x00'
-				offset += 1
+				offset++
 			}
 		}
 	}
