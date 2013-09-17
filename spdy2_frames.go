@@ -1257,7 +1257,12 @@ func (frame *dataFrameV2) String() string {
 	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
 	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
 	buf.WriteString(fmt.Sprintf("Length:               %d\n\t", len(frame.Data)))
-	buf.WriteString(fmt.Sprintf("Data:                 [% x]\n}\n", frame.Data))
+	if VerboseLogging || len(frame.Data) <= 21 {
+		buf.WriteString(fmt.Sprintf("Data:                 [% x]\n}\n", frame.Data))
+	} else {
+		buf.WriteString(fmt.Sprintf("Data:                 [% x ... % x]\n}\n", frame.Data[:9],
+			frame.Data[len(frame.Data)-9:]))
+	}
 
 	return buf.String()
 }

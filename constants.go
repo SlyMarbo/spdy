@@ -410,6 +410,7 @@ func defaultSPDYClientSettings(v uint16, m uint32) Settings {
 
 var log = logging.New(os.Stderr, "(spdy) ", logging.LstdFlags|logging.Lshortfile)
 var debug = logging.New(ioutil.Discard, "(spdy debug) ", logging.LstdFlags)
+var VerboseLogging = false
 
 // SetLogger sets the package's error logger.
 func SetLogger(l *logging.Logger) {
