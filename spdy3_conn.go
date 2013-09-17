@@ -671,7 +671,6 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 		}
 
 	case RST_STREAM_FLOW_CONTROL_ERROR:
-		debug.Printf("Warning: Received FLOW_CONTROL_ERROR for stream ID %d.\n", sid)
 		conn.numBenignErrors++
 		return
 
