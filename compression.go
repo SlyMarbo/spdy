@@ -98,6 +98,7 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		nameLength = dechunk(chunk)
 
 		if nameLength > bounds {
+			debug.Printf("Error: Maximum header length is %d. Received name length %d.\n", bounds, nameLength)
 			return nil, errors.New("Error: Incorrect header name length.")
 		}
 		bounds -= nameLength
@@ -114,6 +115,8 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		valueLength = dechunk(chunk)
 
 		if valueLength > bounds {
+			debug.Printf("Error: Maximum remaining header length is %d. Received values length %d.\n",
+				bounds, valueLength)
 			return nil, errors.New("Error: Incorrect header values length.")
 		}
 		bounds -= valueLength
