@@ -198,7 +198,6 @@ func (f *flowControl) Receive(data []byte) {
 		rst.StreamID = f.streamID
 		rst.Status = RST_STREAM_FLOW_CONTROL_ERROR
 		f.output <- rst
-		return
 	}
 
 	// Update the window.

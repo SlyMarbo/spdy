@@ -671,7 +671,7 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 		}
 
 	case RST_STREAM_FLOW_CONTROL_ERROR:
-		log.Printf("Error: Received FLOW_CONTROL_ERROR for stream ID %d.\n", sid)
+		log.Printf("Warning: Received FLOW_CONTROL_ERROR for stream ID %d.\n", sid)
 		conn.numBenignErrors++
 		return
 
@@ -785,7 +785,7 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 	// Check stream is open.
 	stream, ok := conn.streams[sid]
 	if !ok || stream == nil || stream.State().ClosedHere() {
-		debug.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
+		debug.Printf("Warning: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
 	}
