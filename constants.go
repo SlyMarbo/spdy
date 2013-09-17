@@ -21,17 +21,15 @@ var (
 // SPDY version of this implementation.
 const DEFAULT_SPDY_VERSION = 3
 
-// MaxBenignErrors is the maximum
-// number of minor errors each
-// connection will allow without
-// ending the session.
+// MaxBenignErrors is the maximum number of minor errors each
+// connection will allow without ending the session.
 //
-// Setting MaxBenignErrors to 0 or
-// less will disable checks, allowing
-// minor errors to go unchecked,
-// although they will still be
-// reported to the debug logger.
-var MaxBenignErrors = 10
+// By default, MaxBenignErrors is set to 0, disabling checks
+// and allowing minor errors to go unchecked, although they
+// will still be reported to the debug logger. If it is
+// important that no errors go unchecked, such as when testing
+// another implementation, set MaxBenignErrors to 1 or higher.
+var MaxBenignErrors = 0
 
 // Frame types in SPDY/2
 const (
