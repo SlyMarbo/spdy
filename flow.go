@@ -198,10 +198,12 @@ func (f *flowControl) Receive(data []byte) {
 		rst.StreamID = f.streamID
 		rst.Status = RST_STREAM_FLOW_CONTROL_ERROR
 		f.output <- rst
+		//debug.Printf("Error: Transfer window is currently %d.\n", f.transferWindowThere)
 	}
 
 	// Update the window.
 	f.transferWindowThere -= int64(len(data))
+	//debug.Printf("Transfer window is now %d.\n", f.transferWindowThere)
 
 	// Regrow the window if it's half-empty.
 	if f.transferWindowThere <= int64(f.initialWindowThere/2) {
@@ -209,6 +211,7 @@ func (f *flowControl) Receive(data []byte) {
 		grow.StreamID = f.streamID
 		grow.DeltaWindowSize = uint32(int64(f.initialWindowThere) - f.transferWindowThere)
 		f.output <- grow
+		f.transferWindowThere += int64(grow.DeltaWindowSize)
 	}
 }
 
