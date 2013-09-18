@@ -335,6 +335,15 @@ func (conn *connV2) Run() error {
 		conn.init()
 	}
 
+	// Ensure no panics happen.
+	defer func() {
+		if v := recover(); v != nil {
+			if !conn.closed() {
+				log.Println("Encountered error in connection:", v)
+			}
+		}
+	}()
+
 	// Enter the main loop.
 	conn.readFrames()
 
@@ -973,6 +982,15 @@ Loop:
 // to ensure clear interleaving of frames and to
 // provide assurances of priority and structure.
 func (conn *connV2) send() {
+	// Catch any panics.
+	defer func() {
+		if v := recover(); v != nil {
+			if !conn.closed() {
+				log.Println("Encountered send error:", v)
+			}
+		}
+	}()
+
 	// Enter the processing loop.
 	for {
 		frame := conn.selectFrameToSend()

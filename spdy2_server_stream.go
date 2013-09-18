@@ -199,6 +199,15 @@ func (s *serverStreamV2) ReceiveFrame(frame Frame) error {
 // and then the stream is cleaned
 // up and closed.
 func (s *serverStreamV2) Run() error {
+	// Catch any panics.
+	defer func() {
+		if v := recover(); v != nil {
+			if s != nil && s.state != nil && !s.state.Closed() {
+				log.Println("Encountered stream error:", v)
+			}
+		}
+	}()
+
 	// Make sure Request is prepared.
 	s.requestBody = new(bytes.Buffer)
 	s.request.Body = &readCloser{s.requestBody}
