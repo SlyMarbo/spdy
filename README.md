@@ -5,7 +5,7 @@ A full-featured SPDY library for the Go language (still under very active develo
  
 Note that this implementation currently supports SPDY drafts 2 and 3, and support for SPDY/4, and HTTP/2.0 is upcoming.
 
-The GoDoc for this package can be found at http://godoc.org/github.com/SlyMarbo/spdy.
+The GoDoc documentation for this package can be found at http://godoc.org/github.com/SlyMarbo/spdy.
 
 Servers
 -------
@@ -158,10 +158,7 @@ func Serve(w http.ResponseWriter, r *http.Request) {
 Clients
 -------
 
-The basic client API seems to work well in general, but gets a redirect loop when requesting https://twitter.com/, so
-I'm not happy with it. Since I can't see Twitter's servers' SPDY logs, I don't know what's wrong yet, but I'm working
-hard at it.
-
+The client API is even easier to use. Simply import the spdy package to add SPDY support.
 Here's a simple example that will fetch the requested page over HTTP, HTTPS, or SPDY, as necessary.
 ```go
 package main
@@ -186,5 +183,23 @@ func main() {
 	res.Body.Close()
 	
 	fmt.Printf("Received: %s\n", bytes)
+}
+```
+
+
+To add SPDY support to your own client, just use the spdy package's Transport.
+```go
+package main
+
+import (
+	"github.com/SlyMarbo/spdy" // Import SPDY.
+	"net/http"
+)
+
+func main() {
+	client := new(http.Client)
+	client.Transport = new(spdy.Transport) // This client now supports HTTP, HTTPS, and SPDY.
+	
+	// ...
 }
 ```

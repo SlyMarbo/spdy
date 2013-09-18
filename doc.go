@@ -150,10 +150,7 @@ Sending a server push:
 
 		Clients
 
-The basic client API seems to work well in general, but gets a redirect loop when requesting https://twitter.com/, so
-I'm not happy with it. Since I can't see Twitter's servers' SPDY logs, I don't know what's wrong yet, but I'm working
-hard at it.
-
+The client API is even easier to use. Simply import the spdy package to add SPDY support.
 Here's a simple example that will fetch the requested page over HTTP, HTTPS, or SPDY, as necessary.
 
 		package main
@@ -178,6 +175,22 @@ Here's a simple example that will fetch the requested page over HTTP, HTTPS, or 
 			res.Body.Close()
 
 			fmt.Printf("Received: %s\n", bytes)
+		}
+
+To add SPDY support to your own client, just use the spdy package's Transport.
+
+		package main
+
+		import (
+			"github.com/SlyMarbo/spdy" // Import SPDY.
+			"net/http"
+		)
+
+		func main() {
+			client := new(http.Client)
+			client.Transport = new(spdy.Transport) // This client now supports HTTP, HTTPS, and SPDY.
+
+			// ...
 		}
 
 */
