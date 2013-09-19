@@ -766,7 +766,8 @@ func (conn *connV3) handleSynReply(frame *synReplyFrameV3) {
 	}
 
 	// Check stream is open.
-	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
+	stream, ok := conn.streams[sid]
+	if !ok || stream == nil || stream.State() == nil || stream.State().ClosedThere() {
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
 		return
@@ -775,7 +776,7 @@ func (conn *connV3) handleSynReply(frame *synReplyFrameV3) {
 	// Stream ID is fine.
 
 	// Send headers to stream.
-	conn.streams[sid].ReceiveFrame(frame)
+	stream.ReceiveFrame(frame)
 }
 
 // handleWindowUpdate performs the processing of WINDOW_UPDATE frames.

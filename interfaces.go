@@ -72,6 +72,13 @@ type Decompressor interface {
 //
 // ReceiveHeaders is passed the request and any sent
 // text headers. This may be called multiple times.
+// Note that these headers may contain the status code
+// of the response, under the ":status" header. If the
+// Receiver is being used to proxy a request, and the
+// headers presented to ReceiveHeader are copied to
+// another ResponseWriter, take care to call its
+// WriteHeader method after copying all headers, since
+// this may flush headers received so far.
 //
 // ReceiveRequest is used when server pushes are sent.
 // The returned bool should inticate whether to accept
