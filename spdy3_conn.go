@@ -1079,9 +1079,6 @@ func (conn *connV3) send() {
 			conn.Close()
 			return
 		}
-		if h, ok := frame.(*headersFrameV3); ok {
-			log.Println(h)
-		}
 
 		// Compress any name/value header blocks.
 		err := frame.Compress(conn.compressor)

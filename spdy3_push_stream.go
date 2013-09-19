@@ -157,9 +157,11 @@ func (p *pushStreamV3) StreamID() StreamID {
 func (p *pushStreamV3) Finish() {
 	p.writeHeader()
 	end := new(dataFrameV3)
+	end.StreamID = p.streamID
 	end.Data = []byte{}
 	end.Flags = FLAG_FIN
 	p.output <- end
+	p.Close()
 }
 
 /**********
