@@ -705,6 +705,7 @@ func (conn *connV2) handleRstStream(frame *rstStreamFrameV2) {
 	default:
 		log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.Status)
 		conn.protocolError(sid)
+		return
 	}
 }
 
@@ -867,6 +868,7 @@ Loop:
 		if conn.numBenignErrors > MaxBenignErrors && MaxBenignErrors > 0 {
 			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
 			conn.protocolError(0)
+			return
 		}
 
 		// ReadFrame takes care of the frame parsing for us.

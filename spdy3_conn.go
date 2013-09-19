@@ -710,6 +710,7 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 	default:
 		log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.Status)
 		conn.protocolError(sid)
+		return
 	}
 }
 
@@ -815,6 +816,7 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 	if delta > MAX_DELTA_WINDOW_SIZE || delta < 1 {
 		log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n", delta)
 		conn.protocolError(sid)
+		return
 	}
 
 	// Send update to stream.
@@ -907,6 +909,7 @@ Loop:
 		if conn.numBenignErrors > MaxBenignErrors && MaxBenignErrors > 0 {
 			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
 			conn.protocolError(0)
+			return
 		}
 
 		// ReadFrame takes care of the frame parsing for us.
