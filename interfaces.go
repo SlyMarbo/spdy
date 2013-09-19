@@ -72,6 +72,8 @@ type Decompressor interface {
 //
 // ReceiveHeaders is passed the request and any sent
 // text headers. This may be called multiple times.
+// Writing the status code flushes the currently received
+// headers, therefore, if you do, write the status last.
 //
 // ReceiveRequest is used when server pushes are sent.
 // The returned bool should inticate whether to accept
