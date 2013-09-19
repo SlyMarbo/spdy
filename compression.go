@@ -36,6 +36,7 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 	d.Lock()
 	defer d.Unlock()
 
+	// Make sure the buffer is ready.
 	if d.in == nil {
 		d.in = bytes.NewBuffer(data)
 	} else {
@@ -60,18 +61,18 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		}
 	}
 
-	var chunk []byte
+	var size int
 	var dechunk func([]byte) int
 
 	// SPDY/2 uses 16-bit fixed fields, where SPDY/3 uses 32-bit fields.
 	switch d.version {
 	case 2:
-		chunk = make([]byte, 2)
+		size = 2
 		dechunk = func(b []byte) int {
 			return int(bytesToUint16(b))
 		}
 	case 3:
-		chunk = make([]byte, 4)
+		size = 4
 		dechunk = func(b []byte) int {
 			return int(bytesToUint32(b))
 		}
@@ -80,22 +81,24 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 	}
 
 	// Read in the number of name/value pairs.
-	if _, err = d.out.Read(chunk); err != nil {
+	chunk, err := read(d.out, size)
+	if err != nil {
 		return nil, err
 	}
 	numNameValuePairs := dechunk(chunk)
 
 	headers = make(http.Header)
-	length := 0
 	bounds := MAX_FRAME_SIZE - 12 // Maximum frame size minus maximum non-headers data (SYN_STREAM)
 	for i := 0; i < numNameValuePairs; i++ {
 		var nameLength, valueLength int
 
-		// Get the name.
-		if _, err = d.out.Read(chunk); err != nil {
+		// Get the name's length.
+		chunk, err := read(d.out, size)
+		if err != nil {
 			return nil, err
 		}
 		nameLength = dechunk(chunk)
+		bounds -= size
 
 		if nameLength > bounds {
 			debug.Printf("Error: Maximum header length is %d. Received name length %d.\n", bounds, nameLength)
@@ -103,16 +106,19 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		}
 		bounds -= nameLength
 
-		name := make([]byte, nameLength)
-		if _, err = d.out.Read(name); err != nil {
+		// Get the name.
+		name, err := read(d.out, nameLength)
+		if err != nil {
 			return nil, err
 		}
 
-		// Get the value.
-		if _, err = d.out.Read(chunk); err != nil {
+		// Get the value's length.
+		chunk, err = read(d.out, size)
+		if err != nil {
 			return nil, err
 		}
 		valueLength = dechunk(chunk)
+		bounds -= size
 
 		if valueLength > bounds {
 			debug.Printf("Error: Maximum remaining header length is %d. Received values length %d.\n",
@@ -121,18 +127,15 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		}
 		bounds -= valueLength
 
-		values := make([]byte, valueLength)
-		if _, err = d.out.Read(values); err != nil {
+		// Get the values.
+		values, err := read(d.out, valueLength)
+		if err != nil {
 			return nil, err
 		}
-
-		// Count name and ': '.
-		length += nameLength + 2
 
 		// Split the value on null boundaries.
 		for _, value := range bytes.Split(values, []byte{'\x00'}) {
 			headers.Add(string(name), string(value))
-			length += len(value) + 2 // count value and ', ' or '\n\r'.
 		}
 	}
 
@@ -164,50 +167,71 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 	c.Lock()
 	defer c.Unlock()
 
-	var err error
+	// Ensure the buffer is prepared.
 	if c.buf == nil {
 		c.buf = new(bytes.Buffer)
-
-		if c.w == nil {
-			switch c.version {
-			case 2:
-				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
-			case 3:
-				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV3)
-			default:
-				err = versionError
-			}
-		}
-
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		c.buf.Reset()
 	}
 
+	// Same for the compressor.
+	if c.w == nil {
+		var err error
+		switch c.version {
+		case 2:
+			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
+		case 3:
+			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV3)
+		default:
+			err = versionError
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var size int // Size of length values.
+	switch c.version {
+	case 2:
+		size = 2
+	case 3:
+		size = 4
+	default:
+		return nil, versionError
+	}
+
+	// Remove invalid headers.
 	h.Del("Connection")
 	h.Del("Keep-Alive")
 	h.Del("Proxy-Connection")
 	h.Del("Transfer-Encoding")
 
-	length := 4 // The 4-byte number of name/value pairs.
+	length := size // The 4-byte or 2-byte number of name/value pairs.
 	num := len(h)
-	pairs := make(map[string]string)
+	pairs := make(map[string]string) // Used to store the validated headers.
 	for name, values := range h {
-		if _, ok := pairs[name]; ok {
+		// Ignore invalid names.
+		if _, ok := pairs[name]; ok { // We've already seen this name.
 			return nil, errors.New("Error: Duplicate header name discovered.")
 		}
-		if name == "" {
+		if name == "" { // Ignore empty names.
 			continue
 		}
 
+		// Multiple values are separated by a single null byte.
 		pairs[name] = strings.Join(values, "\x00")
-		length += len(name) + len(pairs[name]) + 8 // +4 for len(name), +4 for len(values).
+
+		// +4/2 for len(name), +4/2 for len(values).
+		length += len(name) + size + len(pairs[name]) + size
 	}
 
+	// Uncompressed data.
 	out := make([]byte, length)
+
+	// Current offset into out.
 	var offset int
+
+	// Write the number of name/value pairs.
 	switch c.version {
 	case 3:
 		out[0] = byte(num >> 24)
@@ -221,7 +245,10 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 		offset = 2
 	}
 
+	// For each name/value pair...
 	for name, value := range pairs {
+
+		// The length of the name.
 		nLen := len(name)
 		switch c.version {
 		case 3:
@@ -236,12 +263,13 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 			offset += 2
 		}
 
+		// The name itself.
 		for i, b := range []byte(strings.ToLower(name)) {
 			out[offset+i] = b
 		}
-
 		offset += nLen
 
+		// The length of the value.
 		vLen := len(value)
 		switch c.version {
 		case 3:
@@ -256,14 +284,15 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 			offset += 2
 		}
 
+		// The value itself.
 		for i, b := range []byte(value) {
 			out[offset+i] = b
 		}
-
 		offset += vLen
 	}
 
-	_, err = c.w.Write(out)
+	// Compress.
+	err := write(c.w, out)
 	if err != nil {
 		return nil, err
 	}
