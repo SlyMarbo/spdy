@@ -16,7 +16,7 @@ var versionError = errors.New("Version not supported.")
 // Decompressors retain their state, so a single Decompressor
 // should be used for each direction of a particular connection.
 type decompressor struct {
-	m       sync.Mutex
+	sync.Mutex
 	in      *bytes.Buffer
 	out     io.ReadCloser
 	version uint16
@@ -33,8 +33,8 @@ func NewDecompressor(version uint16) Decompressor {
 // Decompress uses zlib decompression to decompress the provided
 // data, according to the SPDY specification of the given version.
 func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) {
-	d.m.Lock()
-	defer d.m.Unlock()
+	d.Lock()
+	defer d.Unlock()
 
 	if d.in == nil {
 		d.in = bytes.NewBuffer(data)
@@ -144,7 +144,7 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 // should be used for each direction of a particular
 // connection.
 type compressor struct {
-	m       sync.Mutex
+	sync.Mutex
 	buf     *bytes.Buffer
 	w       *zlib.Writer
 	version uint16
@@ -161,8 +161,8 @@ func NewCompressor(version uint16) Compressor {
 // Compress uses zlib compression to compress the provided
 // data, according to the SPDY specification of the given version.
 func (c *compressor) Compress(h http.Header) ([]byte, error) {
-	c.m.Lock()
-	defer c.m.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	var err error
 	if c.buf == nil {
@@ -193,21 +193,17 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 
 	length := 4 // The 4-byte number of name/value pairs.
 	num := len(h)
-	lens := make(map[string]int)
+	pairs := make(map[string]string)
 	for name, values := range h {
-		if _, ok := lens[name]; ok {
+		if _, ok := pairs[name]; ok {
 			return nil, errors.New("Error: Duplicate header name discovered.")
 		}
-
-		lens[name] = len(values) - 1 // +1 for each null separator, (fence post)
-		if len(values) == 0 {
-			lens[name] = 0 // No separator.
+		if name == "" {
+			continue
 		}
 
-		for _, value := range values {
-			lens[name] += len(value)
-		}
-		length += len(name) + lens[name] + 8 // +4 for len(name), +4 for len(values).
+		pairs[name] = strings.Join(values, "\x00")
+		length += len(name) + len(pairs[name]) + 8 // +4 for len(name), +4 for len(values).
 	}
 
 	out := make([]byte, length)
@@ -225,7 +221,7 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 		offset = 2
 	}
 
-	for name, values := range h {
+	for name, value := range pairs {
 		nLen := len(name)
 		switch c.version {
 		case 3:
@@ -246,7 +242,7 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 
 		offset += nLen
 
-		vLen := lens[name]
+		vLen := len(value)
 		switch c.version {
 		case 3:
 			out[offset+0] = byte(vLen >> 24)
@@ -260,16 +256,11 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 			offset += 2
 		}
 
-		for n, value := range values {
-			for i, b := range []byte(value) {
-				out[offset+i] = b
-			}
-			offset += len(value)
-			if n < len(values)-1 {
-				out[offset] = '\x00'
-				offset++
-			}
+		for i, b := range []byte(value) {
+			out[offset+i] = b
 		}
+
+		offset += vLen
 	}
 
 	_, err = c.w.Write(out)
