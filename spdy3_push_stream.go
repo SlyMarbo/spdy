@@ -73,7 +73,6 @@ func (p *pushStreamV3) Write(inputData []byte) (int, error) {
 
 // WriteHeader is provided to satisfy the Stream
 // interface, but has no effect.
-// TODO: add handling for certain status codes like 304.
 func (p *pushStreamV3) WriteHeader(int) {
 	p.writeHeader()
 	return
@@ -172,8 +171,11 @@ func (p *pushStreamV3) writeHeader() {
 
 	header := new(headersFrameV3)
 	header.StreamID = p.streamID
-	header.Header = cloneHeader(p.header)
-	for name := range header.Header {
+	header.Header = make(http.Header)
+	for name, values := range header.Header {
+		for _, value := range values {
+			header.Header.Add(name, value)
+		}
 		p.header.Del(name)
 	}
 	p.output <- header

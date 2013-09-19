@@ -103,10 +103,12 @@ func (s *serverStreamV3) WriteHeader(code int) {
 	// Create the response SYN_REPLY.
 	synReply := new(synReplyFrameV3)
 	synReply.StreamID = s.streamID
-	synReply.Header = cloneHeader(s.header)
 
 	// Clear the headers that have been sent.
-	for name := range synReply.Header {
+	for name, values := range synReply.Header {
+		for _, value := range values {
+			synReply.Header.Add(name, value)
+		}
 		s.header.Del(name)
 	}
 
