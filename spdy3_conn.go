@@ -36,7 +36,8 @@ type connV3 struct {
 	lastRequestStreamID StreamID                       // last request stream ID. (odd)
 	oddity              StreamID                       // whether locally-sent streams are odd or even.
 	initialWindowSize   uint32                         // initial transport window.
-	goaway              bool                           // goaway has been sent/received.
+	goawayReceived      bool                           // goaway has been received.
+	goawaySent          bool                           // goaway has been sent.
 	numBenignErrors     int                            // number of non-serious errors encountered.
 	requestStreamLimit  *streamLimit                   // Limit on streams started by the client.
 	pushStreamLimit     *streamLimit                   // Limit on streams started by the server.
@@ -62,13 +63,16 @@ func (conn *connV3) Close() (err error) {
 	}
 
 	// Inform the other endpoint that the connection is closing.
-	goaway := new(goawayFrameV3)
-	if conn.server != nil {
-		goaway.LastGoodStreamID = conn.lastRequestStreamID
-	} else {
-		goaway.LastGoodStreamID = conn.lastPushStreamID
+	if !conn.goawaySent {
+		goaway := new(goawayFrameV3)
+		if conn.server != nil {
+			goaway.LastGoodStreamID = conn.lastRequestStreamID
+		} else {
+			goaway.LastGoodStreamID = conn.lastPushStreamID
+		}
+		conn.output[0] <- goaway
+		conn.goawaySent = true
 	}
-	conn.output[0] <- goaway
 
 	// Ensure any pending frames are sent.
 	if conn.sending == nil {
@@ -155,8 +159,8 @@ func (conn *connV3) Ping() (<-chan Ping, error) {
 // Push is used to issue a server push to the client. Note that this cannot be performed
 // by clients.
 func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, error) {
-	if conn.goaway {
-		return nil, errors.New("Error: GOAWAY received, so push could not be sent.")
+	if conn.goawayReceived || conn.goawaySent {
+		return nil, ErrGoaway
 	}
 
 	if conn.server == nil {
@@ -220,7 +224,7 @@ func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, e
 
 // Request is used to make a client request.
 func (conn *connV3) Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error) {
-	if conn.goaway {
+	if conn.goawayReceived || conn.goawaySent {
 		return nil, ErrGoaway
 	}
 
@@ -472,7 +476,7 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 	defer conn.Unlock()
 
 	// Check stream creation is allowed.
-	if conn.goaway || conn.closed() {
+	if conn.goawayReceived || conn.goawaySent || conn.closed() {
 		return
 	}
 
@@ -577,7 +581,7 @@ func (conn *connV3) handleRequest(frame *synStreamFrameV3) {
 	defer conn.Unlock()
 
 	// Check stream creation is allowed.
-	if conn.goaway || conn.closed() {
+	if conn.goawayReceived || conn.goawaySent || conn.closed() {
 		return
 	}
 
@@ -870,6 +874,17 @@ func (conn *connV3) protocolError(streamID StreamID) {
 	reply.StreamID = streamID
 	reply.Status = RST_STREAM_PROTOCOL_ERROR
 	conn.output[0] <- reply
+	if !conn.goawaySent {
+		goaway := new(goawayFrameV3)
+		if conn.server != nil {
+			goaway.LastGoodStreamID = conn.lastRequestStreamID
+		} else {
+			goaway.LastGoodStreamID = conn.lastPushStreamID
+		}
+		goaway.Status = GOAWAY_PROTOCOL_ERROR
+		conn.output[0] <- goaway
+		conn.goawaySent = true
+	}
 
 	conn.Close()
 }
@@ -924,6 +939,7 @@ Loop:
 		if err != nil {
 			log.Println("Error in decompression: ", err)
 			conn.protocolError(0)
+			return
 		}
 
 		// Print frame once the content's been decompressed.
@@ -994,7 +1010,7 @@ Loop:
 					stream.Close()
 				}
 			}
-			conn.goaway = true
+			conn.goawayReceived = true
 
 		case *headersFrameV3:
 			conn.handleHeaders(frame)
@@ -1058,8 +1074,8 @@ func (conn *connV3) send() {
 		// Compress any name/value header blocks.
 		err := frame.Compress(conn.compressor)
 		if err != nil {
-			log.Println(err)
-			continue
+			log.Printf("Error in compression: %v (%T).\n", err, frame)
+			return
 		}
 
 		debug.Printf("Sending %s:\n", frame.Name())

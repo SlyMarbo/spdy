@@ -35,7 +35,8 @@ type connV2 struct {
 	lastRequestStreamID StreamID                   // last request stream ID. (odd)
 	oddity              StreamID                   // whether locally-sent streams are odd or even.
 	initialWindowSize   uint32                     // initial transport window.
-	goaway              bool                       // goaway has been sent/received.
+	goawayReceived      bool                       // goaway has been received.
+	goawaySent          bool                       // goaway has been sent.
 	numBenignErrors     int                        // number of non-serious errors encountered.
 	requestStreamLimit  *streamLimit               // Limit on streams started by the client.
 	pushStreamLimit     *streamLimit               // Limit on streams started by the server.
@@ -59,13 +60,16 @@ func (conn *connV2) Close() (err error) {
 	}
 
 	// Inform the other endpoint that the connection is closing.
-	goaway := new(goawayFrameV2)
-	if conn.server != nil {
-		goaway.LastGoodStreamID = conn.lastRequestStreamID
-	} else {
-		goaway.LastGoodStreamID = conn.lastPushStreamID
+	if !conn.goawaySent {
+		goaway := new(goawayFrameV2)
+		if conn.server != nil {
+			goaway.LastGoodStreamID = conn.lastRequestStreamID
+		} else {
+			goaway.LastGoodStreamID = conn.lastPushStreamID
+		}
+		conn.output[0] <- goaway
+		conn.goawaySent = true
 	}
-	conn.output[0] <- goaway
 
 	// Ensure any pending frames are sent.
 	if conn.sending == nil {
@@ -152,8 +156,8 @@ func (conn *connV2) Ping() (<-chan Ping, error) {
 // Push is used to issue a server push to the client. Note that this cannot be performed
 // by clients.
 func (conn *connV2) Push(resource string, origin Stream) (http.ResponseWriter, error) {
-	if conn.goaway {
-		return nil, errors.New("Error: GOAWAY received, so push could not be sent.")
+	if conn.goawayReceived || conn.goawaySent {
+		return nil, ErrGoaway
 	}
 
 	if conn.server == nil {
@@ -216,7 +220,7 @@ func (conn *connV2) Push(resource string, origin Stream) (http.ResponseWriter, e
 
 // Request is used to make a client request.
 func (conn *connV2) Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error) {
-	if conn.goaway {
+	if conn.goawayReceived || conn.goawaySent {
 		return nil, ErrGoaway
 	}
 
@@ -466,7 +470,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	defer conn.Unlock()
 
 	// Check stream creation is allowed.
-	if conn.goaway || conn.closed() {
+	if conn.goawayReceived || conn.goawaySent || conn.closed() {
 		return
 	}
 
@@ -571,7 +575,7 @@ func (conn *connV2) handleRequest(frame *synStreamFrameV2) {
 	defer conn.Unlock()
 
 	// Check stream creation is allowed.
-	if conn.goaway || conn.closed() {
+	if conn.goawayReceived || conn.goawaySent || conn.closed() {
 		return
 	}
 
@@ -831,6 +835,17 @@ func (conn *connV2) protocolError(streamID StreamID) {
 	reply.Status = RST_STREAM_PROTOCOL_ERROR
 	conn.output[0] <- reply
 
+	if !conn.goawaySent {
+		goaway := new(goawayFrameV2)
+		if conn.server != nil {
+			goaway.LastGoodStreamID = conn.lastRequestStreamID
+		} else {
+			goaway.LastGoodStreamID = conn.lastPushStreamID
+		}
+		conn.output[0] <- goaway
+		conn.goawaySent = true
+	}
+
 	conn.Close()
 }
 
@@ -884,6 +899,7 @@ Loop:
 		if err != nil {
 			log.Printf("Error in decompression: %v (%T).\n", err, frame)
 			conn.protocolError(0)
+			return
 		}
 
 		// Print frame once the content's been decompressed.
@@ -957,7 +973,7 @@ Loop:
 					stream.Close()
 				}
 			}
-			conn.goaway = true
+			conn.goawayReceived = true
 
 		case *headersFrameV2:
 			conn.handleHeaders(frame)
@@ -1003,8 +1019,8 @@ func (conn *connV2) send() {
 		// Compress any name/value header blocks.
 		err := frame.Compress(conn.compressor)
 		if err != nil {
-			log.Println(err)
-			continue
+			log.Printf("Error in compression: %v (%T).\n", err, frame)
+			return
 		}
 
 		debug.Printf("Sending %s:\n", frame.Name())

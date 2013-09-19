@@ -99,6 +99,13 @@ const (
 	RST_STREAM_FRAME_TOO_LARGE       = 11
 )
 
+// GOAWAY status codes
+const (
+	GOAWAY_OK             = 0
+	GOAWAY_PROTOCOL_ERROR = 1
+	GOAWAY_INTERNAL_ERROR = 2
+)
+
 // Settings IDs
 const (
 	SETTINGS_UPLOAD_BANDWIDTH               = 1
