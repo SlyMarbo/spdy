@@ -400,12 +400,13 @@ func PingServer(c http.Client, server string) (<-chan Ping, error) {
 //              "net/http"
 //      )
 //
-//      func httpHandler(w http.ResponseWriter, req *http.Request) {
-//              push, err := spdy.Push(w, "/javascript.js")
+//      func httpHandler(w http.ResponseWriter, r *http.Request) {
+//							path := r.URL.Scheme + "://" + r.URL.Host + "/javascript.js"
+//              push, err := spdy.Push(w, path)
 //              if err != nil {
 //                      // Non-SPDY connection.
 //              } else {
-//                      http.ServeFile(push, req, "./javascript.js") // Push the given file.
+//                      http.ServeFile(push, r, "./javascript.js") // Push the given file.
 //              }
 //
 //      }

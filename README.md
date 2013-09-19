@@ -145,7 +145,8 @@ import (
 
 func Serve(w http.ResponseWriter, r *http.Request) {
 	// Push returns a separate http.ResponseWriter and an error.
-	push, err := spdy.Push("/example.js")
+	path := r.URL.Scheme + "://" + r.URL.Host + "/example.js"
+	push, err := spdy.Push(path)
 	if err != nil {
 		// Not using SPDY.
 	}
