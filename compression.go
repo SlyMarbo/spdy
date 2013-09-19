@@ -62,18 +62,18 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 	}
 
 	var size int
-	var dechunk func([]byte) int
+	var bytesToInt func([]byte) int
 
 	// SPDY/2 uses 16-bit fixed fields, where SPDY/3 uses 32-bit fields.
 	switch d.version {
 	case 2:
 		size = 2
-		dechunk = func(b []byte) int {
+		bytesToInt = func(b []byte) int {
 			return int(bytesToUint16(b))
 		}
 	case 3:
 		size = 4
-		dechunk = func(b []byte) int {
+		bytesToInt = func(b []byte) int {
 			return int(bytesToUint32(b))
 		}
 	default:
@@ -81,11 +81,11 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 	}
 
 	// Read in the number of name/value pairs.
-	chunk, err := read(d.out, size)
+	pairs, err := read(d.out, size)
 	if err != nil {
 		return nil, err
 	}
-	numNameValuePairs := dechunk(chunk)
+	numNameValuePairs := bytesToInt(pairs)
 
 	headers = make(http.Header)
 	bounds := MAX_FRAME_SIZE - 12 // Maximum frame size minus maximum non-headers data (SYN_STREAM)
@@ -93,11 +93,11 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		var nameLength, valueLength int
 
 		// Get the name's length.
-		chunk, err := read(d.out, size)
+		length, err := read(d.out, size)
 		if err != nil {
 			return nil, err
 		}
-		nameLength = dechunk(chunk)
+		nameLength = bytesToInt(length)
 		bounds -= size
 
 		if nameLength > bounds {
@@ -113,16 +113,15 @@ func (d *decompressor) Decompress(data []byte) (headers http.Header, err error) 
 		}
 
 		// Get the value's length.
-		chunk, err = read(d.out, size)
+		length, err = read(d.out, size)
 		if err != nil {
 			return nil, err
 		}
-		valueLength = dechunk(chunk)
+		valueLength = bytesToInt(length)
 		bounds -= size
 
 		if valueLength > bounds {
-			debug.Printf("Error: Maximum remaining header length is %d. Received values length %d.\n",
-				bounds, valueLength)
+			debug.Printf("Error: Maximum header length is %d. Received values length %d.\n", bounds, valueLength)
 			return nil, errors.New("Error: Incorrect header values length.")
 		}
 		bounds -= valueLength
@@ -206,9 +205,8 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 	h.Del("Proxy-Connection")
 	h.Del("Transfer-Encoding")
 
-	length := size // The 4-byte or 2-byte number of name/value pairs.
-	num := len(h)
-	pairs := make(map[string]string) // Used to store the validated headers.
+	length := size                   // The 4-byte or 2-byte number of name/value pairs.
+	pairs := make(map[string]string) // Used to store the validated, joined headers.
 	for name, values := range h {
 		// Ignore invalid names.
 		if _, ok := pairs[name]; ok { // We've already seen this name.
@@ -221,7 +219,7 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 		// Multiple values are separated by a single null byte.
 		pairs[name] = strings.Join(values, "\x00")
 
-		// +4/2 for len(name), +4/2 for len(values).
+		// +size for len(name), +size for len(values).
 		length += len(name) + size + len(pairs[name]) + size
 	}
 
@@ -229,9 +227,10 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 	out := make([]byte, length)
 
 	// Current offset into out.
-	var offset int
+	var offset uint32
 
 	// Write the number of name/value pairs.
+	num := uint32(len(pairs))
 	switch c.version {
 	case 3:
 		out[0] = byte(num >> 24)
@@ -249,7 +248,7 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 	for name, value := range pairs {
 
 		// The length of the name.
-		nLen := len(name)
+		nLen := uint32(len(name))
 		switch c.version {
 		case 3:
 			out[offset+0] = byte(nLen >> 24)
@@ -264,13 +263,11 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 		}
 
 		// The name itself.
-		for i, b := range []byte(strings.ToLower(name)) {
-			out[offset+i] = b
-		}
+		copy(out[offset:], []byte(strings.ToLower(name)))
 		offset += nLen
 
 		// The length of the value.
-		vLen := len(value)
+		vLen := uint32(len(value))
 		switch c.version {
 		case 3:
 			out[offset+0] = byte(vLen >> 24)
@@ -285,9 +282,7 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 		}
 
 		// The value itself.
-		for i, b := range []byte(value) {
-			out[offset+i] = b
-		}
+		copy(out[offset:], []byte(value))
 		offset += vLen
 	}
 
