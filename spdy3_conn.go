@@ -162,7 +162,7 @@ func (conn *connV3) Ping() (<-chan Ping, error) {
 
 // Push is used to issue a server push to the client. Note that this cannot be performed
 // by clients.
-func (conn *connV3) Push(resource string, origin Stream) (http.ResponseWriter, error) {
+func (conn *connV3) Push(resource string, origin Stream) (PushStream, error) {
 	if conn.goawayReceived || conn.goawaySent {
 		return nil, ErrGoaway
 	}
@@ -1078,6 +1078,9 @@ func (conn *connV3) send() {
 		if frame == nil {
 			conn.Close()
 			return
+		}
+		if h, ok := frame.(*headersFrameV3); ok {
+			log.Println(h)
 		}
 
 		// Compress any name/value header blocks.

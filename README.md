@@ -151,6 +151,10 @@ func Serve(w http.ResponseWriter, r *http.Request) {
 		// Not using SPDY.
 	}
 	http.ServeFile(push, r, "./content/example.js")
+
+	// Note that a PushStream must be finished manually once
+	// all writing has finished.
+	push.Finish()
 	
 	// ...
 }

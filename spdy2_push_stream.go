@@ -77,7 +77,6 @@ func (p *pushStreamV2) Write(inputData []byte) (int, error) {
 
 // WriteHeader is provided to satisfy the Stream
 // interface, but has no effect.
-// TODO: add handling for certain status codes like 304.
 func (p *pushStreamV2) WriteHeader(int) {
 	p.writeHeader()
 	return
@@ -144,6 +143,22 @@ func (p *pushStreamV2) State() *StreamState {
 func (p *pushStreamV2) StreamID() StreamID {
 	return p.streamID
 }
+
+/**************
+ * PushStream *
+ **************/
+
+func (p *pushStreamV2) Finish() {
+	p.writeHeader()
+	end := new(dataFrameV2)
+	end.Data = []byte{}
+	end.Flags = FLAG_FIN
+	p.output <- end
+}
+
+/**********
+ * Others *
+ **********/
 
 func (p *pushStreamV2) closed() bool {
 	if p.conn == nil || p.state == nil {

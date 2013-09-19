@@ -148,6 +148,10 @@ Sending a server push:
 			}
 			http.ServeFile(push, r, "./content/example.js")
 
+			// Note that a PushStream must be finished manually once
+			// all writing has finished.
+			push.Finish()
+
 			// ...
 		}
 

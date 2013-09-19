@@ -150,6 +150,22 @@ func (p *pushStreamV3) StreamID() StreamID {
 	return p.streamID
 }
 
+/**************
+ * PushStream *
+ **************/
+
+func (p *pushStreamV3) Finish() {
+	p.writeHeader()
+	end := new(dataFrameV3)
+	end.Data = []byte{}
+	end.Flags = FLAG_FIN
+	p.output <- end
+}
+
+/**********
+ * Others *
+ **********/
+
 func (p *pushStreamV3) closed() bool {
 	if p.conn == nil || p.state == nil {
 		return true
@@ -172,11 +188,17 @@ func (p *pushStreamV3) writeHeader() {
 	header := new(headersFrameV3)
 	header.StreamID = p.streamID
 	header.Header = make(http.Header)
-	for name, values := range header.Header {
+
+	for name, values := range p.header {
 		for _, value := range values {
 			header.Header.Add(name, value)
 		}
 		p.header.Del(name)
 	}
+
+	if len(header.Header) == 0 {
+		return
+	}
+
 	p.output <- header
 }

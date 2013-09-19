@@ -26,7 +26,7 @@ type Conn interface {
 	io.Closer
 	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
-	Push(url string, origin Stream) (http.ResponseWriter, error)
+	Push(url string, origin Stream) (PushStream, error)
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
 	Run() error
 	SetTimeout(time.Duration)
@@ -43,6 +43,16 @@ type Stream interface {
 	Run() error
 	State() *StreamState
 	StreamID() StreamID
+}
+
+// PushStream contains a single SPDY push stream.
+type PushStream interface {
+	Stream
+
+	// Fin is used to close the
+	// push stream once writing
+	// has finished.
+	Finish()
 }
 
 // Frame represents a single SPDY frame.
