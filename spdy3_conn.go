@@ -679,18 +679,21 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 		}
 
 	case RST_STREAM_CANCEL:
-		if sid&1 == conn.oddity {
+		// Allow cancelling of pushes.
+		stream, ok := conn.streams[sid]
+		if !ok {
+			return
+		}
+		_, ok = stream.(*pushStreamV3)
+		if sid&1 == conn.oddity && !ok {
 			log.Println("Error: Cannot cancel locally-sent streams.")
 			conn.numBenignErrors++
 			return
 		}
-		if stream, ok := conn.streams[sid]; ok {
-			stream.Close()
-		}
+		stream.Close()
 
 	case RST_STREAM_FLOW_CONTROL_ERROR:
 		conn.numBenignErrors++
-		return
 
 	case RST_STREAM_STREAM_IN_USE:
 		log.Printf("Error: Received STREAM_IN_USE for stream ID %d.\n", sid)
@@ -710,7 +713,6 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 	default:
 		log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.Status)
 		conn.protocolError(sid)
-		return
 	}
 }
 
@@ -916,7 +918,7 @@ Loop:
 		conn.refreshReadTimeout()
 		frame, err := readFrameV3(conn.buf)
 		if err != nil {
-			if err == io.EOF {
+			if _, ok := err.(*net.OpError); ok || err == io.EOF {
 				// Client has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
 
@@ -929,7 +931,7 @@ Loop:
 				return
 			}
 
-			log.Printf("Error: Encountered read error: %q\n", err.Error())
+			log.Printf("Error: Encountered read error: %q (%T)\n", err.Error(), err)
 			// Make sure conn.Close succeeds and sending stops.
 			if conn.sending == nil {
 				conn.sending = make(chan struct{})
@@ -1093,7 +1095,7 @@ func (conn *connV3) send() {
 		conn.refreshWriteTimeout()
 		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
-			if err == io.EOF || err == ErrConnNil {
+			if _, ok := err.(*net.OpError); ok || err == io.EOF || err == ErrConnNil {
 				// Server has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
 				conn.Close()

@@ -875,7 +875,7 @@ Loop:
 		conn.refreshReadTimeout()
 		frame, err := readFrameV2(conn.buf)
 		if err != nil {
-			if err == io.EOF {
+			if _, ok := err.(net.OpError); ok || err == io.EOF {
 				// Client has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
 
@@ -1037,7 +1037,7 @@ func (conn *connV2) send() {
 		conn.refreshWriteTimeout()
 		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
-			if err == io.EOF || err == ErrConnNil {
+			if _, ok := err.(net.OpError); ok || err == io.EOF || err == ErrConnNil {
 				// Server has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
 				conn.Close()

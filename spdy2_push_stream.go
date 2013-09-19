@@ -93,7 +93,6 @@ func (p *pushStreamV2) Close() error {
 	p.writeHeader()
 	if p.state != nil {
 		p.state.Close()
-		p.state = nil
 	}
 	p.origin = nil
 	p.output = nil

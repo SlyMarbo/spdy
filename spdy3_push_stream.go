@@ -89,11 +89,9 @@ func (p *pushStreamV3) Close() error {
 	p.writeHeader()
 	if p.state != nil {
 		p.state.Close()
-		p.state = nil
 	}
 	if p.flow != nil {
 		p.flow.Close()
-		p.flow = nil
 	}
 	p.origin = nil
 	p.output = nil
