@@ -407,6 +407,7 @@ func PingServer(c http.Client, server string) (<-chan Ping, error) {
 //                      // Non-SPDY connection.
 //              } else {
 //                      http.ServeFile(push, r, "./javascript.js") // Push the given file.
+//											push.Finish()                              // Finish the stream once used.
 //              }
 //
 //      }
@@ -419,7 +420,7 @@ func PingServer(c http.Client, server string) (<-chan Ping, error) {
 //                      log.Fatal(err)
 //              }
 //      }
-func Push(w http.ResponseWriter, url string) (http.ResponseWriter, error) {
+func Push(w http.ResponseWriter, url string) (PushStream, error) {
 	if stream, ok := w.(Stream); !ok {
 		return nil, ErrNotSPDY
 	} else {
