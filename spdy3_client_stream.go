@@ -237,9 +237,10 @@ func (s *clientStreamV3) writeHeader() {
 	// Create the HEADERS frame.
 	header := new(headersFrameV3)
 	header.StreamID = s.streamID
+	header.Header = make(http.Header)
 
 	// Clear the headers that have been sent.
-	for name, values := range header.Header {
+	for name, values := range s.header {
 		for _, value := range values {
 			header.Header.Add(name, value)
 		}

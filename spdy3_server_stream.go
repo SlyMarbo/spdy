@@ -103,9 +103,10 @@ func (s *serverStreamV3) WriteHeader(code int) {
 	// Create the response SYN_REPLY.
 	synReply := new(synReplyFrameV3)
 	synReply.StreamID = s.streamID
+	synReply.Header = make(http.Header)
 
 	// Clear the headers that have been sent.
-	for name, values := range synReply.Header {
+	for name, values := range s.header {
 		for _, value := range values {
 			synReply.Header.Add(name, value)
 		}
@@ -254,7 +255,14 @@ func (s *serverStreamV3) Run() error {
 			synReply := new(synReplyFrameV3)
 			synReply.Flags = FLAG_FIN
 			synReply.StreamID = s.streamID
-			synReply.Header = s.header
+			synReply.Header = make(http.Header)
+
+			for name, values := range s.header {
+				for _, value := range values {
+					synReply.Header.Add(name, value)
+				}
+				s.header.Del(name)
+			}
 
 			s.output <- synReply
 		} else if s.state.OpenHere() {
@@ -302,10 +310,13 @@ func (s *serverStreamV3) writeHeader() {
 	// Create the HEADERS frame.
 	header := new(headersFrameV3)
 	header.StreamID = s.streamID
-	header.Header = cloneHeader(s.header)
+	header.Header = make(http.Header)
 
 	// Clear the headers that have been sent.
-	for name := range header.Header {
+	for name, values := range s.header {
+		for _, value := range values {
+			header.Header.Add(name, value)
+		}
 		s.header.Del(name)
 	}
 
