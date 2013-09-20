@@ -87,25 +87,23 @@ func (conn *connV2) Close() (err error) {
 		close(conn.stop)
 	}
 
-	err = conn.conn.Close()
-	if err != nil {
-		return err
+	if conn.conn != nil {
+		conn.conn.Close()
+		conn.conn = nil
 	}
-	conn.conn = nil
 
 	for _, stream := range conn.streams {
 		err = stream.Close()
 		if err != nil {
-			return err
+			debug.Println(err)
 		}
 	}
 	conn.streams = nil
 
-	err = conn.compressor.Close()
-	if err != nil {
-		return err
+	if conn.compressor != nil {
+		conn.compressor.Close()
+		conn.compressor = nil
 	}
-	conn.compressor = nil
 	conn.decompressor = nil
 
 	for _, stream := range conn.output {
@@ -884,7 +882,9 @@ Loop:
 					conn.sending = make(chan struct{})
 				}
 
-				conn.Close()
+				// Run conn.Close in a separate goroutine to ensure
+				// that conn.Run returns.
+				go conn.Close()
 				return
 			}
 
@@ -893,7 +893,10 @@ Loop:
 			if conn.sending == nil {
 				conn.sending = make(chan struct{})
 			}
-			conn.Close()
+
+			// Run conn.Close in a separate goroutine to ensure
+			// that conn.Run returns.
+			go conn.Close()
 			return
 		}
 
