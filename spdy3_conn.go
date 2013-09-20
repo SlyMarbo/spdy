@@ -892,6 +892,8 @@ func (conn *connV3) newStream(frame *synStreamFrameV3, output chan<- Frame) *ser
 		TLS:        conn.tlsState,
 	}
 
+	stream.AddFlowControl()
+
 	return stream
 }
 
