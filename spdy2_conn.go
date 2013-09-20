@@ -1036,8 +1036,21 @@ func (conn *connV2) send() {
 	}()
 
 	// Enter the processing loop.
+	i := 1
 	for {
-		frame := conn.selectFrameToSend()
+
+		// Once per 5 frames, pick randomly.
+		var frame Frame
+		if i == 0 { // Ignore priority.
+			frame = conn.selectFrameToSend(false)
+		} else { // Normal selection.
+			frame = conn.selectFrameToSend(true)
+		}
+
+		i++
+		if i >= 5 {
+			i = 0
+		}
 
 		if frame == nil {
 			conn.Close()
@@ -1084,27 +1097,31 @@ func (conn *connV2) send() {
 
 // selectFrameToSend follows the specification's guidance
 // on frame priority, sending frames with higher priority
-// (a smaller number) first.
-func (conn *connV2) selectFrameToSend() (frame Frame) {
+// (a smaller number) first. If the given boolean is false,
+// this priority is temporarily ignored, which can be used
+// when high load is ignoring low-priority frames.
+func (conn *connV2) selectFrameToSend(prioritise bool) (frame Frame) {
 	if conn.closed() {
 		return nil
 	}
 
 	// Try in priority order first.
-	for i := 0; i < 8; i++ {
-		select {
-		case frame = <-conn.output[i]:
-			return frame
-		default:
+	if prioritise {
+		for i := 0; i < 8; i++ {
+			select {
+			case frame = <-conn.output[i]:
+				return frame
+			default:
+			}
 		}
-	}
 
-	// No frames are immediately pending, so if the
-	// connection is being closed, cease sending
-	// safely.
-	if conn.sending != nil {
-		close(conn.sending)
-		runtime.Goexit()
+		// No frames are immediately pending, so if the
+		// connection is being closed, cease sending
+		// safely.
+		if conn.sending != nil {
+			close(conn.sending)
+			runtime.Goexit()
+		}
 	}
 
 	// Wait for any frame.
