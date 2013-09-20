@@ -67,7 +67,7 @@ func (conn *connV3) Close() (err error) {
 	}
 
 	// Inform the other endpoint that the connection is closing.
-	if !conn.goawaySent {
+	if !conn.goawaySent && conn.sending == nil {
 		goaway := new(goawayFrameV3)
 		if conn.server != nil {
 			goaway.LastGoodStreamID = conn.lastRequestStreamID
@@ -85,7 +85,10 @@ func (conn *connV3) Close() (err error) {
 	}
 
 	select {
-	case _ = <-conn.stop:
+	case _, ok := <-conn.stop:
+		if ok {
+			close(conn.stop)
+		}
 	default:
 		close(conn.stop)
 	}
@@ -355,12 +358,13 @@ func (conn *connV3) Run() error {
 		}
 	}()
 
-	// Enter the main loop.
-	conn.readFrames()
+	// Start the main loop.
+	go conn.readFrames()
 
-	// Cleanup before the connection closes.
-	err := conn.Close()
-	return err
+	// Run until the connection ends.
+	<-conn.stop
+
+	return nil
 }
 
 func (c *connV3) SetTimeout(d time.Duration) {
@@ -1119,12 +1123,20 @@ func (conn *connV3) send() {
 			if _, ok := err.(*net.OpError); ok || err == io.EOF || err == ErrConnNil {
 				// Server has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
+				// Make sure conn.Close succeeds and sending stops.
+				if conn.sending == nil {
+					conn.sending = make(chan struct{})
+				}
 				conn.Close()
 				return
 			}
 
 			// Unexpected error which prevented a write.
 			log.Printf("Error: Encountered write error: %q\n", err.Error())
+			// Make sure conn.Close succeeds and sending stops.
+			if conn.sending == nil {
+				conn.sending = make(chan struct{})
+			}
 			conn.Close()
 			return
 		}
