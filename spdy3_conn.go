@@ -197,15 +197,15 @@ func (conn *connV3) Push(resource string, origin Stream) (PushStream, error) {
 
 	// Send.
 	conn.Lock()
+	defer conn.Unlock()
+
 	conn.lastPushStreamID += 2
 	if conn.lastPushStreamID > MAX_STREAM_ID {
-		conn.Unlock()
 		return nil, errors.New("Error: All server streams exhausted.")
 	}
 	newID := conn.lastPushStreamID
 	push.StreamID = newID
 	conn.output[0] <- push
-	conn.Unlock()
 
 	// Create the pushStream.
 	out := new(pushStreamV3)
@@ -300,13 +300,14 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 
 	// Send.
 	conn.Lock()
+	defer conn.Unlock()
+
 	if conn.lastRequestStreamID == 0 {
 		conn.lastRequestStreamID = 1
 	} else {
 		conn.lastRequestStreamID += 2
 	}
 	if conn.lastRequestStreamID > MAX_STREAM_ID {
-		conn.Unlock()
 		return nil, errors.New("Error: All client streams exhausted.")
 	}
 	syn.StreamID = conn.lastRequestStreamID
@@ -315,9 +316,8 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 		frame.StreamID = syn.StreamID
 		conn.output[0] <- frame
 	}
-	conn.Unlock()
 
-	// // Create the request stream.
+	// Create the request stream.
 	out := new(clientStreamV3)
 	out.conn = conn
 	out.streamID = syn.StreamID
@@ -416,7 +416,9 @@ func (conn *connV3) handleClientData(frame *dataFrameV3) {
 	// Check stream ID is valid.
 	if !sid.Valid() {
 		log.Printf("Error: Received DATA with Stream ID %d, which exceeds the limit.\n", sid)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -508,7 +510,9 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 	// Check Stream ID is not out of bounds.
 	if !sid.Valid() {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -525,7 +529,9 @@ func (conn *connV3) handlePush(frame *synStreamFrameV3) {
 
 	if !frame.Priority.Valid(3) {
 		log.Printf("Error: Received SYN_STREAM with invalid priority %d.\n", frame.Priority)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -612,7 +618,9 @@ func (conn *connV3) handleRequest(frame *synStreamFrameV3) {
 	// Check Stream ID is not out of bounds.
 	if !sid.Valid() {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -630,7 +638,9 @@ func (conn *connV3) handleRequest(frame *synStreamFrameV3) {
 	// Check request priority.
 	if !frame.Priority.Valid(3) {
 		log.Printf("Error: Received SYN_STREAM with invalid priority %d.\n", frame.Priority)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -710,7 +720,9 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 
 	default:
 		log.Printf("Error: Received unknown RST_STREAM status code %d.\n", frame.Status)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 	}
 }
 
@@ -770,7 +782,9 @@ func (conn *connV3) handleSynReply(frame *synReplyFrameV3) {
 
 	if !sid.Valid() {
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which exceeds the limit.\n", sid)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -797,7 +811,9 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 
 	if !sid.Valid() {
 		log.Printf("Error: Received WINDOW_UPDATE with Stream ID %d, which exceeds the limit.\n", sid)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -815,7 +831,9 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 	delta := frame.DeltaWindowSize
 	if delta > MAX_DELTA_WINDOW_SIZE || delta < 1 {
 		log.Printf("Error: Received WINDOW_UPDATE with invalid delta window size %d.\n", delta)
+		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
