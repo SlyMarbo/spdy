@@ -126,7 +126,10 @@ func (conn *connV2) Close() (err error) {
 // InitialWindowSize gives the most recently-received value for
 // the INITIAL_WINDOW_SIZE setting.
 func (conn *connV2) InitialWindowSize() (uint32, error) {
-	return conn.initialWindowSize, nil
+	conn.Lock()
+	i := conn.initialWindowSize
+	conn.Unlock()
+	return i, nil
 }
 
 // Ping is used by spdy.PingServer and spdy.PingClient to send
@@ -960,8 +963,9 @@ Loop:
 				conn.receivedSettings[setting.ID] = setting
 				switch setting.ID {
 				case SETTINGS_INITIAL_WINDOW_SIZE:
-					debug.Printf("Initial window size is %d.\n", setting.Value)
+					conn.Lock()
 					conn.initialWindowSize = setting.Value
+					conn.Unlock()
 
 				case SETTINGS_MAX_CONCURRENT_STREAMS:
 					if conn.server == nil {
