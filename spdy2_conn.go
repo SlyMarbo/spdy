@@ -126,10 +126,7 @@ func (conn *connV2) Close() (err error) {
 // InitialWindowSize gives the most recently-received value for
 // the INITIAL_WINDOW_SIZE setting.
 func (conn *connV2) InitialWindowSize() (uint32, error) {
-	conn.Lock()
-	i := conn.initialWindowSize
-	conn.Unlock()
-	return i, nil
+	return conn.initialWindowSize, nil
 }
 
 // Ping is used by spdy.PingServer and spdy.PingClient to send
