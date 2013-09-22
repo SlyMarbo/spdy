@@ -74,15 +74,23 @@ func (conn *connV3) Close() (err error) {
 		} else {
 			goaway.LastGoodStreamID = conn.lastPushStreamID
 		}
-		conn.output[0] <- goaway
-		conn.goawaySent = true
+		select {
+		case conn.output[0] <- goaway:
+			conn.goawaySent = true
+		case <-time.After(100 * time.Millisecond):
+			debug.Println("Failed to send closing GOAWAY.")
+		}
 	}
 
 	// Ensure any pending frames are sent.
 	if conn.sending == nil {
 		conn.sending = make(chan struct{})
-		<-conn.sending
+		select {
+		case <-conn.sending:
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
+	conn.sending = nil
 
 	select {
 	case _, ok := <-conn.stop:
@@ -903,7 +911,14 @@ func (conn *connV3) protocolError(streamID StreamID) {
 	reply := new(rstStreamFrameV3)
 	reply.StreamID = streamID
 	reply.Status = RST_STREAM_PROTOCOL_ERROR
-	conn.output[0] <- reply
+	select {
+	case conn.output[0] <- reply:
+	case <-time.After(100 * time.Millisecond):
+		debug.Println("Failed to send PROTOCOL_ERROR RST_STREAM.")
+		conn.Close()
+		return
+	}
+
 	if !conn.goawaySent {
 		goaway := new(goawayFrameV3)
 		if conn.server != nil {
@@ -912,8 +927,12 @@ func (conn *connV3) protocolError(streamID StreamID) {
 			goaway.LastGoodStreamID = conn.lastPushStreamID
 		}
 		goaway.Status = GOAWAY_PROTOCOL_ERROR
-		conn.output[0] <- goaway
-		conn.goawaySent = true
+		select {
+		case conn.output[0] <- goaway:
+			conn.goawaySent = true
+		case <-time.After(100 * time.Millisecond):
+			debug.Println("Failed to send PROTOCOL_ERROR GOAWAY.")
+		}
 	}
 
 	conn.Close()
