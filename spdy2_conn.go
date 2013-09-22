@@ -897,9 +897,11 @@ Loop:
 				debug.Println("Note: Endpoint has disconnected.")
 
 				// Make sure conn.Close succeeds and sending stops.
+				conn.Lock()
 				if conn.sending == nil {
 					conn.sending = make(chan struct{})
 				}
+				conn.Unlock()
 
 				// Run conn.Close in a separate goroutine to ensure
 				// that conn.Run returns.
@@ -908,10 +910,13 @@ Loop:
 			}
 
 			log.Printf("Error: Encountered read error: %q\n", err.Error())
+
 			// Make sure conn.Close succeeds and sending stops.
+			conn.Lock()
 			if conn.sending == nil {
 				conn.sending = make(chan struct{})
 			}
+			conn.Unlock()
 
 			// Run conn.Close in a separate goroutine to ensure
 			// that conn.Run returns.
@@ -1076,20 +1081,28 @@ func (conn *connV2) send() {
 			if _, ok := err.(*net.OpError); ok || err == io.EOF || err == ErrConnNil {
 				// Server has closed the TCP connection.
 				debug.Println("Note: Endpoint has disconnected.")
+
 				// Make sure conn.Close succeeds and sending stops.
+				conn.Lock()
 				if conn.sending == nil {
 					conn.sending = make(chan struct{})
 				}
+				conn.Unlock()
+
 				conn.Close()
 				return
 			}
 
 			// Unexpected error which prevented a write.
 			log.Printf("Error: Encountered write error: %q\n", err.Error())
+
 			// Make sure conn.Close succeeds and sending stops.
+			conn.Lock()
 			if conn.sending == nil {
 				conn.sending = make(chan struct{})
 			}
+			conn.Unlock()
+
 			conn.Close()
 			return
 		}
