@@ -6,12 +6,14 @@ package spdy
 
 import (
 	"errors"
+	"sync"
 )
 
 // flowControl is used by Streams to ensure that
 // they abide by SPDY's flow control rules. For
 // versions of SPDY before 3, this has no effect.
 type flowControl struct {
+	sync.Mutex
 	stream              Stream
 	streamID            StreamID
 	output              chan<- Frame
@@ -220,6 +222,9 @@ func (f *flowControl) Receive(data []byte) {
 // UpdateWindow is called when an UPDATE_WINDOW frame is received,
 // and performs the growing of the transfer window.
 func (f *flowControl) UpdateWindow(deltaWindowSize uint32) error {
+	f.Lock()
+	defer f.Unlock()
+
 	if int64(deltaWindowSize)+f.transferWindow > MAX_TRANSFER_WINDOW_SIZE {
 		return errors.New("Error: WINDOW_UPDATE delta window size overflows transfer window size.")
 	}
@@ -251,12 +256,14 @@ func (f *flowControl) Write(data []byte) (int, error) {
 	if f.constrained {
 		f.Flush()
 	}
+	f.Lock()
 	var window uint32
 	if f.transferWindow < 0 {
 		window = 0
 	} else {
 		window = uint32(f.transferWindow)
 	}
+	f.Unlock()
 
 	if uint32(len(data)) > window {
 		f.buffer = append(f.buffer, data[window:])
