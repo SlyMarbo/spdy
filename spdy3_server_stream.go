@@ -32,6 +32,7 @@ type serverStreamV3 struct {
 	responseCode   int
 	stop           chan struct{}
 	wroteHeader    bool
+	priority       Priority
 }
 
 /***********************

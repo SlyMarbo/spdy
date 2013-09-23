@@ -203,6 +203,48 @@ var ErrNotSPDY = errors.New("Error: Not a SPDY connection.")
 // attempted with a Client not connected to the given server.
 var ErrNotConnected = errors.New("Error: Not connected to given server.")
 
+// GetPriority is used to identify the request priority of the
+// given stream. This can be used to manually enforce stream
+// priority, although this is already performed by the
+// library.
+// If the underlying connection is using HTTP, and not SPDY,
+// GetPriority will return the ErrNotSPDY error.
+//
+// A simple example of finding a stream's priority is:
+//
+//      import (
+//              "github.com/SlyMarbo/spdy"
+//              "log"
+//              "net/http"
+//      )
+//
+//      func httpHandler(w http.ResponseWriter, r *http.Request) {
+//							priority, err := spdy.GetPriority(w)
+//              if err != nil {
+//                      // Non-SPDY connection.
+//              } else {
+//                      log.Println(priority)
+//              }
+//      }
+//
+//      func main() {
+//              http.HandleFunc("/", httpHandler)
+//              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
+//              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
+//              if err != nil {
+//                      log.Fatal(err)
+//              }
+//      }
+func GetPriority(w http.ResponseWriter) (int, error) {
+	if stream, ok := w.(*serverStreamV3); ok {
+		return int(stream.priority), nil
+	}
+	if stream, ok := w.(*serverStreamV2); ok {
+		return int(stream.priority), nil
+	}
+	return 0, ErrNotSPDY
+}
+
 // ListenAndServeTLS listens on the TCP network address addr
 // and then calls Serve with handler to handle requests on
 // incoming connections.  Handler is typically nil, in which

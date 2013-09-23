@@ -652,7 +652,7 @@ func (conn *connV2) handleRequest(frame *synStreamFrameV2) {
 	}
 
 	// Create and start new stream.
-	nextStream := conn.newStream(frame, conn.output[frame.Priority])
+	nextStream := conn.newStream(frame, frame.Priority)
 	// Make sure an error didn't occur when making the stream.
 	if nextStream == nil {
 		return
@@ -808,15 +808,16 @@ func (conn *connV2) handleSynReply(frame *synReplyFrameV2) {
 }
 
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
-func (conn *connV2) newStream(frame *synStreamFrameV2, output chan<- Frame) *serverStreamV2 {
+func (conn *connV2) newStream(frame *synStreamFrameV2, priority Priority) *serverStreamV2 {
 	stream := new(serverStreamV2)
 	stream.conn = conn
 	stream.streamID = frame.StreamID
 	stream.state = new(StreamState)
-	stream.output = output
+	stream.output = conn.output[priority]
 	stream.header = make(http.Header)
 	stream.unidirectional = frame.Flags.UNIDIRECTIONAL()
 	stream.stop = conn.stop
+	stream.priority = priority
 
 	if frame.Flags.FIN() {
 		stream.state.CloseThere()
