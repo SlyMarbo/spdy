@@ -858,6 +858,28 @@ func (conn *connV2) newStream(frame *synStreamFrameV2, priority Priority) *serve
 	return stream
 }
 
+// handleReadWriteError differentiates between normal and
+// unexpected errors when performing I/O with the network,
+// then shuts down the connection.
+func (conn *connV2) handleReadWriteError(err error) {
+	if _, ok := err.(*net.OpError); ok || err == io.EOF || err == ErrConnNil {
+		// Server has closed the TCP connection.
+		debug.Println("Note: Endpoint has disconnected.")
+	} else {
+		// Unexpected error which prevented a read/write.
+		log.Printf("Error: Encountered error: %q (%T)\n", err.Error(), err)
+	}
+
+	// Make sure conn.Close succeeds and sending stops.
+	conn.Lock()
+	if conn.sending == nil {
+		conn.sending = make(chan struct{})
+	}
+	conn.Unlock()
+
+	conn.Close()
+}
+
 // protocolError informs the other endpoint that a protocol error has
 // occurred, stops all running streams, and ends the connection.
 func (conn *connV2) protocolError(streamID StreamID) {
@@ -890,17 +912,109 @@ func (conn *connV2) protocolError(streamID StreamID) {
 	conn.Close()
 }
 
+// processFrame handles the initial processing of the given
+// frame, before passing it on to the relevant helper func,
+// if necessary. The returned boolean indicates whether the
+// connection is closing.
+func (conn *connV2) processFrame(frame Frame) bool {
+	switch frame := frame.(type) {
+
+	case *synStreamFrameV2:
+		if conn.server == nil {
+			conn.handlePush(frame)
+		} else {
+			conn.handleRequest(frame)
+		}
+
+	case *synReplyFrameV2:
+		conn.handleSynReply(frame)
+
+	case *rstStreamFrameV2:
+		if statusCodeIsFatal(frame.Status) {
+			code := statusCodeText[frame.Status]
+			log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID)
+			conn.Close()
+			return true
+		}
+		conn.handleRstStream(frame)
+
+	case *settingsFrameV2:
+		for _, setting := range frame.Settings {
+			conn.receivedSettings[setting.ID] = setting
+			switch setting.ID {
+			case SETTINGS_INITIAL_WINDOW_SIZE:
+				conn.Lock()
+				conn.initialWindowSize = setting.Value
+				conn.Unlock()
+
+			case SETTINGS_MAX_CONCURRENT_STREAMS:
+				if conn.server == nil {
+					conn.requestStreamLimit.SetLimit(setting.Value)
+				} else {
+					conn.pushStreamLimit.SetLimit(setting.Value)
+				}
+			}
+		}
+
+	case *noopFrameV2:
+		// Ignore.
+
+	case *pingFrameV2:
+		// Check whether Ping ID is a response.
+		if frame.PingID&1 == conn.nextPingID&1 {
+			if conn.pings[frame.PingID] == nil {
+				log.Printf("Warning: Ignored PING with Ping ID %d, which hasn't been requested.\n",
+					frame.PingID)
+				conn.numBenignErrors++
+				return false
+			}
+			conn.pings[frame.PingID] <- Ping{}
+			close(conn.pings[frame.PingID])
+			delete(conn.pings, frame.PingID)
+		} else {
+			debug.Println("Received PING. Replying...")
+			conn.output[0] <- frame
+		}
+
+	case *goawayFrameV2:
+		lastProcessed := frame.LastGoodStreamID
+		for streamID, stream := range conn.streams {
+			if streamID&1 == conn.oddity && streamID > lastProcessed {
+				// Stream is locally-sent and has not been processed.
+				// TODO: Inform the server that the push has not been successful.
+				stream.Close()
+			}
+		}
+		conn.goawayReceived = true
+
+	case *headersFrameV2:
+		conn.handleHeaders(frame)
+
+	case *windowUpdateFrameV2:
+		// Ignore.
+
+	case *dataFrameV2:
+		if conn.server == nil {
+			conn.handleServerData(frame)
+		} else {
+			conn.handleClientData(frame)
+		}
+
+	default:
+		log.Println(fmt.Sprintf("Ignored unexpected frame type %T", frame))
+	}
+	return false
+}
+
 // readFrames is the main processing loop, where frames
 // are read from the connection and processed individually.
 // Returning from readFrames begins the cleanup and exit
 // process for this connection.
 func (conn *connV2) readFrames() {
-	// Main loop.
-Loop:
 	for {
 
 		// This is the mechanism for handling too many benign errors.
-		// Default MaxBenignErrors is 10.
+		// By default MaxBenignErrors is 0, which ignores errors.
 		if conn.numBenignErrors > MaxBenignErrors && MaxBenignErrors > 0 {
 			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
 			conn.protocolError(0)
@@ -911,35 +1025,7 @@ Loop:
 		conn.refreshReadTimeout()
 		frame, err := readFrameV2(conn.buf)
 		if err != nil {
-			if _, ok := err.(*net.OpError); ok || err == io.EOF {
-				// Client has closed the TCP connection.
-				debug.Println("Note: Endpoint has disconnected.")
-
-				// Make sure conn.Close succeeds and sending stops.
-				conn.Lock()
-				if conn.sending == nil {
-					conn.sending = make(chan struct{})
-				}
-				conn.Unlock()
-
-				// Run conn.Close in a separate goroutine to ensure
-				// that conn.Run returns.
-				go conn.Close()
-				return
-			}
-
-			log.Printf("Error: Encountered read error: %q\n", err.Error())
-
-			// Make sure conn.Close succeeds and sending stops.
-			conn.Lock()
-			if conn.sending == nil {
-				conn.sending = make(chan struct{})
-			}
-			conn.Unlock()
-
-			// Run conn.Close in a separate goroutine to ensure
-			// that conn.Run returns.
-			go conn.Close()
+			conn.handleReadWriteError(err)
 			return
 		}
 
@@ -957,92 +1043,9 @@ Loop:
 		// Print frame once the content's been decompressed.
 		debug.Println(frame)
 
-		// This is the main frame handling section.
-		switch frame := frame.(type) {
-
-		case *synStreamFrameV2:
-			if conn.server == nil {
-				conn.handlePush(frame)
-			} else {
-				conn.handleRequest(frame)
-			}
-
-		case *synReplyFrameV2:
-			conn.handleSynReply(frame)
-
-		case *rstStreamFrameV2:
-			if statusCodeIsFatal(frame.Status) {
-				code := statusCodeText[frame.Status]
-				log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID)
-				conn.Close()
-				return
-			}
-			conn.handleRstStream(frame)
-
-		case *settingsFrameV2:
-			for _, setting := range frame.Settings {
-				conn.receivedSettings[setting.ID] = setting
-				switch setting.ID {
-				case SETTINGS_INITIAL_WINDOW_SIZE:
-					conn.Lock()
-					conn.initialWindowSize = setting.Value
-					conn.Unlock()
-
-				case SETTINGS_MAX_CONCURRENT_STREAMS:
-					if conn.server == nil {
-						conn.requestStreamLimit.SetLimit(setting.Value)
-					} else {
-						conn.pushStreamLimit.SetLimit(setting.Value)
-					}
-				}
-			}
-
-		case *noopFrameV2:
-			// Ignore.
-
-		case *pingFrameV2:
-			// Check whether Ping ID is a response.
-			if frame.PingID&1 == conn.nextPingID&1 {
-				if conn.pings[frame.PingID] == nil {
-					log.Printf("Warning: Ignored PING with Ping ID %d, which hasn't been requested.\n",
-						frame.PingID)
-					conn.numBenignErrors++
-					continue Loop
-				}
-				conn.pings[frame.PingID] <- Ping{}
-				close(conn.pings[frame.PingID])
-				delete(conn.pings, frame.PingID)
-			} else {
-				debug.Println("Received PING. Replying...")
-				conn.output[0] <- frame
-			}
-
-		case *goawayFrameV2:
-			lastProcessed := frame.LastGoodStreamID
-			for streamID, stream := range conn.streams {
-				if streamID&1 == conn.oddity && streamID > lastProcessed {
-					// Stream is locally-sent and has not been processed.
-					// TODO: Inform the server that the push has not been successful.
-					stream.Close()
-				}
-			}
-			conn.goawayReceived = true
-
-		case *headersFrameV2:
-			conn.handleHeaders(frame)
-
-		case *windowUpdateFrameV2:
-			// Ignore.
-
-		case *dataFrameV2:
-			if conn.server == nil {
-				conn.handleServerData(frame)
-			} else {
-				conn.handleClientData(frame)
-			}
-
-		default:
-			log.Println(fmt.Sprintf("Ignored unexpected frame type %T", frame))
+		// This is the main frame handling.
+		if conn.processFrame(frame) {
+			return
 		}
 	}
 }
@@ -1097,32 +1100,7 @@ func (conn *connV2) send() {
 		conn.refreshWriteTimeout()
 		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
-			if _, ok := err.(*net.OpError); ok || err == io.EOF || err == ErrConnNil {
-				// Server has closed the TCP connection.
-				debug.Println("Note: Endpoint has disconnected.")
-
-				// Make sure conn.Close succeeds and sending stops.
-				conn.Lock()
-				if conn.sending == nil {
-					conn.sending = make(chan struct{})
-				}
-				conn.Unlock()
-
-				conn.Close()
-				return
-			}
-
-			// Unexpected error which prevented a write.
-			log.Printf("Error: Encountered write error: %q\n", err.Error())
-
-			// Make sure conn.Close succeeds and sending stops.
-			conn.Lock()
-			if conn.sending == nil {
-				conn.sending = make(chan struct{})
-			}
-			conn.Unlock()
-
-			conn.Close()
+			conn.handleReadWriteError(err)
 			return
 		}
 	}

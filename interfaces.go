@@ -506,6 +506,9 @@ func read(r io.Reader, i int) ([]byte, error) {
 	out := make([]byte, i)
 	in := out[:]
 	for i > 0 {
+		if r == nil {
+			return nil, ErrConnNil
+		}
 		if n, err := r.Read(in); err != nil {
 			return nil, err
 		} else {
