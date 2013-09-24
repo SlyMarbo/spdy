@@ -939,6 +939,57 @@ func (conn *connV3) protocolError(streamID StreamID) {
 	conn.Close()
 }
 
+// frameReadError deals with errors resulting from attempting to or reading
+func (conn *connV3) frameReadError(err error) {
+	if _, ok := err.(*net.OpError); ok || err == io.EOF {
+		// Client has closed the TCP connection.
+		debug.Println("Note: Endpoint has disconnected.")
+	} else {
+		log.Printf("Error: Encountered read error: %q (%T)\n", err.Error(), err)
+	}
+
+	// Make sure conn.Close succeeds and sending stops.
+	conn.Lock()
+	if conn.sending == nil {
+		conn.sending = make(chan struct{})
+	}
+	conn.Unlock()
+
+	// Run conn.Close in a separate goroutine to ensure that conn.Run returns.
+	go conn.Close()
+	return
+}
+
+// checkFrameV3 does various checks for incoming frames and reads the frame
+func (conn *connV3) checkAndReadFrameV3() (Frame, error) {
+	// This is the mechanism for handling too many benign errors.
+	// Default MaxBenignErrors is 10.
+	if conn.numBenignErrors > MaxBenignErrors && MaxBenignErrors > 0 {
+		conn.protocolError(0)
+		return nil, errors.New("Warning: Too many invalid stream IDs received. Ending connection.")
+	}
+
+	// ReadFrame takes care of the frame parsing for us.
+	conn.refreshReadTimeout()
+	frame, err := readFrameV3(conn.buf)
+	if err != nil {
+		conn.frameReadError(err)
+		return nil, err
+	}
+
+	// Print frame type.
+	debug.Printf("Receiving %s:\n", frame.Name())
+
+	// Decompress the frame's headers, if there are any.
+	err = frame.Decompress(conn.decompressor)
+	if err != nil {
+		conn.protocolError(0)
+		msg := fmt.Sprintf("Error in decompression: %s", err)
+		return nil, errors.New(msg)
+	}
+	return frame, nil
+}
+
 // readFrames is the main processing loop, where frames
 // are read from the connection and processed individually.
 // Returning from readFrames begins the cleanup and exit
@@ -947,59 +998,9 @@ func (conn *connV3) readFrames() {
 	// Main loop.
 Loop:
 	for {
-
-		// This is the mechanism for handling too many benign errors.
-		// Default MaxBenignErrors is 10.
-		if conn.numBenignErrors > MaxBenignErrors && MaxBenignErrors > 0 {
-			log.Println("Warning: Too many invalid stream IDs received. Ending connection.")
-			conn.protocolError(0)
-			return
-		}
-
-		// ReadFrame takes care of the frame parsing for us.
-		conn.refreshReadTimeout()
-		frame, err := readFrameV3(conn.buf)
+		frame, err := conn.checkAndReadFrameV3()
 		if err != nil {
-			if _, ok := err.(*net.OpError); ok || err == io.EOF {
-				// Client has closed the TCP connection.
-				debug.Println("Note: Endpoint has disconnected.")
-
-				// Make sure conn.Close succeeds and sending stops.
-				conn.Lock()
-				if conn.sending == nil {
-					conn.sending = make(chan struct{})
-				}
-				conn.Unlock()
-
-				// Run conn.Close in a separate goroutine to ensure
-				// that conn.Run returns.
-				go conn.Close()
-				return
-			}
-
-			log.Printf("Error: Encountered read error: %q (%T)\n", err.Error(), err)
-
-			// Make sure conn.Close succeeds and sending stops.
-			conn.Lock()
-			if conn.sending == nil {
-				conn.sending = make(chan struct{})
-			}
-			conn.Unlock()
-
-			// Run conn.Close in a separate goroutine to ensure
-			// that conn.Run returns.
-			go conn.Close()
-			return
-		}
-
-		// Print frame type.
-		debug.Printf("Receiving %s:\n", frame.Name())
-
-		// Decompress the frame's headers, if there are any.
-		err = frame.Decompress(conn.decompressor)
-		if err != nil {
-			log.Println("Error in decompression: ", err)
-			conn.protocolError(0)
+			log.Println("Frame error: ", err)
 			return
 		}
 
