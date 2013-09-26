@@ -48,7 +48,7 @@ func NewClientConn(conn net.Conn, push Receiver, version uint16) (spdyConn Conn,
 		out.output[6] = make(chan Frame)
 		out.output[7] = make(chan Frame)
 		out.pings = make(map[uint32]chan<- Ping)
-		out.nextPingID = 2
+		out.nextPingID = 1
 		out.compressor = NewCompressor(3)
 		out.decompressor = NewDecompressor(3)
 		out.receivedSettings = make(Settings)
@@ -91,7 +91,7 @@ func NewClientConn(conn net.Conn, push Receiver, version uint16) (spdyConn Conn,
 		out.output[6] = make(chan Frame)
 		out.output[7] = make(chan Frame)
 		out.pings = make(map[uint32]chan<- Ping)
-		out.nextPingID = 2
+		out.nextPingID = 1
 		out.compressor = NewCompressor(2)
 		out.decompressor = NewDecompressor(2)
 		out.receivedSettings = make(Settings)
