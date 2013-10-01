@@ -325,7 +325,7 @@ type response struct {
 func (r *response) ReceiveData(req *http.Request, data []byte, finished bool) {
 	r.Data.Write(data)
 	if r.Receiver != nil {
-		go r.Receiver.ReceiveData(req, data, finished)
+		r.Receiver.ReceiveData(req, data, finished)
 	}
 }
 
@@ -345,7 +345,7 @@ func (r *response) ReceiveHeader(req *http.Request, header http.Header) {
 		}
 	}
 	if r.Receiver != nil {
-		go r.Receiver.ReceiveHeader(req, header)
+		r.Receiver.ReceiveHeader(req, header)
 	}
 }
 

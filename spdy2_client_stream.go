@@ -144,7 +144,7 @@ func (s *clientStreamV2) ReceiveFrame(frame Frame) error {
 		}
 
 		// Give to the client.
-		go s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
+		s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
 
 		if frame.Flags.FIN() {
 			s.state.CloseThere()
@@ -152,7 +152,7 @@ func (s *clientStreamV2) ReceiveFrame(frame Frame) error {
 		}
 
 	case *synReplyFrameV2:
-		go s.receiver.ReceiveHeader(s.request, frame.Header)
+		s.receiver.ReceiveHeader(s.request, frame.Header)
 
 		if frame.Flags.FIN() {
 			s.state.CloseThere()
@@ -160,7 +160,7 @@ func (s *clientStreamV2) ReceiveFrame(frame Frame) error {
 		}
 
 	case *headersFrameV2:
-		go s.receiver.ReceiveHeader(s.request, frame.Header)
+		s.receiver.ReceiveHeader(s.request, frame.Header)
 
 	case *windowUpdateFrameV2:
 		// Ignore.

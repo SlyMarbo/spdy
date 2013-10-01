@@ -147,7 +147,7 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 		}
 
 		// Give to the client.
-		go s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
+		s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
 		s.flow.Receive(frame.Data)
 
 		if frame.Flags.FIN() {
@@ -156,7 +156,7 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 		}
 
 	case *synReplyFrameV3:
-		go s.receiver.ReceiveHeader(s.request, frame.Header)
+		s.receiver.ReceiveHeader(s.request, frame.Header)
 
 		if frame.Flags.FIN() {
 			s.state.CloseThere()
@@ -164,7 +164,7 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 		}
 
 	case *headersFrameV3:
-		go s.receiver.ReceiveHeader(s.request, frame.Header)
+		s.receiver.ReceiveHeader(s.request, frame.Header)
 
 		if frame.Flags.FIN() {
 			s.state.CloseThere()
