@@ -460,7 +460,7 @@ func (conn *connV2) handleHeaders(frame *headersFrameV2) {
 		// Ignore refused push headers.
 		conn.Unlock()
 		if req := conn.pushRequests[sid]; req != nil && conn.pushReceiver != nil {
-			conn.pushReceiver.ReceiveHeader(req, frame.Header)
+			go conn.pushReceiver.ReceiveHeader(req, frame.Header)
 		}
 		return
 	}
@@ -488,10 +488,10 @@ func (conn *connV2) handleHeaders(frame *headersFrameV2) {
 // handlePush performs the processing of SYN_STREAM frames forming a server push.
 func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	conn.Lock()
+	defer conn.Unlock()
 
 	// Check stream creation is allowed.
 	if conn.goawayReceived || conn.goawaySent || conn.closed() {
-		conn.Unlock()
 		return
 	}
 
@@ -500,7 +500,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	// Push.
 	if conn.server != nil {
 		log.Println("Error: Only clients can receive server pushes.")
-		conn.Unlock()
 		return
 	}
 
@@ -508,7 +507,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	if sid&1 != 0 {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be even.\n", sid)
 		conn.numBenignErrors++
-		conn.Unlock()
 		return
 	}
 
@@ -517,7 +515,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	if sid <= lsid {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be greater than %d.\n", sid, lsid)
 		conn.numBenignErrors++
-		conn.Unlock()
 		return
 	}
 
@@ -526,6 +523,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
 		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -537,7 +535,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		rst.StreamID = sid
 		rst.Status = RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
-		conn.Unlock()
 		return
 	}
 
@@ -545,6 +542,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		log.Printf("Error: Received SYN_STREAM with invalid priority %d.\n", frame.Priority)
 		conn.Unlock()
 		conn.protocolError(sid)
+		conn.Lock()
 		return
 	}
 
@@ -554,7 +552,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	url, err := url.Parse(rawUrl)
 	if err != nil {
 		log.Println("Error: Received SYN_STREAM with invalid request URL: ", err)
-		conn.Unlock()
 		return
 	}
 
@@ -562,7 +559,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	major, minor, ok := http.ParseHTTPVersion(vers)
 	if !ok {
 		log.Println("Error: Invalid HTTP version: " + vers)
-		conn.Unlock()
 		return
 	}
 
@@ -587,7 +583,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		rst.StreamID = sid
 		rst.Status = RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
-		conn.Unlock()
 		return
 	}
 
@@ -595,10 +590,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	if conn.pushReceiver != nil {
 		conn.pushRequests[sid] = request
 		conn.lastPushStreamID = sid
-		conn.Unlock()
-		conn.pushReceiver.ReceiveHeader(request, frame.Header)
-	} else {
-		conn.Unlock()
+		go conn.pushReceiver.ReceiveHeader(request, frame.Header)
 	}
 }
 
@@ -755,7 +747,7 @@ func (conn *connV2) handleServerData(frame *dataFrameV2) {
 		// Ignore refused push data.
 		conn.Unlock()
 		if req := conn.pushRequests[sid]; req != nil && conn.pushReceiver != nil {
-			conn.pushReceiver.ReceiveData(req, frame.Data, frame.Flags.FIN())
+			go conn.pushReceiver.ReceiveData(req, frame.Data, frame.Flags.FIN())
 		}
 		return
 	}
