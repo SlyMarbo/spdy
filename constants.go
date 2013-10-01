@@ -23,7 +23,7 @@ var (
 )
 
 // SPDY version of this implementation.
-const DEFAULT_SPDY_VERSION = 3
+const DEFAULT_SPDY_VERSION = 3.1
 
 // MaxBenignErrors is the maximum number of minor errors each
 // connection will allow without ending the session.
@@ -105,9 +105,10 @@ const (
 
 // GOAWAY status codes
 const (
-	GOAWAY_OK             = 0
-	GOAWAY_PROTOCOL_ERROR = 1
-	GOAWAY_INTERNAL_ERROR = 2
+	GOAWAY_OK                 = 0
+	GOAWAY_PROTOCOL_ERROR     = 1
+	GOAWAY_INTERNAL_ERROR     = 2
+	GOAWAY_FLOW_CONTROL_ERROR = 3
 )
 
 // Settings IDs
@@ -283,28 +284,30 @@ func DefaultPriority(url *url.URL) Priority {
 }
 
 // Version factors.
-var supportedVersions = map[uint16]struct{}{
-	2: struct{}{},
-	3: struct{}{},
+var supportedVersions = map[float64]struct{}{
+	2:   struct{}{},
+	3:   struct{}{},
+	3.1: struct{}{},
 }
 
 const minVersion = 2
-const maxVersion = 3
+const maxVersion = 3.1
 
 // SupportedVersions will return a slice of supported SPDY versions.
 // The returned versions are sorted into order of most recent first.
-func SupportedVersions() []int {
-	s := make([]int, 0, len(supportedVersions))
+func SupportedVersions() []float64 {
+	s := make([]float64, 0, len(supportedVersions))
 	for v, _ := range supportedVersions {
-		s = append(s, int(v))
+		s = append(s, v)
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(s)))
+	sort.Sort(sort.Reverse(sort.Float64Slice(s)))
 	return s
 }
 
-var npnStrings = map[uint16]string{
-	2: "spdy/2",
-	3: "spdy/3",
+var npnStrings = map[float64]string{
+	2:   "spdy/2",
+	3:   "spdy/3",
+	3.1: "spdy/3.1",
 }
 
 // npn returns the NPN version strings for the SPDY versions
@@ -313,7 +316,7 @@ func npn() []string {
 	v := SupportedVersions()
 	s := make([]string, 0, len(v)+1)
 	for _, v := range v {
-		if str := npnStrings[uint16(v)]; str != "" {
+		if str := npnStrings[float64(v)]; str != "" {
 			s = append(s, str)
 		}
 	}
@@ -324,14 +327,14 @@ func npn() []string {
 // SupportedVersion determines if the provided SPDY version is
 // supported by this instance of the library. This can be modified
 // with EnableSpdyVersion and DisableSpdyVersion.
-func SupportedVersion(v uint16) bool {
+func SupportedVersion(v float64) bool {
 	_, s := supportedVersions[v]
 	return s
 }
 
 // EnableSpdyVersion can re-enable support for versions of SPDY
 // that have been disabled by DisableSpdyVersion.
-func EnableSpdyVersion(v uint16) error {
+func EnableSpdyVersion(v float64) error {
 	if v == 0 {
 		return errors.New("Error: version 0 is invalid.")
 	}
@@ -348,7 +351,7 @@ func EnableSpdyVersion(v uint16) error {
 // DisableSpdyVersion can be used to disable support for the
 // given SPDY version. This process can be undone by using
 // EnableSpdyVersion.
-func DisableSpdyVersion(v uint16) error {
+func DisableSpdyVersion(v float64) error {
 	if v == 0 {
 		return errors.New("Error: version 0 is invalid.")
 	}
@@ -364,7 +367,7 @@ func DisableSpdyVersion(v uint16) error {
 
 // defaultSPDYServerSettings are used in initialising the connection.
 // It takes the SPDY version and max concurrent streams.
-func defaultSPDYServerSettings(v uint16, m uint32) Settings {
+func defaultSPDYServerSettings(v float64, m uint32) Settings {
 	switch v {
 	case 3:
 		return Settings{
@@ -393,7 +396,7 @@ func defaultSPDYServerSettings(v uint16, m uint32) Settings {
 
 // defaultSPDYClientSettings are used in initialising the connection.
 // It takes the SPDY version and max concurrent streams.
-func defaultSPDYClientSettings(v uint16, m uint32) Settings {
+func defaultSPDYClientSettings(v float64, m uint32) Settings {
 	switch v {
 	case 3:
 		return Settings{

@@ -19,7 +19,7 @@ import (
 // NewServerConn is used to create a SPDY connection, using the given
 // net.Conn for the underlying connection, and the given http.Server to
 // configure the request serving.
-func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn Conn, err error) {
+func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyConn Conn, err error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")
 	}
@@ -64,6 +64,56 @@ func NewServerConn(conn net.Conn, server *http.Server, version uint16) (spdyConn
 		if out.tlsState != nil && out.tlsState.PeerCertificates != nil {
 			out.certificates[1] = out.tlsState.PeerCertificates
 		}
+		out.stop = make(chan struct{})
+		out.init = func() {
+			// Initialise the connection by sending the connection settings.
+			settings := new(settingsFrameV3)
+			settings.Settings = defaultSPDYServerSettings(3, DEFAULT_STREAM_LIMIT)
+			out.output[0] <- settings
+		}
+		if d := server.ReadTimeout; d != 0 {
+			out.SetReadTimeout(d)
+		}
+		if d := server.WriteTimeout; d != 0 {
+			out.SetWriteTimeout(d)
+		}
+
+		return out, nil
+
+	case 3.1:
+		out := new(connV3)
+		out.subversion = 1
+		out.remoteAddr = conn.RemoteAddr().String()
+		out.server = server
+		out.conn = conn
+		out.buf = bufio.NewReader(conn)
+		if tlsConn, ok := conn.(*tls.Conn); ok {
+			out.tlsState = new(tls.ConnectionState)
+			*out.tlsState = tlsConn.ConnectionState()
+		}
+		out.streams = make(map[StreamID]Stream)
+		out.output = [8]chan Frame{}
+		out.output[0] = make(chan Frame)
+		out.output[1] = make(chan Frame)
+		out.output[2] = make(chan Frame)
+		out.output[3] = make(chan Frame)
+		out.output[4] = make(chan Frame)
+		out.output[5] = make(chan Frame)
+		out.output[6] = make(chan Frame)
+		out.output[7] = make(chan Frame)
+		out.pings = make(map[uint32]chan<- Ping)
+		out.nextPingID = 2
+		out.compressor = NewCompressor(3)
+		out.decompressor = NewDecompressor(3)
+		out.receivedSettings = make(Settings)
+		out.lastPushStreamID = 0
+		out.lastRequestStreamID = 0
+		out.oddity = 0
+		out.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
+		out.connectionWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
+		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
+		out.vectorIndex = 8
 		out.stop = make(chan struct{})
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
@@ -191,6 +241,17 @@ func AddSPDY(srv *http.Server) {
 				conn = nil
 				runtime.GC()
 			}
+		case "spdy/3.1":
+			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				conn, err := NewServerConn(tlsConn, s, 3.1)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				conn.Run()
+				conn = nil
+				runtime.GC()
+			}
 		}
 	}
 }
@@ -305,6 +366,17 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 		case "spdy/3":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 				conn, err := NewServerConn(tlsConn, s, 3)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				conn.Run()
+				conn = nil
+				runtime.GC()
+			}
+		case "spdy/3.1":
+			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+				conn, err := NewServerConn(tlsConn, s, 3.1)
 				if err != nil {
 					log.Println(err)
 					return
@@ -473,11 +545,18 @@ func Push(w http.ResponseWriter, url string) (PushStream, error) {
 // SPDYversion returns the SPDY version being used in the underlying
 // connection used by the given http.ResponseWriter. This is 0 for
 // connections not using SPDY.
-func SPDYversion(w http.ResponseWriter) uint16 {
+func SPDYversion(w http.ResponseWriter) float64 {
 	if stream, ok := w.(Stream); ok {
 		switch stream.Conn().(type) {
 		case *connV3:
-			return 3
+			switch stream.Conn().(*connV3).subversion {
+			case 0:
+				return 3
+			case 1:
+				return 3.1
+			default:
+				return 0
+			}
 
 		case *connV2:
 			return 2

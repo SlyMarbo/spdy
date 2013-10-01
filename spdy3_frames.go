@@ -16,7 +16,7 @@ import (
 )
 
 // ReadFrame reads and parses a frame from reader.
-func readFrameV3(reader *bufio.Reader) (frame Frame, err error) {
+func readFrameV3(reader *bufio.Reader, subversion int) (frame Frame, err error) {
 	start, err := reader.Peek(4)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,14 @@ func readFrameV3(reader *bufio.Reader) (frame Frame, err error) {
 
 	switch bytesToUint16(start[2:4]) {
 	case SYN_STREAMv3:
-		frame = new(synStreamFrameV3)
+		switch subversion {
+		case 0:
+			frame = new(synStreamFrameV3)
+		case 1:
+			frame = new(synStreamFrameV3_1)
+		default:
+			return nil, fmt.Errorf("Error: Given subversion %d is unrecognised.", subversion)
+		}
 	case SYN_REPLYv3:
 		frame = new(synReplyFrameV3)
 	case RST_STREAMv3:
@@ -44,7 +51,7 @@ func readFrameV3(reader *bufio.Reader) (frame Frame, err error) {
 	case HEADERSv3:
 		frame = new(headersFrameV3)
 	case WINDOW_UPDATEv3:
-		frame = new(windowUpdateFrameV3)
+		frame = &windowUpdateFrameV3{subversion: subversion}
 	case CREDENTIALv3:
 		frame = new(credentialFrameV3)
 
@@ -228,6 +235,189 @@ func (frame *synStreamFrameV3) WriteTo(writer io.Writer) (int64, error) {
 	out[15] = frame.AssocStreamID.b4() // Associated Stream ID
 	out[16] = frame.Priority.Byte(3)   // Priority and unused
 	out[17] = frame.Slot               // Slot
+
+	err := write(writer, out)
+	if err != nil {
+		return 0, err
+	}
+
+	err = write(writer, header)
+	if err != nil {
+		return 18, err
+	}
+
+	return int64(len(header) + 18), nil
+}
+
+// SPDY/3.1
+type synStreamFrameV3_1 struct {
+	Flags         Flags
+	StreamID      StreamID
+	AssocStreamID StreamID
+	Priority      Priority
+	Header        http.Header
+	rawHeader     []byte
+}
+
+func (frame *synStreamFrameV3_1) Compress(com Compressor) error {
+	if frame.rawHeader != nil {
+		return nil
+	}
+
+	data, err := com.Compress(frame.Header)
+	if err != nil {
+		return err
+	}
+
+	frame.rawHeader = data
+	return nil
+}
+
+func (frame *synStreamFrameV3_1) Decompress(decom Decompressor) error {
+	if frame.Header != nil {
+		return nil
+	}
+
+	header, err := decom.Decompress(frame.rawHeader)
+	if err != nil {
+		return err
+	}
+
+	frame.Header = header
+	frame.rawHeader = nil
+	return nil
+}
+
+func (frame *synStreamFrameV3_1) Name() string {
+	return "SYN_STREAM"
+}
+
+func (frame *synStreamFrameV3_1) ReadFrom(reader io.Reader) (int64, error) {
+	data, err := read(reader, 18)
+	if err != nil {
+		return 0, err
+	}
+
+	// Check it's a control frame.
+	if data[0] != 128 {
+		return 18, &incorrectFrame{DATA_FRAMEv3, SYN_STREAMv3, 3}
+	}
+
+	// Check it's a SYN_STREAM.
+	if bytesToUint16(data[2:4]) != SYN_STREAMv3 {
+		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_STREAMv3, 3}
+	}
+
+	// Check version.
+	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	if version != 3 {
+		return 18, unsupportedVersion(version)
+	}
+
+	// Check unused space.
+	if (data[8]>>7) != 0 || (data[12]>>7) != 0 {
+		return 18, &invalidField{"Unused", 1, 0}
+	} else if (data[16] & 0x1f) != 0 {
+		return 18, &invalidField{"Unused", int(data[16] & 0x1f), 0}
+	} else if data[17] != 0 {
+		return 18, &invalidField{"Reserved", int(data[17]), 0}
+	}
+
+	// Get and check length.
+	length := int(bytesToUint24(data[5:8]))
+	if length < 10 {
+		return 18, &incorrectDataLength{length, 10}
+	} else if length > MAX_FRAME_SIZE-18 {
+		return 18, frameTooLarge
+	}
+
+	// Read in data.
+	header, err := read(reader, length-10)
+	if err != nil {
+		return 18, err
+	}
+
+	frame.Flags = Flags(data[4])
+	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
+	frame.AssocStreamID = StreamID(bytesToUint32(data[12:16]))
+	frame.Priority = Priority(data[16] >> 5)
+	frame.rawHeader = header
+
+	if !frame.StreamID.Valid() {
+		return 18, streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return 18, streamIdIsZero
+	}
+	if !frame.AssocStreamID.Valid() {
+		return 18, streamIdTooLarge
+	}
+
+	return int64(length + 8), nil
+}
+
+func (frame *synStreamFrameV3_1) String() string {
+	buf := new(bytes.Buffer)
+	Flags := ""
+	if frame.Flags.FIN() {
+		Flags += " FLAG_FIN"
+	}
+	if frame.Flags.UNIDIRECTIONAL() {
+		Flags += " FLAG_UNIDIRECTIONAL"
+	}
+	if Flags == "" {
+		Flags = "[NONE]"
+	} else {
+		Flags = Flags[1:]
+	}
+
+	buf.WriteString("SYN_STREAM {\n\t")
+	buf.WriteString(fmt.Sprintf("Version:              3\n\t"))
+	buf.WriteString(fmt.Sprintf("Flags:                %s\n\t", Flags))
+	buf.WriteString(fmt.Sprintf("Stream ID:            %d\n\t", frame.StreamID))
+	buf.WriteString(fmt.Sprintf("Associated Stream ID: %d\n\t", frame.AssocStreamID))
+	buf.WriteString(fmt.Sprintf("Priority:             %d\n\t", frame.Priority))
+	buf.WriteString(fmt.Sprintf("Header:               %#v\n}\n", frame.Header))
+
+	return buf.String()
+}
+
+func (frame *synStreamFrameV3_1) WriteTo(writer io.Writer) (int64, error) {
+	if frame.rawHeader == nil {
+		return 0, errors.New("Error: Headers not written.")
+	}
+	if !frame.StreamID.Valid() {
+		return 0, streamIdTooLarge
+	}
+	if frame.StreamID.Zero() {
+		return 0, streamIdIsZero
+	}
+	if !frame.AssocStreamID.Valid() {
+		return 0, streamIdTooLarge
+	}
+
+	header := frame.rawHeader
+	length := 10 + len(header)
+	out := make([]byte, 18)
+
+	out[0] = 128                       // Control bit and Version
+	out[1] = 3                         // Version
+	out[2] = 0                         // Type
+	out[3] = 1                         // Type
+	out[4] = byte(frame.Flags)         // Flags
+	out[5] = byte(length >> 16)        // Length
+	out[6] = byte(length >> 8)         // Length
+	out[7] = byte(length)              // Length
+	out[8] = frame.StreamID.b1()       // Stream ID
+	out[9] = frame.StreamID.b2()       // Stream ID
+	out[10] = frame.StreamID.b3()      // Stream ID
+	out[11] = frame.StreamID.b4()      // Stream ID
+	out[12] = frame.AssocStreamID.b1() // Associated Stream ID
+	out[13] = frame.AssocStreamID.b2() // Associated Stream ID
+	out[14] = frame.AssocStreamID.b3() // Associated Stream ID
+	out[15] = frame.AssocStreamID.b4() // Associated Stream ID
+	out[16] = frame.Priority.Byte(3)   // Priority and unused
+	out[17] = 0                        // Reserved
 
 	err := write(writer, out)
 	if err != nil {
@@ -1053,6 +1243,7 @@ func (frame *headersFrameV3) WriteTo(writer io.Writer) (int64, error) {
 type windowUpdateFrameV3 struct {
 	StreamID        StreamID
 	DeltaWindowSize uint32
+	subversion      int
 }
 
 func (frame *windowUpdateFrameV3) Compress(comp Compressor) error {
@@ -1106,7 +1297,7 @@ func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	if !frame.StreamID.Valid() {
 		return 16, streamIdTooLarge
 	}
-	if frame.StreamID.Zero() {
+	if frame.StreamID.Zero() && frame.subversion == 0 {
 		return 16, streamIdIsZero
 	}
 	if frame.DeltaWindowSize > MAX_DELTA_WINDOW_SIZE {

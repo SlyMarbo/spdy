@@ -54,6 +54,11 @@ type connV3 struct {
 	init                func()                         // this function is called before the connection begins.
 	readTimeout         time.Duration
 	writeTimeout        time.Duration
+
+	// SPDY/3.1
+	subversion           int            // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
+	dataBuffer           []*dataFrameV3 // used to store frames witheld for flow control.
+	connectionWindowSize int64
 }
 
 // Close ends the connection, cleaning up relevant resources.
@@ -727,6 +732,9 @@ func (conn *connV3) handleRstStream(frame *rstStreamFrameV3) {
 		conn.numBenignErrors++
 
 	case RST_STREAM_INVALID_CREDENTIALS:
+		if conn.subversion > 0 {
+			return
+		}
 		log.Printf("Error: Received INVALID_CREDENTIALS for stream ID %d.\n", sid)
 		conn.numBenignErrors++
 
@@ -829,16 +837,6 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 		return
 	}
 
-	// Check stream is open.
-	stream, ok := conn.streams[sid]
-	if !ok || stream == nil || stream.State().ClosedHere() {
-		debug.Printf("Warning: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
-		conn.numBenignErrors++
-		return
-	}
-
-	// Stream ID is fine.
-
 	// Check delta window size is valid.
 	delta := frame.DeltaWindowSize
 	if delta > MAX_DELTA_WINDOW_SIZE || delta < 1 {
@@ -848,6 +846,33 @@ func (conn *connV3) handleWindowUpdate(frame *windowUpdateFrameV3) {
 		conn.Lock()
 		return
 	}
+
+	// Handle connection-level flow control.
+	if sid.Zero() && conn.subversion > 0 {
+		if int64(delta)+conn.connectionWindowSize > MAX_TRANSFER_WINDOW_SIZE {
+			goaway := new(goawayFrameV3)
+			if conn.server != nil {
+				goaway.LastGoodStreamID = conn.lastRequestStreamID
+			} else {
+				goaway.LastGoodStreamID = conn.lastPushStreamID
+			}
+			goaway.Status = GOAWAY_FLOW_CONTROL_ERROR
+			conn.output[0] <- goaway
+			return
+		}
+		conn.connectionWindowSize += int64(delta)
+		return
+	}
+
+	// Check stream is open.
+	stream, ok := conn.streams[sid]
+	if !ok || stream == nil || stream.State().ClosedHere() {
+		debug.Printf("Warning: Received WINDOW_UPDATE with Stream ID %d, which is closed or unopened.\n", sid)
+		conn.numBenignErrors++
+		return
+	}
+
+	// Stream ID is fine.
 
 	// Send update to stream.
 	stream.ReceiveFrame(frame)
@@ -974,6 +999,20 @@ func (conn *connV3) processFrame(frame Frame) bool {
 		} else {
 			conn.handleRequest(frame)
 		}
+	case *synStreamFrameV3_1:
+		f3 := new(synStreamFrameV3)
+		f3.Flags = frame.Flags
+		f3.StreamID = frame.StreamID
+		f3.AssocStreamID = frame.AssocStreamID
+		f3.Priority = frame.Priority
+		f3.Slot = 0
+		f3.Header = frame.Header
+		f3.rawHeader = frame.rawHeader
+		if conn.server == nil {
+			conn.handlePush(f3)
+		} else {
+			conn.handleRequest(f3)
+		}
 
 	case *synReplyFrameV3:
 		conn.handleSynReply(frame)
@@ -993,7 +1032,17 @@ func (conn *connV3) processFrame(frame Frame) bool {
 			switch setting.ID {
 			case SETTINGS_INITIAL_WINDOW_SIZE:
 				conn.Lock()
-				conn.initialWindowSize = setting.Value
+				initial := int64(conn.initialWindowSize)
+				current := conn.connectionWindowSize
+				inbound := int64(setting.Value)
+				if initial != inbound {
+					if initial > inbound {
+						conn.connectionWindowSize = inbound - (initial - current)
+					} else {
+						conn.connectionWindowSize += (inbound - initial)
+					}
+					conn.initialWindowSize = setting.Value
+				}
 				conn.Unlock()
 
 			case SETTINGS_MAX_CONCURRENT_STREAMS:
@@ -1039,7 +1088,10 @@ func (conn *connV3) processFrame(frame Frame) bool {
 		conn.handleWindowUpdate(frame)
 
 	case *credentialFrameV3:
-		if conn.server == nil {
+		if conn.subversion > 0 {
+			return false
+		}
+		if conn.server == nil || conn.certificates == nil {
 			log.Println("Ignored unexpected CREDENTIAL.")
 			return false
 		}
@@ -1086,7 +1138,7 @@ func (conn *connV3) readFrames() {
 
 		// ReadFrame takes care of the frame parsing for us.
 		conn.refreshReadTimeout()
-		frame, err := readFrameV3(conn.buf)
+		frame, err := readFrameV3(conn.buf, conn.subversion)
 		if err != nil {
 			conn.handleReadWriteError(err)
 			return
@@ -1127,6 +1179,7 @@ func (conn *connV3) send() {
 	}()
 
 	// Enter the processing loop.
+Loop:
 	i := 1
 	for {
 
@@ -1146,6 +1199,27 @@ func (conn *connV3) send() {
 		if frame == nil {
 			conn.Close()
 			return
+		}
+
+		// Process connection-level flow control.
+		if conn.subversion > 0 {
+			if frame, ok := frame.(*dataFrameV3); ok {
+				size := int64(8 + len(frame.Data))
+				if size > conn.connectionWindowSize {
+					// Buffer this frame and try again.
+					if conn.dataBuffer == nil {
+						conn.dataBuffer = []*dataFrameV3{frame}
+					} else {
+						buffer := make([]*dataFrameV3, 1, len(conn.dataBuffer)+1)
+						buffer[0] = frame
+						buffer = append(buffer, conn.dataBuffer...)
+						conn.dataBuffer = buffer
+					}
+					goto Loop
+				} else {
+					conn.connectionWindowSize -= size
+				}
+			}
 		}
 
 		// Compress any name/value header blocks.
@@ -1179,7 +1253,26 @@ func (conn *connV3) selectFrameToSend(prioritise bool) (frame Frame) {
 		return nil
 	}
 
-	// Try in priority order first.
+	// Try buffered DATA frames first.
+	if conn.subversion > 0 {
+		if conn.dataBuffer != nil {
+			if len(conn.dataBuffer) == 0 {
+				conn.dataBuffer = nil
+			} else {
+				first := conn.dataBuffer[0]
+				if conn.connectionWindowSize >= int64(8+len(first.Data)) {
+					if len(conn.dataBuffer) > 1 {
+						conn.dataBuffer = conn.dataBuffer[1:]
+					} else {
+						conn.dataBuffer = nil
+					}
+					return first
+				}
+			}
+		}
+	}
+
+	// Then in priority order.
 	if prioritise {
 		for i := 0; i < 8; i++ {
 			select {
