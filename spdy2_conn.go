@@ -403,13 +403,13 @@ func (conn *connV2) closed() bool {
 // handleClientData performs the processing of DATA frames sent by the client.
 func (conn *connV2) handleClientData(frame *dataFrameV2) {
 	conn.Lock()
-	defer conn.Unlock()
 
 	sid := frame.StreamID
 
 	if conn.server == nil {
 		log.Println("Error: Requests can only be received by the server.")
 		conn.numBenignErrors++
+		conn.Unlock()
 		return
 	}
 
@@ -417,6 +417,7 @@ func (conn *connV2) handleClientData(frame *dataFrameV2) {
 	if sid&1 == 0 {
 		log.Printf("Error: Received DATA with Stream ID %d, which should be odd.\n", sid)
 		conn.numBenignErrors++
+		conn.Unlock()
 		return
 	}
 
@@ -425,7 +426,6 @@ func (conn *connV2) handleClientData(frame *dataFrameV2) {
 		log.Printf("Error: Received DATA with Stream ID %d, which exceeds the limit.\n", sid)
 		conn.Unlock()
 		conn.protocolError(sid)
-		conn.Lock()
 		return
 	}
 
@@ -438,8 +438,10 @@ func (conn *connV2) handleClientData(frame *dataFrameV2) {
 			debug.Printf("Error: Received DATA with Stream ID %d, which is unopened.\n", sid)
 			conn.numBenignErrors++
 		}
+		conn.Unlock()
 		return
 	}
+	conn.Unlock()
 
 	// Stream ID is fine.
 
@@ -450,13 +452,13 @@ func (conn *connV2) handleClientData(frame *dataFrameV2) {
 // handleHeaders performs the processing of HEADERS frames.
 func (conn *connV2) handleHeaders(frame *headersFrameV2) {
 	conn.Lock()
-	defer conn.Unlock()
 
 	sid := frame.StreamID
 
 	// Handle push headers.
 	if sid&1 == 0 && conn.server == nil {
 		// Ignore refused push headers.
+		conn.Unlock()
 		if req := conn.pushRequests[sid]; req != nil && conn.pushReceiver != nil {
 			conn.pushReceiver.ReceiveHeader(req, frame.Header)
 		}
@@ -472,8 +474,10 @@ func (conn *connV2) handleHeaders(frame *headersFrameV2) {
 			debug.Printf("Error: Received HEADERS with Stream ID %d, which is unopened.\n", sid)
 			conn.numBenignErrors++
 		}
+		conn.Unlock()
 		return
 	}
+	conn.Unlock()
 
 	// Stream ID is fine.
 
@@ -484,10 +488,10 @@ func (conn *connV2) handleHeaders(frame *headersFrameV2) {
 // handlePush performs the processing of SYN_STREAM frames forming a server push.
 func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	conn.Lock()
-	defer conn.Unlock()
 
 	// Check stream creation is allowed.
 	if conn.goawayReceived || conn.goawaySent || conn.closed() {
+		conn.Unlock()
 		return
 	}
 
@@ -496,6 +500,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	// Push.
 	if conn.server != nil {
 		log.Println("Error: Only clients can receive server pushes.")
+		conn.Unlock()
 		return
 	}
 
@@ -503,6 +508,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	if sid&1 != 0 {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be even.\n", sid)
 		conn.numBenignErrors++
+		conn.Unlock()
 		return
 	}
 
@@ -511,6 +517,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	if sid <= lsid {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which should be greater than %d.\n", sid, lsid)
 		conn.numBenignErrors++
+		conn.Unlock()
 		return
 	}
 
@@ -519,7 +526,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		log.Printf("Error: Received SYN_STREAM with Stream ID %d, which exceeds the limit.\n", sid)
 		conn.Unlock()
 		conn.protocolError(sid)
-		conn.Lock()
 		return
 	}
 
@@ -531,6 +537,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		rst.StreamID = sid
 		rst.Status = RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
+		conn.Unlock()
 		return
 	}
 
@@ -538,7 +545,6 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		log.Printf("Error: Received SYN_STREAM with invalid priority %d.\n", frame.Priority)
 		conn.Unlock()
 		conn.protocolError(sid)
-		conn.Lock()
 		return
 	}
 
@@ -548,6 +554,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	url, err := url.Parse(rawUrl)
 	if err != nil {
 		log.Println("Error: Received SYN_STREAM with invalid request URL: ", err)
+		conn.Unlock()
 		return
 	}
 
@@ -555,6 +562,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 	major, minor, ok := http.ParseHTTPVersion(vers)
 	if !ok {
 		log.Println("Error: Invalid HTTP version: " + vers)
+		conn.Unlock()
 		return
 	}
 
@@ -579,14 +587,18 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		rst.StreamID = sid
 		rst.Status = RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
+		conn.Unlock()
 		return
 	}
 
 	// Create and start new stream.
 	if conn.pushReceiver != nil {
-		conn.pushReceiver.ReceiveHeader(request, frame.Header)
 		conn.pushRequests[sid] = request
 		conn.lastPushStreamID = sid
+		conn.Unlock()
+		conn.pushReceiver.ReceiveHeader(request, frame.Header)
+	} else {
+		conn.Unlock()
 	}
 }
 
@@ -684,13 +696,13 @@ func (conn *connV2) handleRstStream(frame *rstStreamFrameV2) {
 	case RST_STREAM_INVALID_STREAM:
 		log.Printf("Error: Received INVALID_STREAM for stream ID %d.\n", sid)
 		if stream, ok := conn.streams[sid]; ok {
-			stream.Close()
+			go stream.Close()
 		}
 		conn.numBenignErrors++
 
 	case RST_STREAM_REFUSED_STREAM:
 		if stream, ok := conn.streams[sid]; ok {
-			stream.Close()
+			go stream.Close()
 		}
 
 	case RST_STREAM_CANCEL:
@@ -700,7 +712,7 @@ func (conn *connV2) handleRstStream(frame *rstStreamFrameV2) {
 			return
 		}
 		if stream, ok := conn.streams[sid]; ok {
-			stream.Close()
+			go stream.Close()
 		}
 
 	case RST_STREAM_FLOW_CONTROL_ERROR:
@@ -715,7 +727,7 @@ func (conn *connV2) handleRstStream(frame *rstStreamFrameV2) {
 	case RST_STREAM_STREAM_ALREADY_CLOSED:
 		log.Printf("Error: Received STREAM_ALREADY_CLOSED for stream ID %d.\n", sid)
 		if stream, ok := conn.streams[sid]; ok {
-			stream.Close()
+			go stream.Close()
 		}
 		conn.numBenignErrors++
 
@@ -735,13 +747,13 @@ func (conn *connV2) handleRstStream(frame *rstStreamFrameV2) {
 // handleServerData performs the processing of DATA frames sent by the server.
 func (conn *connV2) handleServerData(frame *dataFrameV2) {
 	conn.Lock()
-	defer conn.Unlock()
 
 	sid := frame.StreamID
 
 	// Handle push data.
 	if sid&1 == 0 {
 		// Ignore refused push data.
+		conn.Unlock()
 		if req := conn.pushRequests[sid]; req != nil && conn.pushReceiver != nil {
 			conn.pushReceiver.ReceiveData(req, frame.Data, frame.Flags.FIN())
 		}
@@ -757,8 +769,10 @@ func (conn *connV2) handleServerData(frame *dataFrameV2) {
 			debug.Printf("Error: Received DATA with Stream ID %d, which is unopened.\n", sid)
 			conn.numBenignErrors++
 		}
+		conn.Unlock()
 		return
 	}
+	conn.Unlock()
 
 	// Stream ID is fine.
 
@@ -769,13 +783,13 @@ func (conn *connV2) handleServerData(frame *dataFrameV2) {
 // handleSynReply performs the processing of SYN_REPLY frames.
 func (conn *connV2) handleSynReply(frame *synReplyFrameV2) {
 	conn.Lock()
-	defer conn.Unlock()
 
 	sid := frame.StreamID
 
 	if conn.server != nil {
 		log.Println("Error: Only clients can receive SYN_REPLY frames.")
 		conn.numBenignErrors++
+		conn.Unlock()
 		return
 	}
 
@@ -783,6 +797,7 @@ func (conn *connV2) handleSynReply(frame *synReplyFrameV2) {
 	if sid&1 == 0 {
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which should be odd.\n", sid)
 		conn.numBenignErrors++
+		conn.Unlock()
 		return
 	}
 
@@ -790,7 +805,6 @@ func (conn *connV2) handleSynReply(frame *synReplyFrameV2) {
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which exceeds the limit.\n", sid)
 		conn.Unlock()
 		conn.protocolError(sid)
-		conn.Lock()
 		return
 	}
 
@@ -798,8 +812,10 @@ func (conn *connV2) handleSynReply(frame *synReplyFrameV2) {
 	if stream, ok := conn.streams[sid]; !ok || stream == nil || stream.State().ClosedThere() {
 		log.Printf("Error: Received SYN_REPLY with Stream ID %d, which is closed or unopened.\n", sid)
 		conn.numBenignErrors++
+		conn.Unlock()
 		return
 	}
+	conn.Unlock()
 
 	// Stream ID is fine.
 
