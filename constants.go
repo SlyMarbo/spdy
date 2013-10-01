@@ -143,7 +143,7 @@ const MAX_STREAM_ID = 0x7fffffff
 const MAX_TRANSFER_WINDOW_SIZE = 0x80000000
 
 // The default initial transfer window size, as defined in the spec.
-const DEFAULT_INITIAL_WINDOW_SIZE = 65536
+const DEFAULT_INITIAL_WINDOW_SIZE = 65535
 
 // The default initial transfer window sent by the client.
 const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
