@@ -1285,10 +1285,13 @@ func (conn *connV3) selectFrameToSend(prioritise bool) (frame Frame) {
 		// No frames are immediately pending, so if the
 		// connection is being closed, cease sending
 		// safely.
+		conn.Lock()
 		if conn.sending != nil {
 			close(conn.sending)
+			conn.Unlock()
 			runtime.Goexit()
 		}
+		conn.Unlock()
 	}
 
 	// Wait for any frame.
