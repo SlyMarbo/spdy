@@ -18,8 +18,9 @@ import (
 
 // Important errors.
 var (
-	ErrGoaway  = errors.New("Error: GOAWAY received.")
-	ErrConnNil = errors.New("Error: Connection is nil.")
+	ErrGoaway        = errors.New("Error: GOAWAY received.")
+	ErrConnNil       = errors.New("Error: Connection is nil.")
+	ErrNoFlowControl = errors.New("Error: This connection does not use flow control.")
 )
 
 // SPDY version of this implementation.

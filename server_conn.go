@@ -77,6 +77,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		if d := server.WriteTimeout; d != 0 {
 			out.SetWriteTimeout(d)
 		}
+		out.flowControl = DefaultFlowControl(DEFAULT_INITIAL_WINDOW_SIZE)
 
 		return out, nil
 
@@ -127,6 +128,9 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		if d := server.WriteTimeout; d != 0 {
 			out.SetWriteTimeout(d)
 		}
+		out.flowControl = DefaultFlowControl(DEFAULT_INITIAL_WINDOW_SIZE)
+		out.initialWindowSizeThere = out.flowControl.InitialWindowSize()
+		out.connectionWindowSizeThere = int64(out.initialWindowSizeThere)
 
 		return out, nil
 
@@ -539,6 +543,16 @@ func Push(w http.ResponseWriter, url string) (PushStream, error) {
 		return nil, ErrNotSPDY
 	} else {
 		return stream.Conn().Push(url, stream)
+	}
+}
+
+// SetFlowControl can be used to set the flow control mechanism on
+// the underlying SPDY connection.
+func SetFlowControl(w http.ResponseWriter, f FlowControl) error {
+	if stream, ok := w.(Stream); !ok {
+		return ErrNotSPDY
+	} else {
+		return stream.Conn().SetFlowControl(f)
 	}
 }
 

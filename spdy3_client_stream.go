@@ -147,29 +147,35 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 		}
 
 		// Give to the client.
-		s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
 		s.flow.Receive(frame.Data)
+		go func() {
+			s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
 
-		if frame.Flags.FIN() {
-			s.state.CloseThere()
-			close(s.finished)
-		}
+			if frame.Flags.FIN() {
+				s.state.CloseThere()
+				close(s.finished)
+			}
+		}()
 
 	case *synReplyFrameV3:
-		s.receiver.ReceiveHeader(s.request, frame.Header)
+		go func() {
+			s.receiver.ReceiveHeader(s.request, frame.Header)
 
-		if frame.Flags.FIN() {
-			s.state.CloseThere()
-			close(s.finished)
-		}
+			if frame.Flags.FIN() {
+				s.state.CloseThere()
+				close(s.finished)
+			}
+		}()
 
 	case *headersFrameV3:
-		s.receiver.ReceiveHeader(s.request, frame.Header)
+		go func() {
+			s.receiver.ReceiveHeader(s.request, frame.Header)
 
-		if frame.Flags.FIN() {
-			s.state.CloseThere()
-			close(s.finished)
-		}
+			if frame.Flags.FIN() {
+				s.state.CloseThere()
+				close(s.finished)
+			}
+		}()
 
 	case *windowUpdateFrameV3:
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
@@ -192,9 +198,6 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 // processed, and then the stream
 // is cleaned up and closed.
 func (s *clientStreamV3) Run() error {
-	// Make sure Request is prepared.
-	s.AddFlowControl()
-
 	// Receive and process inbound frames.
 	<-s.finished
 

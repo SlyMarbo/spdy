@@ -224,7 +224,6 @@ func (s *serverStreamV3) Run() error {
 	}()
 
 	// Make sure Request is prepared.
-	s.AddFlowControl()
 	s.requestBody = new(bytes.Buffer)
 	s.request.Body = &readCloser{s.requestBody}
 

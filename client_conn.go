@@ -67,6 +67,7 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 			settings.Settings = defaultSPDYClientSettings(3, DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
+		out.flowControl = DefaultFlowControl(DEFAULT_INITIAL_CLIENT_WINDOW_SIZE)
 
 		return out, nil
 
@@ -112,6 +113,9 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 			settings.Settings = defaultSPDYClientSettings(3, DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
+		out.flowControl = DefaultFlowControl(DEFAULT_INITIAL_CLIENT_WINDOW_SIZE)
+		out.initialWindowSizeThere = out.flowControl.InitialWindowSize()
+		out.connectionWindowSizeThere = int64(out.initialWindowSizeThere)
 
 		return out, nil
 

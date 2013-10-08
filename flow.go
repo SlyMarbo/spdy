@@ -9,6 +9,44 @@ import (
 	"sync"
 )
 
+// Objects conforming to the FlowControl interface can be
+// used to provide the flow control mechanism for a
+// connection using SPDY version 3 and above.
+//
+// InitialWindowSize is called whenever a new stream is
+// created, and the returned value used as the initial
+// flow control window size. Note that a values smaller
+// than the default (65535) will likely result in poor
+// network utilisation.
+//
+// ReceiveData is called whenever a stream's window is
+// consumed by inbound data. The stream's ID is provided,
+// along with the stream's initial window size and the
+// current window size after receiving the data that
+// caused the call. If the window is to be regrown,
+// ReceiveData should return the increase in size. A value
+// of 0 does not change the window. Note that in SPDY/3.1
+// and later, the streamID may be 0 to represent the
+// connection-level flow control window.
+type FlowControl interface {
+	InitialWindowSize() uint32
+	ReceiveData(streamID StreamID, initialWindowSize uint32, newWindowSize int64) (deltaSize uint32)
+}
+
+type DefaultFlowControl uint32
+
+func (f DefaultFlowControl) InitialWindowSize() uint32 {
+	return uint32(f)
+}
+
+func (f DefaultFlowControl) ReceiveData(_ StreamID, initialWindowSize uint32, newWindowSize int64) uint32 {
+	if newWindowSize < (int64(initialWindowSize) / 2) {
+		return uint32(int64(initialWindowSize) - newWindowSize)
+	}
+
+	return 0
+}
+
 // flowControl is used by Streams to ensure that
 // they abide by SPDY's flow control rules. For
 // versions of SPDY before 3, this has no effect.
@@ -24,6 +62,7 @@ type flowControl struct {
 	constrained         bool
 	initialWindowThere  uint32
 	transferWindowThere int64
+	flowControl         FlowControl
 }
 
 // AddFlowControl initialises flow control for
@@ -31,7 +70,7 @@ type flowControl struct {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (s *serverStreamV3) AddFlowControl() {
+func (s *serverStreamV3) AddFlowControl(f FlowControl) {
 	if s.flow != nil {
 		return
 	}
@@ -48,8 +87,9 @@ func (s *serverStreamV3) AddFlowControl() {
 	s.flow.initialWindow = initialWindow
 	s.flow.transferWindow = int64(initialWindow)
 	s.flow.stream = s
-	s.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-	s.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	s.flow.flowControl = f
+	s.flow.initialWindowThere = f.InitialWindowSize()
+	s.flow.transferWindowThere = int64(s.flow.initialWindowThere)
 }
 
 // AddFlowControl initialises flow control for
@@ -57,7 +97,7 @@ func (s *serverStreamV3) AddFlowControl() {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (p *pushStreamV3) AddFlowControl() {
+func (p *pushStreamV3) AddFlowControl(f FlowControl) {
 	if p.flow != nil {
 		return
 	}
@@ -74,8 +114,9 @@ func (p *pushStreamV3) AddFlowControl() {
 	p.flow.initialWindow = initialWindow
 	p.flow.transferWindow = int64(initialWindow)
 	p.flow.stream = p
-	p.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-	p.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	p.flow.flowControl = f
+	p.flow.initialWindowThere = f.InitialWindowSize()
+	p.flow.transferWindowThere = int64(p.flow.transferWindowThere)
 }
 
 // AddFlowControl initialises flow control for
@@ -83,7 +124,7 @@ func (p *pushStreamV3) AddFlowControl() {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (r *clientStreamV3) AddFlowControl() {
+func (r *clientStreamV3) AddFlowControl(f FlowControl) {
 	if r.flow != nil {
 		return
 	}
@@ -100,8 +141,9 @@ func (r *clientStreamV3) AddFlowControl() {
 	r.flow.initialWindow = initialWindow
 	r.flow.transferWindow = int64(initialWindow)
 	r.flow.stream = r
-	r.flow.initialWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-	r.flow.transferWindowThere = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
+	r.flow.flowControl = f
+	r.flow.initialWindowThere = f.InitialWindowSize()
+	r.flow.transferWindowThere = int64(r.flow.initialWindowThere)
 }
 
 // CheckInitialWindow is used to handle the race
@@ -210,10 +252,11 @@ func (f *flowControl) Receive(data []byte) {
 	f.transferWindowThere -= int64(len(data))
 
 	// Regrow the window if it's half-empty.
-	if f.transferWindowThere <= int64(f.initialWindowThere/2) {
+	delta := f.flowControl.ReceiveData(f.streamID, f.initialWindowThere, f.transferWindowThere)
+	if delta != 0 {
 		grow := new(windowUpdateFrameV3)
 		grow.StreamID = f.streamID
-		grow.DeltaWindowSize = uint32(int64(f.initialWindowThere) - f.transferWindowThere)
+		grow.DeltaWindowSize = delta
 		f.output <- grow
 		f.transferWindowThere += int64(grow.DeltaWindowSize)
 	}

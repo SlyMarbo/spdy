@@ -29,6 +29,7 @@ type Conn interface {
 	Push(url string, origin Stream) (PushStream, error)
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
 	Run() error
+	SetFlowControl(FlowControl) error
 	SetTimeout(time.Duration)
 	SetReadTimeout(time.Duration)
 	SetWriteTimeout(time.Duration)

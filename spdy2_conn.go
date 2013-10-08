@@ -370,6 +370,10 @@ func (conn *connV2) Run() error {
 	return nil
 }
 
+func (c *connV2) SetFlowControl(FlowControl) error {
+	return ErrNoFlowControl
+}
+
 func (c *connV2) SetTimeout(d time.Duration) {
 	c.Lock()
 	c.readTimeout = d

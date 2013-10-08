@@ -54,11 +54,14 @@ type connV3 struct {
 	init                func()                         // this function is called before the connection begins.
 	readTimeout         time.Duration
 	writeTimeout        time.Duration
+	flowControl         FlowControl
 
 	// SPDY/3.1
-	subversion           int            // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
-	dataBuffer           []*dataFrameV3 // used to store frames witheld for flow control.
-	connectionWindowSize int64
+	subversion                int            // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
+	dataBuffer                []*dataFrameV3 // used to store frames witheld for flow control.
+	connectionWindowSize      int64
+	initialWindowSizeThere    uint32
+	connectionWindowSizeThere int64
 }
 
 // Close ends the connection, cleaning up relevant resources.
@@ -232,7 +235,7 @@ func (conn *connV3) Push(resource string, origin Stream) (PushStream, error) {
 	out.output = conn.output[7]
 	out.header = make(http.Header)
 	out.stop = conn.stop
-	out.AddFlowControl()
+	out.AddFlowControl(conn.flowControl)
 
 	// Store in the connection map.
 	conn.streams[newID] = out
@@ -345,7 +348,7 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	out.header = make(http.Header)
 	out.stop = conn.stop
 	out.finished = make(chan struct{})
-	out.AddFlowControl()
+	out.AddFlowControl(conn.flowControl)
 
 	// Store in the connection map.
 	conn.streams[syn.StreamID] = out
@@ -377,6 +380,13 @@ func (conn *connV3) Run() error {
 	// Run until the connection ends.
 	<-conn.stop
 
+	return nil
+}
+
+func (c *connV3) SetFlowControl(f FlowControl) error {
+	c.Lock()
+	c.flowControl = f
+	c.Unlock()
 	return nil
 }
 
@@ -943,7 +953,7 @@ func (conn *connV3) newStream(frame *synStreamFrameV3, priority Priority) *serve
 		TLS:        conn.tlsState,
 	}
 
-	stream.AddFlowControl()
+	stream.AddFlowControl(conn.flowControl)
 
 	return stream
 }
@@ -1126,6 +1136,26 @@ func (conn *connV3) processFrame(frame Frame) bool {
 		conn.certificates[frame.Slot] = frame.Certificates
 
 	case *dataFrameV3:
+		if conn.subversion > 0 {
+			// The transfer window shouldn't already be negative.
+			if conn.connectionWindowSizeThere < 0 {
+				goaway := new(goawayFrameV3)
+				goaway.Status = GOAWAY_FLOW_CONTROL_ERROR
+				conn.output[0] <- goaway
+				conn.Close()
+			}
+
+			conn.connectionWindowSizeThere -= int64(len(frame.Data))
+
+			delta := conn.flowControl.ReceiveData(0, conn.initialWindowSizeThere, conn.connectionWindowSizeThere)
+			if delta != 0 {
+				grow := new(windowUpdateFrameV3)
+				grow.StreamID = 0
+				grow.DeltaWindowSize = delta
+				conn.output[0] <- grow
+				conn.connectionWindowSizeThere += int64(grow.DeltaWindowSize)
+			}
+		}
 		if conn.server == nil {
 			conn.handleServerData(frame)
 		} else {
