@@ -63,6 +63,37 @@ func readFrameV3(reader *bufio.Reader, subversion int) (frame Frame, err error) 
 	return frame, err
 }
 
+// controlFrameCommonProcessingV3 performs checks identical between
+// all control frames. This includes the control bit, the version
+// number, the type byte (which is checked against the byte
+// provided), and the flags (which are checked against the bitwise
+// OR of valid flags provided).
+func controlFrameCommonProcessingV3(data []byte, frameType uint16, flags byte) error {
+	// Check it's a control frame.
+	if data[0] != 128 {
+		return &incorrectFrame{DATA_FRAMEv3, int(frameType), 3}
+	}
+
+	// Check version.
+	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
+	if version != 3 {
+		return unsupportedVersion(version)
+	}
+
+	// Check its type.
+	realType := bytesToUint16(data[2:])
+	if realType != frameType {
+		return &incorrectFrame{int(realType), int(frameType), 3}
+	}
+
+	// Check the flags.
+	if data[4] & ^flags != 0 {
+		return &invalidField{"flags", int(data[4]), int(flags)}
+	}
+
+	return nil
+}
+
 /******************
  *** SYN_STREAM ***
  ******************/
@@ -115,27 +146,9 @@ func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 18, &incorrectFrame{DATA_FRAMEv3, SYN_STREAMv3, 3}
-	}
-
-	// Check it's a SYN_STREAM.
-	if bytesToUint16(data[2:4]) != SYN_STREAMv3 {
-		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_STREAMv3, 3}
-	}
-
-	// Check version.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 18, unsupportedVersion(version)
-	}
-
-	// Check unused space.
-	if (data[8]>>7) != 0 || (data[12]>>7) != 0 {
-		return 18, &invalidField{"Unused", 1, 0}
-	} else if (data[16] & 0x1f) != 0 {
-		return 18, &invalidField{"Unused", int(data[16] & 0x1f), 0}
+	err = controlFrameCommonProcessingV3(data[:4], SYN_STREAMv3, FLAG_FIN|FLAG_UNIDIRECTIONAL)
+	if err != nil {
+		return 18, err
 	}
 
 	// Get and check length.
@@ -298,29 +311,9 @@ func (frame *synStreamFrameV3_1) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 18, &incorrectFrame{DATA_FRAMEv3, SYN_STREAMv3, 3}
-	}
-
-	// Check it's a SYN_STREAM.
-	if bytesToUint16(data[2:4]) != SYN_STREAMv3 {
-		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_STREAMv3, 3}
-	}
-
-	// Check version.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 18, unsupportedVersion(version)
-	}
-
-	// Check unused space.
-	if (data[8]>>7) != 0 || (data[12]>>7) != 0 {
-		return 18, &invalidField{"Unused", 1, 0}
-	} else if (data[16] & 0x1f) != 0 {
-		return 18, &invalidField{"Unused", int(data[16] & 0x1f), 0}
-	} else if data[17] != 0 {
-		return 18, &invalidField{"Reserved", int(data[17]), 0}
+	err = controlFrameCommonProcessingV3(data[:4], SYN_STREAMv3, FLAG_FIN|FLAG_UNIDIRECTIONAL)
+	if err != nil {
+		return 18, err
 	}
 
 	// Get and check length.
@@ -481,25 +474,9 @@ func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAMEv3, SYN_REPLYv3, 3}
-	}
-
-	// Check it's a SYN_REPLY.
-	if bytesToUint16(data[2:4]) != SYN_REPLYv3 {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SYN_REPLYv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 12, unsupportedVersion(version)
-	}
-
-	// Check unused space.
-	if (data[8] >> 7) != 0 {
-		return 12, &invalidField{"Unused", 1, 0}
+	err = controlFrameCommonProcessingV3(data[:4], SYN_REPLYv3, FLAG_FIN)
+	if err != nil {
+		return 12, err
 	}
 
 	// Get and check length.
@@ -611,20 +588,9 @@ func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAMEv3, RST_STREAMv3, 3}
-	}
-
-	// Check it's a RST_STREAM.
-	if bytesToUint16(data[2:4]) != RST_STREAMv3 {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), RST_STREAMv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 16, unsupportedVersion(version)
+	err = controlFrameCommonProcessingV3(data[:4], RST_STREAMv3, 0)
+	if err != nil {
+		return 16, err
 	}
 
 	// Get and check length.
@@ -633,11 +599,6 @@ func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 16, &incorrectDataLength{length, 8}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return 16, frameTooLarge
-	}
-
-	// Check unused space.
-	if (data[8] >> 7) != 0 {
-		return 16, &invalidField{"Unused", 1, 0}
 	}
 
 	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
@@ -723,20 +684,9 @@ func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAMEv3, SETTINGSv3, 3}
-	}
-
-	// Check it's a SETTINGS.
-	if bytesToUint16(data[2:4]) != SETTINGSv3 {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), SETTINGSv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 12, unsupportedVersion(version)
+	err = controlFrameCommonProcessingV3(data[:4], SETTINGSv3, FLAG_SETTINGS_CLEAR_SETTINGS)
+	if err != nil {
+		return 12, err
 	}
 
 	// Get and check length.
@@ -899,31 +849,15 @@ func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAMEv3, PINGv3, 3}
-	}
-
-	// Check it's a PING.
-	if bytesToUint16(data[2:4]) != PINGv3 {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), PINGv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 12, unsupportedVersion(version)
+	err = controlFrameCommonProcessingV3(data[:4], PINGv3, 0)
+	if err != nil {
+		return 12, err
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(data[5:8]))
 	if length != 4 {
 		return 12, &incorrectDataLength{length, 4}
-	}
-
-	// Check Flags.
-	if (data[4]) != 0 {
-		return 12, &invalidField{"Flags", int(data[4]), 0}
 	}
 
 	frame.PingID = bytesToUint32(data[8:12])
@@ -991,36 +925,15 @@ func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAMEv3, GOAWAYv3, 3}
-	}
-
-	// Check it's a GOAWAY.
-	if bytesToUint16(data[2:4]) != GOAWAYv3 {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), GOAWAYv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 16, unsupportedVersion(version)
+	err = controlFrameCommonProcessingV3(data[:4], GOAWAYv3, 0)
+	if err != nil {
+		return 16, err
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(data[5:8]))
 	if length != 8 {
 		return 16, &incorrectDataLength{length, 8}
-	}
-
-	// Check unused space.
-	if (data[8] >> 7) != 0 {
-		return 16, &invalidField{"Unused", 1, 0}
-	}
-
-	// Check Flags.
-	if (data[4]) != 0 {
-		return 16, &invalidField{"Flags", int(data[4]), 0}
 	}
 
 	frame.LastGoodStreamID = StreamID(bytesToUint32(data[8:12]))
@@ -1125,20 +1038,9 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 12, &incorrectFrame{DATA_FRAMEv3, HEADERSv3, 3}
-	}
-
-	// Check it's a HEADERS.
-	if bytesToUint16(data[2:4]) != HEADERSv3 {
-		return 12, &incorrectFrame{int(bytesToUint16(data[2:4])), HEADERSv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 12, unsupportedVersion(version)
+	err = controlFrameCommonProcessingV3(data[:4], HEADERSv3, FLAG_FIN)
+	if err != nil {
+		return 12, err
 	}
 
 	// Get and check length.
@@ -1147,11 +1049,6 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 12, &incorrectDataLength{length, 4}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return 12, frameTooLarge
-	}
-
-	// Check unused space.
-	if (data[8] >> 7) != 0 {
-		return 12, &invalidField{"Unused", 1, 0}
 	}
 
 	// Read in data.
@@ -1264,31 +1161,15 @@ func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 16, &incorrectFrame{DATA_FRAMEv3, WINDOW_UPDATEv3, 3}
-	}
-
-	// Check it's a WINDOW_UPDATE.
-	if bytesToUint16(data[2:4]) != WINDOW_UPDATEv3 {
-		return 16, &incorrectFrame{int(bytesToUint16(data[2:4])), WINDOW_UPDATEv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 16, unsupportedVersion(version)
+	err = controlFrameCommonProcessingV3(data[:4], WINDOW_UPDATEv3, 0)
+	if err != nil {
+		return 16, err
 	}
 
 	// Get and check length.
 	length := int(bytesToUint24(data[5:8]))
 	if length != 8 {
 		return 16, &incorrectDataLength{length, 8}
-	}
-
-	// Check unused space.
-	if (data[8]>>7)|(data[12]>>7) != 0 {
-		return 16, &invalidField{"Unused", 1, 0}
 	}
 
 	frame.StreamID = StreamID(bytesToUint32(data[8:12]))
@@ -1373,20 +1254,9 @@ func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	// Check it's a control frame.
-	if data[0] != 128 {
-		return 18, &incorrectFrame{DATA_FRAMEv3, CREDENTIALv3, 3}
-	}
-
-	// Check it's a CREDENTIAL.
-	if bytesToUint16(data[2:4]) != CREDENTIALv3 {
-		return 18, &incorrectFrame{int(bytesToUint16(data[2:4])), CREDENTIALv3, 3}
-	}
-
-	// Check version and adapt accordingly.
-	version := (uint16(data[0]&0x7f) << 8) + uint16(data[1])
-	if version != 3 {
-		return 18, unsupportedVersion(version)
+	err = controlFrameCommonProcessingV3(data[:4], CREDENTIALv3, 0)
+	if err != nil {
+		return 18, err
 	}
 
 	// Get and check length.
@@ -1395,11 +1265,6 @@ func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 18, &incorrectDataLength{length, 6}
 	} else if length > MAX_FRAME_SIZE-8 {
 		return 18, frameTooLarge
-	}
-
-	// Check Flags.
-	if (data[4]) != 0 {
-		return 18, &invalidField{"Flags", int(data[4]), 0}
 	}
 
 	// Read in data.
@@ -1527,6 +1392,11 @@ func (frame *dataFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 	// Check it's a data frame.
 	if data[0]&0x80 == 1 {
 		return 8, &incorrectFrame{CONTROL_FRAMEv3, DATA_FRAMEv3, 3}
+	}
+
+	// Check flags.
+	if data[4] & ^byte(FLAG_FIN) != 0 {
+		return 8, &invalidField{"flags", int(data[4]), FLAG_FIN}
 	}
 
 	// Get and check length.
