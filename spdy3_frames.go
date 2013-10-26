@@ -146,7 +146,7 @@ func (frame *synStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], SYN_STREAMv3, FLAG_FIN|FLAG_UNIDIRECTIONAL)
+	err = controlFrameCommonProcessingV3(data[:5], SYN_STREAMv3, FLAG_FIN|FLAG_UNIDIRECTIONAL)
 	if err != nil {
 		return 18, err
 	}
@@ -311,7 +311,7 @@ func (frame *synStreamFrameV3_1) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], SYN_STREAMv3, FLAG_FIN|FLAG_UNIDIRECTIONAL)
+	err = controlFrameCommonProcessingV3(data[:5], SYN_STREAMv3, FLAG_FIN|FLAG_UNIDIRECTIONAL)
 	if err != nil {
 		return 18, err
 	}
@@ -474,7 +474,7 @@ func (frame *synReplyFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], SYN_REPLYv3, FLAG_FIN)
+	err = controlFrameCommonProcessingV3(data[:5], SYN_REPLYv3, FLAG_FIN)
 	if err != nil {
 		return 12, err
 	}
@@ -588,7 +588,7 @@ func (frame *rstStreamFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], RST_STREAMv3, 0)
+	err = controlFrameCommonProcessingV3(data[:5], RST_STREAMv3, 0)
 	if err != nil {
 		return 16, err
 	}
@@ -684,7 +684,7 @@ func (frame *settingsFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], SETTINGSv3, FLAG_SETTINGS_CLEAR_SETTINGS)
+	err = controlFrameCommonProcessingV3(data[:5], SETTINGSv3, FLAG_SETTINGS_CLEAR_SETTINGS)
 	if err != nil {
 		return 12, err
 	}
@@ -849,7 +849,7 @@ func (frame *pingFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], PINGv3, 0)
+	err = controlFrameCommonProcessingV3(data[:5], PINGv3, 0)
 	if err != nil {
 		return 12, err
 	}
@@ -925,7 +925,7 @@ func (frame *goawayFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], GOAWAYv3, 0)
+	err = controlFrameCommonProcessingV3(data[:5], GOAWAYv3, 0)
 	if err != nil {
 		return 16, err
 	}
@@ -1038,7 +1038,7 @@ func (frame *headersFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], HEADERSv3, FLAG_FIN)
+	err = controlFrameCommonProcessingV3(data[:5], HEADERSv3, FLAG_FIN)
 	if err != nil {
 		return 12, err
 	}
@@ -1161,7 +1161,7 @@ func (frame *windowUpdateFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], WINDOW_UPDATEv3, 0)
+	err = controlFrameCommonProcessingV3(data[:5], WINDOW_UPDATEv3, 0)
 	if err != nil {
 		return 16, err
 	}
@@ -1254,7 +1254,7 @@ func (frame *credentialFrameV3) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV3(data[:4], CREDENTIALv3, 0)
+	err = controlFrameCommonProcessingV3(data[:5], CREDENTIALv3, 0)
 	if err != nil {
 		return 18, err
 	}

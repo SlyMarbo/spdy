@@ -137,7 +137,7 @@ func (frame *synStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], SYN_STREAMv2, FLAG_FIN|FLAG_UNIDIRECTIONAL)
+	err = controlFrameCommonProcessingV2(data[:5], SYN_STREAMv2, FLAG_FIN|FLAG_UNIDIRECTIONAL)
 	if err != nil {
 		return 18, err
 	}
@@ -300,7 +300,7 @@ func (frame *synReplyFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], SYN_REPLYv2, FLAG_FIN)
+	err = controlFrameCommonProcessingV2(data[:5], SYN_REPLYv2, FLAG_FIN)
 	if err != nil {
 		return 14, err
 	}
@@ -416,7 +416,7 @@ func (frame *rstStreamFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], RST_STREAMv2, 0)
+	err = controlFrameCommonProcessingV2(data[:5], RST_STREAMv2, 0)
 	if err != nil {
 		return 16, err
 	}
@@ -512,7 +512,7 @@ func (frame *settingsFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], SETTINGSv2, FLAG_SETTINGS_CLEAR_SETTINGS)
+	err = controlFrameCommonProcessingV2(data[:5], SETTINGSv2, FLAG_SETTINGS_CLEAR_SETTINGS)
 	if err != nil {
 		return 12, err
 	}
@@ -675,7 +675,7 @@ func (frame *noopFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], NOOPv2, 0)
+	err = controlFrameCommonProcessingV2(data[:5], NOOPv2, 0)
 	if err != nil {
 		return 8, err
 	}
@@ -722,7 +722,7 @@ func (frame *pingFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], PINGv2, 0)
+	err = controlFrameCommonProcessingV2(data[:5], PINGv2, 0)
 	if err != nil {
 		return 12, err
 	}
@@ -797,7 +797,7 @@ func (frame *goawayFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], GOAWAYv2, 0)
+	err = controlFrameCommonProcessingV2(data[:5], GOAWAYv2, 0)
 	if err != nil {
 		return 12, err
 	}
@@ -904,7 +904,7 @@ func (frame *headersFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], HEADERSv2, FLAG_FIN)
+	err = controlFrameCommonProcessingV2(data[:5], HEADERSv2, FLAG_FIN)
 	if err != nil {
 		return 16, err
 	}
@@ -1026,7 +1026,7 @@ func (frame *windowUpdateFrameV2) ReadFrom(reader io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessingV2(data[:4], WINDOW_UPDATEv2, 0)
+	err = controlFrameCommonProcessingV2(data[:5], WINDOW_UPDATEv2, 0)
 	if err != nil {
 		return 16, err
 	}
