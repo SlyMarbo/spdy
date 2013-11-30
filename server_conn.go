@@ -78,6 +78,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 			out.SetWriteTimeout(d)
 		}
 		out.flowControl = DefaultFlowControl(DEFAULT_INITIAL_WINDOW_SIZE)
+		out.pushedResources = make(map[Stream]map[string]struct{})
 
 		return out, nil
 
@@ -129,6 +130,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 			out.SetWriteTimeout(d)
 		}
 		out.flowControl = DefaultFlowControl(DEFAULT_INITIAL_WINDOW_SIZE)
+		out.pushedResources = make(map[Stream]map[string]struct{})
 		out.initialWindowSizeThere = out.flowControl.InitialWindowSize()
 		out.connectionWindowSizeThere = int64(out.initialWindowSizeThere)
 
@@ -178,6 +180,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		if d := server.WriteTimeout; d != 0 {
 			out.SetWriteTimeout(d)
 		}
+		out.pushedResources = make(map[Stream]map[string]struct{})
 
 		return out, nil
 
@@ -519,7 +522,7 @@ func PingServer(c http.Client, server string) (<-chan Ping, error) {
 //      )
 //
 //      func httpHandler(w http.ResponseWriter, r *http.Request) {
-//							path := r.URL.Scheme + "://" + r.URL.Host + "/javascript.js"
+//              path := r.URL.Scheme + "://" + r.URL.Host + "/javascript.js"
 //              push, err := spdy.Push(w, path)
 //              if err != nil {
 //                      // Non-SPDY connection.

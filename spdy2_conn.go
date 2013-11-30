@@ -28,29 +28,30 @@ type connV2 struct {
 	conn                net.Conn
 	buf                 *bufio.Reader
 	tlsState            *tls.ConnectionState
-	streams             map[StreamID]Stream        // map of active streams.
-	output              [8]chan Frame              // one output channel per priority level.
-	pings               map[uint32]chan<- Ping     // response channel for pings.
-	nextPingID          uint32                     // next outbound ping ID.
-	compressor          Compressor                 // outbound compression state.
-	decompressor        Decompressor               // inbound decompression state.
-	receivedSettings    Settings                   // settings sent by client.
-	lastPushStreamID    StreamID                   // last push stream ID. (even)
-	lastRequestStreamID StreamID                   // last request stream ID. (odd)
-	oddity              StreamID                   // whether locally-sent streams are odd or even.
-	initialWindowSize   uint32                     // initial transport window.
-	goawayReceived      bool                       // goaway has been received.
-	goawaySent          bool                       // goaway has been sent.
-	numBenignErrors     int                        // number of non-serious errors encountered.
-	requestStreamLimit  *streamLimit               // Limit on streams started by the client.
-	pushStreamLimit     *streamLimit               // Limit on streams started by the server.
-	pushRequests        map[StreamID]*http.Request // map of requests sent in server pushes.
-	pushReceiver        Receiver                   // Receiver to call for server Pushes.
-	stop                chan struct{}              // this channel is closed when the connection closes.
-	sending             chan struct{}              // this channel is used to ensure pending frames are sent.
-	init                func()                     // this function is called before the connection begins.
-	readTimeout         time.Duration
-	writeTimeout        time.Duration
+	streams             map[StreamID]Stream            // map of active streams.
+	output              [8]chan Frame                  // one output channel per priority level.
+	pings               map[uint32]chan<- Ping         // response channel for pings.
+	nextPingID          uint32                         // next outbound ping ID.
+	compressor          Compressor                     // outbound compression state.
+	decompressor        Decompressor                   // inbound decompression state.
+	receivedSettings    Settings                       // settings sent by client.
+	lastPushStreamID    StreamID                       // last push stream ID. (even)
+	lastRequestStreamID StreamID                       // last request stream ID. (odd)
+	oddity              StreamID                       // whether locally-sent streams are odd or even.
+	initialWindowSize   uint32                         // initial transport window.
+	goawayReceived      bool                           // goaway has been received.
+	goawaySent          bool                           // goaway has been sent.
+	numBenignErrors     int                            // number of non-serious errors encountered.
+	requestStreamLimit  *streamLimit                   // Limit on streams started by the client.
+	pushStreamLimit     *streamLimit                   // Limit on streams started by the server.
+	pushRequests        map[StreamID]*http.Request     // map of requests sent in server pushes.
+	pushReceiver        Receiver                       // Receiver to call for server Pushes.
+	stop                chan struct{}                  // this channel is closed when the connection closes.
+	sending             chan struct{}                  // this channel is used to ensure pending frames are sent.
+	init                func()                         // this function is called before the connection begins.
+	readTimeout         time.Duration                  // optional timeout for network reads.
+	writeTimeout        time.Duration                  // optional timeout for network writes.
+	pushedResources     map[Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
 }
 
 // Close ends the connection, cleaning up relevant resources.
@@ -117,6 +118,8 @@ func (conn *connV2) Close() (err error) {
 	}
 	conn.decompressor = nil
 
+	conn.pushedResources = nil
+
 	for _, stream := range conn.output {
 		select {
 		case _, ok := <-stream:
@@ -177,11 +180,6 @@ func (conn *connV2) Push(resource string, origin Stream) (PushStream, error) {
 		return nil, errors.New("Error: Only servers can send pushes.")
 	}
 
-	// Check stream limit would allow the new stream.
-	if !conn.pushStreamLimit.Add() {
-		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
-	}
-
 	// Parse and check URL.
 	url, err := url.Parse(resource)
 	if err != nil {
@@ -189,6 +187,23 @@ func (conn *connV2) Push(resource string, origin Stream) (PushStream, error) {
 	}
 	if url.Scheme == "" || url.Host == "" || url.Path == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
+	}
+	resource = url.String()
+
+	// Ensure the resource hasn't been pushed on the given stream already.
+	if conn.pushedResources[origin] == nil {
+		conn.pushedResources[origin] = map[string]struct{}{
+			resource: struct{}{},
+		}
+	} else if _, ok := conn.pushedResources[origin][url.String()]; !ok {
+		conn.pushedResources[origin][resource] = struct{}{}
+	} else {
+		return nil, errors.New("Error: Resource already pushed to this stream.")
+	}
+
+	// Check stream limit would allow the new stream.
+	if !conn.pushStreamLimit.Add() {
+		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
 	}
 
 	// Prepare the SYN_STREAM.

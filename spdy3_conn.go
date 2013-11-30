@@ -52,9 +52,10 @@ type connV3 struct {
 	stop                chan struct{}                  // this channel is closed when the connection closes.
 	sending             chan struct{}                  // this channel is used to ensure pending frames are sent.
 	init                func()                         // this function is called before the connection begins.
-	readTimeout         time.Duration
-	writeTimeout        time.Duration
-	flowControl         FlowControl
+	readTimeout         time.Duration                  // optional timeout for network reads.
+	writeTimeout        time.Duration                  // optional timeout for network writes.
+	flowControl         FlowControl                    // flow control module.
+	pushedResources     map[Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
 
 	// SPDY/3.1
 	subversion                int            // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
@@ -128,6 +129,8 @@ func (conn *connV3) Close() (err error) {
 	}
 	conn.decompressor = nil
 
+	conn.pushedResources = nil
+
 	for _, stream := range conn.output {
 		select {
 		case _, ok := <-stream:
@@ -188,11 +191,6 @@ func (conn *connV3) Push(resource string, origin Stream) (PushStream, error) {
 		return nil, errors.New("Error: Only servers can send pushes.")
 	}
 
-	// Check stream limit would allow the new stream.
-	if !conn.pushStreamLimit.Add() {
-		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
-	}
-
 	// Parse and check URL.
 	url, err := url.Parse(resource)
 	if err != nil {
@@ -200,6 +198,23 @@ func (conn *connV3) Push(resource string, origin Stream) (PushStream, error) {
 	}
 	if url.Scheme == "" || url.Host == "" || url.Path == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
+	}
+	resource = url.String()
+
+	// Ensure the resource hasn't been pushed on the given stream already.
+	if conn.pushedResources[origin] == nil {
+		conn.pushedResources[origin] = map[string]struct{}{
+			resource: struct{}{},
+		}
+	} else if _, ok := conn.pushedResources[origin][url.String()]; !ok {
+		conn.pushedResources[origin][resource] = struct{}{}
+	} else {
+		return nil, errors.New("Error: Resource already pushed to this stream.")
+	}
+
+	// Check stream limit would allow the new stream.
+	if !conn.pushStreamLimit.Add() {
+		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
 	}
 
 	// Prepare the SYN_STREAM.
