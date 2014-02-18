@@ -690,12 +690,6 @@ func (conn *connV2) handleRequest(frame *synStreamFrameV2) {
 		return
 	}
 
-	// Determine which handler to use.
-	nextStream.handler = conn.server.Handler
-	if nextStream.handler == nil {
-		nextStream.handler = http.DefaultServeMux
-	}
-
 	// Set and prepare.
 	conn.streams[sid] = nextStream
 	conn.lastRequestStreamID = sid
@@ -848,14 +842,20 @@ func (conn *connV2) newStream(frame *synStreamFrameV2, priority Priority) *serve
 	stream := new(serverStreamV2)
 	stream.conn = conn
 	stream.streamID = frame.StreamID
+	stream.requestBody = new(bytes.Buffer)
 	stream.state = new(StreamState)
 	stream.output = conn.output[priority]
+	// stream.request initialised below
+	stream.handler = conn.server.Handler
+	if stream.handler == nil {
+		stream.handler = http.DefaultServeMux
+	}
 	stream.header = make(http.Header)
 	stream.unidirectional = frame.Flags.UNIDIRECTIONAL()
+	stream.responseCode = 0
 	stream.stop = conn.stop
+	stream.wroteHeader = false
 	stream.priority = priority
-	stream.requestBody = new(bytes.Buffer)
-	stream.request.Body = &readCloser{stream.requestBody}
 
 	if frame.Flags.FIN() {
 		stream.state.CloseThere()
@@ -891,6 +891,7 @@ func (conn *connV2) newStream(frame *synStreamFrameV2, priority Priority) *serve
 		Host:       url.Host,
 		RequestURI: url.Path,
 		TLS:        conn.tlsState,
+		Body:       &readCloser{stream.requestBody},
 	}
 
 	return stream
