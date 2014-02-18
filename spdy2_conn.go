@@ -6,6 +6,7 @@ package spdy
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -853,6 +854,8 @@ func (conn *connV2) newStream(frame *synStreamFrameV2, priority Priority) *serve
 	stream.unidirectional = frame.Flags.UNIDIRECTIONAL()
 	stream.stop = conn.stop
 	stream.priority = priority
+	stream.requestBody = new(bytes.Buffer)
+	stream.request.Body = &readCloser{stream.requestBody}
 
 	if frame.Flags.FIN() {
 		stream.state.CloseThere()

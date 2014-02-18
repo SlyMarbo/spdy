@@ -224,8 +224,10 @@ func (s *serverStreamV3) Run() error {
 	}()
 
 	// Make sure Request is prepared.
-	s.requestBody = new(bytes.Buffer)
-	s.request.Body = &readCloser{s.requestBody}
+	if s.requestBody == nil || s.request.Body == nil {
+		s.requestBody = new(bytes.Buffer)
+		s.request.Body = &readCloser{s.requestBody}
+	}
 
 	/***************
 	 *** HANDLER ***
