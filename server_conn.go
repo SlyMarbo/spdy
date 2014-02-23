@@ -64,7 +64,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		if out.tlsState != nil && out.tlsState.PeerCertificates != nil {
 			out.certificates[1] = out.tlsState.PeerCertificates
 		}
-		out.stop = make(chan struct{})
+		out.stop = make(chan bool)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV3)
@@ -116,7 +116,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
 		out.vectorIndex = 8
-		out.stop = make(chan struct{})
+		out.stop = make(chan bool)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV3)
@@ -167,7 +167,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		out.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
 		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
-		out.stop = make(chan struct{})
+		out.stop = make(chan bool)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV2)

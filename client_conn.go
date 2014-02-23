@@ -60,7 +60,7 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
-		out.stop = make(chan struct{})
+		out.stop = make(chan bool)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV3)
@@ -106,7 +106,7 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
-		out.stop = make(chan struct{})
+		out.stop = make(chan bool)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV3)
@@ -152,7 +152,7 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
-		out.stop = make(chan struct{})
+		out.stop = make(chan bool)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
 			settings := new(settingsFrameV2)

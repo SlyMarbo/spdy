@@ -37,6 +37,7 @@ type Conn interface {
 
 // Stream contains a single SPDY stream.
 type Stream interface {
+	http.CloseNotifier
 	http.ResponseWriter
 	io.ReadCloser
 	Conn() Conn

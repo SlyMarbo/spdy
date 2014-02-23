@@ -30,7 +30,7 @@ type serverStreamV3 struct {
 	header         http.Header
 	unidirectional bool
 	responseCode   int
-	stop           chan struct{}
+	stop           chan bool
 	wroteHeader    bool
 	priority       Priority
 }
@@ -206,6 +206,10 @@ func (s *serverStreamV3) ReceiveFrame(frame Frame) error {
 	}
 
 	return nil
+}
+
+func (s *serverStreamV3) CloseNotify() <-chan bool {
+	return s.stop
 }
 
 // run is the main control path of

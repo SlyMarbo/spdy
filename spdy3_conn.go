@@ -50,7 +50,7 @@ type connV3 struct {
 	certificates        map[uint16][]*x509.Certificate // certificates received in CREDENTIAL frames and TLS handshake.
 	pushRequests        map[StreamID]*http.Request     // map of requests sent in server pushes.
 	pushReceiver        Receiver                       // Receiver to call for server Pushes.
-	stop                chan struct{}                  // this channel is closed when the connection closes.
+	stop                chan bool                      // this channel is closed when the connection closes.
 	sending             chan struct{}                  // this channel is used to ensure pending frames are sent.
 	init                func()                         // this function is called before the connection begins.
 	readTimeout         time.Duration                  // optional timeout for network reads.

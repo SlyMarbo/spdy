@@ -26,7 +26,7 @@ type clientStreamV3 struct {
 	receiver     Receiver
 	header       http.Header
 	responseCode int
-	stop         <-chan struct{}
+	stop         <-chan bool
 	finished     chan struct{}
 }
 
@@ -191,6 +191,10 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 	}
 
 	return nil
+}
+
+func (s *clientStreamV3) CloseNotify() <-chan bool {
+	return s.stop
 }
 
 // run is the main control path of

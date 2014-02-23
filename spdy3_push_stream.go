@@ -24,7 +24,7 @@ type pushStreamV3 struct {
 	state    *StreamState
 	output   chan<- Frame
 	header   http.Header
-	stop     <-chan struct{}
+	stop     <-chan bool
 }
 
 /***********************
@@ -136,6 +136,10 @@ func (p *pushStreamV3) ReceiveFrame(frame Frame) error {
 	}
 
 	return nil
+}
+
+func (p *pushStreamV3) CloseNotify() <-chan bool {
+	return p.stop
 }
 
 func (p *pushStreamV3) Run() error {
