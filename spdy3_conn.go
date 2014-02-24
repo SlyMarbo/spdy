@@ -932,11 +932,13 @@ func (conn *connV3) newStream(frame *synStreamFrameV3, priority Priority) *serve
 	stream.header = make(http.Header)
 	stream.unidirectional = frame.Flags.UNIDIRECTIONAL()
 	stream.responseCode = 0
+	stream.ready = make(chan struct{})
 	stream.stop = conn.stop
 	stream.wroteHeader = false
 	stream.priority = priority
 
 	if frame.Flags.FIN() {
+		close(stream.ready)
 		stream.state.CloseThere()
 	}
 

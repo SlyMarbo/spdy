@@ -29,6 +29,7 @@ type serverStreamV2 struct {
 	header         http.Header
 	unidirectional bool
 	responseCode   int
+	ready          chan struct{}
 	stop           chan bool
 	wroteHeader    bool
 	priority       Priority
@@ -176,12 +177,22 @@ func (s *serverStreamV2) ReceiveFrame(frame Frame) error {
 	case *dataFrameV2:
 		s.requestBody.Write(frame.Data)
 		if frame.Flags.FIN() {
+			select {
+			case <-s.ready:
+			default:
+				close(s.ready)
+			}
 			s.state.CloseThere()
 		}
 
 	case *synReplyFrameV2:
 		updateHeader(s.header, frame.Header)
 		if frame.Flags.FIN() {
+			select {
+			case <-s.ready:
+			default:
+				close(s.ready)
+			}
 			s.state.CloseThere()
 		}
 
@@ -222,6 +233,9 @@ func (s *serverStreamV2) Run() error {
 		s.requestBody = new(bytes.Buffer)
 		s.request.Body = &readCloser{s.requestBody}
 	}
+
+	// Wait until the full request has been received.
+	<-s.ready
 
 	/***************
 	 *** HANDLER ***
