@@ -251,7 +251,8 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 				t.m.Unlock()
 				return t.doHTTP(tcpConn, req)
 
-			case "spdy/3":
+			case "spdy/3": fallthrough
+			case "spdy/3.1":
 				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 3)
 				if err != nil {
 					return nil, err
