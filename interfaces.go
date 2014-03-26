@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"sync"
@@ -24,10 +25,12 @@ import (
 // early by using Close.
 type Conn interface {
 	io.Closer
+	Conn() net.Conn
 	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
 	Push(url string, origin Stream) (PushStream, error)
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
+	RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error)
 	Run() error
 	SetFlowControl(FlowControl) error
 	SetTimeout(time.Duration)

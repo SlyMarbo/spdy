@@ -376,6 +376,24 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	return out, nil
 }
 
+func (c *connV3) RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error) {
+	res := new(response)
+	res.Request = request
+	res.Data = new(bytes.Buffer)
+	res.Receiver = receiver
+
+	// Send the request.
+	stream, err := c.Request(request, res, priority)
+	if err != nil {
+		return nil, err
+	}
+
+	// Let the request run its course.
+	stream.Run()
+
+	return res.Response(), nil
+}
+
 func (conn *connV3) Run() error {
 	// Start the send loop.
 	go conn.send()

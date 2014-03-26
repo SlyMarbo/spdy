@@ -290,12 +290,6 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	debug.Printf("Requesting %q over SPDY.\n", u.String())
 
-	// Prepare the response.
-	res := new(response)
-	res.Request = req
-	res.Data = new(bytes.Buffer)
-	res.Receiver = t.Receiver
-
 	// Determine the request priority.
 	priority := Priority(0)
 	if t.Priority != nil {
@@ -304,16 +298,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		priority = DefaultPriority(req.URL)
 	}
 
-	// Send the request.
-	stream, err := conn.Request(req, res, priority)
-	if err != nil {
-		return nil, err
-	}
-
-	// Let the request run its course.
-	stream.Run()
-
-	return res.Response(), nil
+	return conn.RequestResponse(req, t.Receiver, priority)
 }
 
 // response is used in handling responses; storing
