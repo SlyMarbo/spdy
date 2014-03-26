@@ -116,7 +116,9 @@ func (s *clientStreamV3) Close() error {
 }
 
 func (s *clientStreamV3) Read(out []byte) (int, error) {
-	// TODO
+	log.Println("clientStream.Read() is unimplemented. " +
+		"To get the response from a client directly (and not via the Response), " +
+		"provide a Receiver to clientConn.Request().")
 	return 0, nil
 }
 
