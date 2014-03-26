@@ -135,6 +135,10 @@ func (conn *connV2) Close() (err error) {
 	return nil
 }
 
+func (c *connV2) Conn() net.Conn {
+	return c.conn
+}
+
 // InitialWindowSize gives the most recently-received value for
 // the INITIAL_WINDOW_SIZE setting.
 func (conn *connV2) InitialWindowSize() (uint32, error) {
