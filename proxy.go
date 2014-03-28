@@ -2,6 +2,7 @@ package spdy
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -45,8 +46,14 @@ func ConnectAndServe(addr string, config *tls.Config, srv *http.Server) error {
 	}
 
 	client := httputil.NewClientConn(conn, nil)
-	res, err := client.Do(req)
+	err = client.Write(req)
 	if err != nil {
+		return err
+	}
+
+	res, err := client.Read(req)
+	if err != nil && err != httputil.ErrPersistEOF {
+		fmt.Println(res)
 		return err
 	}
 
@@ -141,7 +148,8 @@ func (p proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //   }
 //
 //   func main() {
-//     http.HandleFunc("/", spdy.ProxyConnHandlerFunc(handleProxy))
+//     handler := spdy.ProxyConnHandlerFunc(handleProxy)
+//     http.Handle("/", spdy.ProxyConnections(handler))
 //     http.ListenAndServeTLS(":80", "cert.pem", "key.pem", nil)
 //   }
 //
