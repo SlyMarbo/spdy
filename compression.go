@@ -16,6 +16,14 @@ import (
 
 var versionError = errors.New("Version not supported.")
 
+var zlibV2Writers chan *zlib.Writer
+var zlibV3Writers chan *zlib.Writer
+
+func init() {
+	zlibV2Writers = make(chan *zlib.Writer, 5)
+	zlibV3Writers = make(chan *zlib.Writer, 5)
+}
+
 // Decompressor is used to decompress name/value header blocks.
 // Decompressors retain their state, so a single Decompressor
 // should be used for each direction of a particular connection.
@@ -182,9 +190,19 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 		var err error
 		switch c.version {
 		case 2:
-			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
+			select {
+			case c.w = <-zlibV2Writers:
+				c.w.Reset(c.buf)
+			default:
+				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
+			}
 		case 3:
-			c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV3)
+			select {
+			case c.w = <-zlibV3Writers:
+				c.w.Reset(c.buf)
+			default:
+				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV3)
+			}
 		default:
 			err = versionError
 		}
@@ -304,9 +322,22 @@ func (c *compressor) Close() error {
 	if c.w == nil {
 		return nil
 	}
-	err := c.w.Close()
-	if err != nil {
-		return err
+	var channel chan *zlib.Writer
+	switch c.version {
+	case 2:
+		channel = zlibV2Writers
+	case 3:
+		channel = zlibV3Writers
+	default:
+		return ErrInvalidVersion
+	}
+	select {
+	case channel <- c.w:
+	default:
+		err := c.w.Close()
+		if err != nil {
+			return err
+		}
 	}
 	c.w = nil
 	return nil
