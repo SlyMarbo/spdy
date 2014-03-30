@@ -24,6 +24,7 @@ import (
 // connection has been terminated. The connection can be ended
 // early by using Close.
 type Conn interface {
+	http.CloseNotifier
 	io.Closer
 	Conn() net.Conn
 	InitialWindowSize() (uint32, error)

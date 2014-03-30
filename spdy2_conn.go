@@ -135,6 +135,10 @@ func (conn *connV2) Close() (err error) {
 	return nil
 }
 
+func (c *connV2) CloseNotify() <-chan bool {
+	return c.stop
+}
+
 func (c *connV2) Conn() net.Conn {
 	return c.conn
 }
