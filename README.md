@@ -21,6 +21,9 @@ import (
 )
 
 func Serve(w http.ResponseWriter, r *http.Request) {
+	// Remember not to add any headers after calling
+	// w.WriteHeader().
+	
 	w.Write([]byte("Hello, HTTP!"))
 }
 
@@ -47,6 +50,9 @@ import (
 
 // This handler will now serve HTTP, HTTPS, and SPDY requests.
 func Serve(w http.ResponseWriter, r *http.Request) {
+	// Remember not to add any headers after calling
+	// w.WriteHeader().
+
 	w.Write([]byte("Hello, HTTP!"))
 }
 
