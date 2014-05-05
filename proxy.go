@@ -9,17 +9,13 @@ import (
 	"net/url"
 )
 
-// ConnectAndServe is used to perform connection
+// Connect is used to perform connection
 // reversal where the client (who is normally
 // behind a NAT of some kind) connects to a server
 // on the internet. The connection is then reversed
 // so that the 'server' sends requests to the 'client'.
-//
-// This works very similarly to ListenAndServeTLS,
-// except that addr and config are used to connect
-// to the client. If srv is nil, a new http.Server
-// is used, with http.DefaultServeMux as the handler.
-func ConnectAndServe(addr string, config *tls.Config, srv *http.Server) error {
+// See ConnectAndServe() for a blocking version of this
+func Connect(addr string, config *tls.Config, srv *http.Server) (Conn, error) {
 	if config == nil {
 		config = new(tls.Config)
 	}
@@ -30,41 +26,57 @@ func ConnectAndServe(addr string, config *tls.Config, srv *http.Server) error {
 
 	u, err := url.Parse(addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var conn net.Conn
 
 	conn, err = tls.Dial("tcp", u.Host, config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", addr, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	client := httputil.NewClientConn(conn, nil)
 	err = client.Write(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	res, err := client.Read(req)
 	if err != nil && err != httputil.ErrPersistEOF {
 		fmt.Println(res)
-		return err
+		return nil, err
 	}
 
 	if res.StatusCode != http.StatusOK {
 		log.Printf("Proxy responded with status code %d\n", res.StatusCode)
-		return ErrConnectFail
+		return nil, ErrConnectFail
 	}
 
 	conn, _ = client.Hijack()
 
 	server, err := NewServerConn(conn, srv, 3.1)
+	if err != nil {
+		return nil, err
+	}
+
+	return server, nil
+}
+
+// ConnectAndServe is used to perform connection
+// reversal. (See Connect() for more details.)
+//
+// This works very similarly to ListenAndServeTLS,
+// except that addr and config are used to connect
+// to the client. If srv is nil, a new http.Server
+// is used, with http.DefaultServeMux as the handler.
+func ConnectAndServe(addr string, config *tls.Config, srv *http.Server) error {
+	server, err := Connect(addr, config, srv)
 	if err != nil {
 		return err
 	}
