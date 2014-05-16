@@ -7,6 +7,10 @@ Package spdy is a full-featured SPDY library for the Go language (still under ve
 
 Note that this implementation currently supports SPDY drafts 2 and 3, and support for SPDY/4, and HTTP/2.0 is upcoming.
 
+Note that using this package with Martini (https://github.com/go-martini/martini) is likely to result
+in strange and hard-to-diagnose bugs. For more information, read http://stephensearles.com/?p=254.
+As a result, issues that arise when combining the two should be directed at the Martini developers.
+
 -------------------------------
 
 		Servers

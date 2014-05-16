@@ -7,6 +7,13 @@ Note that this implementation currently supports SPDY drafts 2 and 3, and suppor
 
 The GoDoc documentation for this package can be found at http://godoc.org/github.com/SlyMarbo/spdy.
 
+Note that using this package with [Martini][martini] is likely to result in strange and hard-to-diagnose
+bugs. For more information, read [this article][martini-article]. As a result, issues that arise when
+combining the two should be directed at the Martini developers.
+
+[martini]: https://github.com/go-martini/martini
+[martini-article]: http://stephensearles.com/?p=254
+
 Servers
 -------
 
