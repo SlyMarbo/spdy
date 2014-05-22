@@ -146,8 +146,6 @@ func (c *connV2) Conn() net.Conn {
 // InitialWindowSize gives the most recently-received value for
 // the INITIAL_WINDOW_SIZE setting.
 func (conn *connV2) InitialWindowSize() (uint32, error) {
-	conn.Lock()
-	defer conn.Unlock()
 	return conn.initialWindowSize, nil
 }
 
