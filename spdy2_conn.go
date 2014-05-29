@@ -40,6 +40,7 @@ type connV2 struct {
 	lastRequestStreamID StreamID                       // last request stream ID. (odd)
 	oddity              StreamID                       // whether locally-sent streams are odd or even.
 	initialWindowSize   uint32                         // initial transport window.
+	initialWindowSizeM  sync.Mutex                     // mutex for initialWindowSize
 	goawayReceived      bool                           // goaway has been received.
 	goawaySent          bool                           // goaway has been sent.
 	numBenignErrors     int                            // number of non-serious errors encountered.
@@ -140,12 +141,16 @@ func (c *connV2) CloseNotify() <-chan bool {
 }
 
 func (c *connV2) Conn() net.Conn {
+	c.Lock()
+	defer c.Unlock()
 	return c.conn
 }
 
 // InitialWindowSize gives the most recently-received value for
 // the INITIAL_WINDOW_SIZE setting.
 func (conn *connV2) InitialWindowSize() (uint32, error) {
+	conn.initialWindowSizeM.Lock()
+	defer conn.initialWindowSizeM.Unlock()
 	return conn.initialWindowSize, nil
 }
 
@@ -1010,9 +1015,9 @@ func (conn *connV2) processFrame(frame Frame) bool {
 			conn.receivedSettings[setting.ID] = setting
 			switch setting.ID {
 			case SETTINGS_INITIAL_WINDOW_SIZE:
-				conn.Lock()
+				conn.initialWindowSizeM.Lock()
 				conn.initialWindowSize = setting.Value
-				conn.Unlock()
+				conn.initialWindowSizeM.Unlock()
 
 			case SETTINGS_MAX_CONCURRENT_STREAMS:
 				if conn.server == nil {
@@ -1029,15 +1034,18 @@ func (conn *connV2) processFrame(frame Frame) bool {
 	case *pingFrameV2:
 		// Check whether Ping ID is a response.
 		if frame.PingID&1 == conn.nextPingID&1 {
+			conn.Lock()
 			if conn.pings[frame.PingID] == nil {
 				log.Printf("Warning: Ignored PING with Ping ID %d, which hasn't been requested.\n",
 					frame.PingID)
 				conn.numBenignErrors++
+				conn.Unlock()
 				return false
 			}
 			conn.pings[frame.PingID] <- Ping{}
 			close(conn.pings[frame.PingID])
 			delete(conn.pings, frame.PingID)
+			conn.Unlock()
 		} else {
 			debug.Println("Received PING. Replying...")
 			conn.output[0] <- frame
