@@ -310,14 +310,21 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 // by setting spdy.Transport.Receiver.
 type response struct {
 	StatusCode int
-	Header     http.Header
-	Data       *bytes.Buffer
-	Request    *http.Request
-	Receiver   Receiver
+
+	headerM sync.Mutex
+	Header  http.Header
+
+	dataM sync.Mutex
+	Data  *bytes.Buffer
+
+	Request  *http.Request
+	Receiver Receiver
 }
 
 func (r *response) ReceiveData(req *http.Request, data []byte, finished bool) {
+	r.dataM.Lock()
 	r.Data.Write(data)
+	r.dataM.Unlock()
 	if r.Receiver != nil {
 		r.Receiver.ReceiveData(req, data, finished)
 	}
@@ -326,6 +333,7 @@ func (r *response) ReceiveData(req *http.Request, data []byte, finished bool) {
 var statusRegex = regexp.MustCompile(`\A\s*(?P<code>\d+)`)
 
 func (r *response) ReceiveHeader(req *http.Request, header http.Header) {
+	r.headerM.Lock()
 	if r.Header == nil {
 		r.Header = make(http.Header)
 	}
@@ -341,6 +349,7 @@ func (r *response) ReceiveHeader(req *http.Request, header http.Header) {
 	if r.Receiver != nil {
 		r.Receiver.ReceiveHeader(req, header)
 	}
+	r.headerM.Unlock()
 }
 
 func (r *response) ReceiveRequest(req *http.Request) bool {
@@ -355,14 +364,22 @@ func (r *response) Response() *http.Response {
 		r.Data = new(bytes.Buffer)
 	}
 	out := new(http.Response)
+
+	r.headerM.Lock()
 	out.Status = fmt.Sprintf("%d %s", r.StatusCode, http.StatusText(r.StatusCode))
 	out.StatusCode = r.StatusCode
+	out.Header = r.Header
+	r.headerM.Unlock()
+
 	out.Proto = "HTTP/1.1"
 	out.ProtoMajor = 1
 	out.ProtoMinor = 1
-	out.Header = r.Header
+
+	r.dataM.Lock()
 	out.Body = &readCloser{r.Data}
 	out.ContentLength = int64(r.Data.Len())
+	r.dataM.Unlock()
+
 	out.TransferEncoding = nil
 	out.Close = true
 	out.Trailer = make(http.Header)
