@@ -628,7 +628,7 @@ func (conn *connV2) handlePush(frame *synStreamFrameV2) {
 		RemoteAddr: conn.remoteAddr,
 		Header:     header,
 		Host:       url.Host,
-		RequestURI: url.Path,
+		RequestURI: url.RequestURI(),
 		TLS:        conn.tlsState,
 	}
 
@@ -922,7 +922,7 @@ func (conn *connV2) newStream(frame *synStreamFrameV2, priority Priority) *serve
 		RemoteAddr: conn.remoteAddr,
 		Header:     header,
 		Host:       url.Host,
-		RequestURI: url.Path,
+		RequestURI: url.RequestURI(),
 		TLS:        conn.tlsState,
 		Body:       &readCloser{stream.requestBody},
 	}
