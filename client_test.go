@@ -23,7 +23,7 @@ func TestClient(t *testing.T) {
 
 	client := newClient()
 
-	r, err := client.Get(ts.URL + "/")
+	r, err := client.Get(ts.URL)
 	var b []byte
 	if err == nil {
 		b, err = pedanticReadAll(r.Body)
@@ -42,7 +42,7 @@ func TestClientHead(t *testing.T) {
 	defer ts.Close()
 
 	client := newClient()
-	r, err := client.Head(ts.URL + "/")
+	r, err := client.Head(ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}

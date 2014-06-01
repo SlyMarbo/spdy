@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -199,7 +200,7 @@ func (conn *connV2) Push(resource string, origin Stream) (PushStream, error) {
 	if err != nil {
 		return nil, err
 	}
-	if url.Scheme == "" || url.Host == "" || url.Path == "" {
+	if url.Scheme == "" || url.Host == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
 	}
 	resource = url.String()
@@ -220,6 +221,12 @@ func (conn *connV2) Push(resource string, origin Stream) (PushStream, error) {
 		return nil, errors.New("Error: Max concurrent streams limit exceeded.")
 	}
 
+	// Verify that path is prefixed with / as required by spec.
+	path := url.Path
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
 	// Prepare the SYN_STREAM.
 	push := new(synStreamFrameV2)
 	push.Flags = FLAG_UNIDIRECTIONAL
@@ -228,7 +235,7 @@ func (conn *connV2) Push(resource string, origin Stream) (PushStream, error) {
 	push.Header = make(http.Header)
 	push.Header.Set("scheme", url.Scheme)
 	push.Header.Set("host", url.Host)
-	push.Header.Set("url", url.Path)
+	push.Header.Set("url", path)
 	push.Header.Set("version", "HTTP/1.1")
 	push.Header.Set(":status", "200 OK")
 
@@ -280,7 +287,7 @@ func (conn *connV2) Request(request *http.Request, receiver Receiver, priority P
 	}
 
 	url := request.URL
-	if url == nil || url.Scheme == "" || url.Host == "" || url.Path == "" {
+	if url == nil || url.Scheme == "" || url.Host == "" {
 		return nil, errors.New("Error: Incomplete path provided to resource.")
 	}
 
@@ -292,6 +299,10 @@ func (conn *connV2) Request(request *http.Request, receiver Receiver, priority P
 	if url.Fragment != "" {
 		path += "#" + url.Fragment
 	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
 	syn := new(synStreamFrameV2)
 	syn.Priority = priority
 	syn.Header = request.Header
