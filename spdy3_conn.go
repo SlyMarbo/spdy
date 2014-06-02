@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/SlyMarbo/spin"
 )
 
 // connV3 is a spdy.Conn implementing SPDY/3. This is used in both
@@ -26,40 +28,41 @@ import (
 // or NewClientConn.
 type connV3 struct {
 	sync.Mutex
-	remoteAddr          string
-	server              *http.Server
-	conn                net.Conn
-	buf                 *bufio.Reader
-	tlsState            *tls.ConnectionState
-	streams             map[StreamID]Stream            // map of active streams.
-	output              [8]chan Frame                  // one output channel per priority level.
-	pings               map[uint32]chan<- Ping         // response channel for pings.
-	nextPingID          uint32                         // next outbound ping ID.
-	compressor          Compressor                     // outbound compression state.
-	decompressor        Decompressor                   // inbound decompression state.
-	receivedSettings    Settings                       // settings sent by client.
-	lastPushStreamID    StreamID                       // last push stream ID. (even)
-	lastRequestStreamID StreamID                       // last request stream ID. (odd)
-	oddity              StreamID                       // whether locally-sent streams are odd or even.
-	initialWindowSize   uint32                         // initial transport window.
-	initialWindowSizeM  sync.Mutex                     // mutex for initialWindowSize
-	goawayReceived      bool                           // goaway has been received.
-	goawaySent          bool                           // goaway has been sent.
-	numBenignErrors     int                            // number of non-serious errors encountered.
-	requestStreamLimit  *streamLimit                   // Limit on streams started by the client.
-	pushStreamLimit     *streamLimit                   // Limit on streams started by the server.
-	vectorIndex         uint16                         // current limit on the credential vector size.
-	certificates        map[uint16][]*x509.Certificate // certificates received in CREDENTIAL frames and TLS handshake.
-	pushRequests        map[StreamID]*http.Request     // map of requests sent in server pushes.
-	pushReceiver        Receiver                       // Receiver to call for server Pushes.
-	stop                chan bool                      // this channel is closed when the connection closes.
-	sending             chan struct{}                  // this channel is used to ensure pending frames are sent.
-	init                func()                         // this function is called before the connection begins.
-	readTimeout         time.Duration                  // optional timeout for network reads.
-	writeTimeout        time.Duration                  // optional timeout for network writes.
-	flowControl         FlowControl                    // flow control module.
-	pushedResources     map[Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
-	shutdownOnce        sync.Once                      // used to ensure clean shutdown.
+	remoteAddr            string
+	server                *http.Server
+	conn                  net.Conn
+	connLock              spin.Lock // protects the interface value of the above conn.
+	buf                   *bufio.Reader
+	tlsState              *tls.ConnectionState
+	streams               map[StreamID]Stream            // map of active streams.
+	output                [8]chan Frame                  // one output channel per priority level.
+	pings                 map[uint32]chan<- Ping         // response channel for pings.
+	nextPingID            uint32                         // next outbound ping ID.
+	compressor            Compressor                     // outbound compression state.
+	decompressor          Decompressor                   // inbound decompression state.
+	receivedSettings      Settings                       // settings sent by client.
+	lastPushStreamID      StreamID                       // last push stream ID. (even)
+	lastRequestStreamID   StreamID                       // last request stream ID. (odd)
+	oddity                StreamID                       // whether locally-sent streams are odd or even.
+	initialWindowSize     uint32                         // initial transport window.
+	initialWindowSizeLock spin.Lock                      // lock for initialWindowSize
+	goawayReceived        bool                           // goaway has been received.
+	goawaySent            bool                           // goaway has been sent.
+	numBenignErrors       int                            // number of non-serious errors encountered.
+	requestStreamLimit    *streamLimit                   // Limit on streams started by the client.
+	pushStreamLimit       *streamLimit                   // Limit on streams started by the server.
+	vectorIndex           uint16                         // current limit on the credential vector size.
+	certificates          map[uint16][]*x509.Certificate // certificates received in CREDENTIAL frames and TLS handshake.
+	pushRequests          map[StreamID]*http.Request     // map of requests sent in server pushes.
+	pushReceiver          Receiver                       // Receiver to call for server Pushes.
+	stop                  chan bool                      // this channel is closed when the connection closes.
+	sending               chan struct{}                  // this channel is used to ensure pending frames are sent.
+	init                  func()                         // this function is called before the connection begins.
+	readTimeout           time.Duration                  // optional timeout for network reads.
+	writeTimeout          time.Duration                  // optional timeout for network writes.
+	flowControl           FlowControl                    // flow control module.
+	pushedResources       map[Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
+	shutdownOnce          sync.Once                      // used to ensure clean shutdown.
 
 	// SPDY/3.1
 	subversion                int            // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
@@ -161,9 +164,10 @@ func (conn *connV3) Conn() net.Conn {
 // InitialWindowSize gives the most recently-received value for
 // the INITIAL_WINDOW_SIZE setting.
 func (conn *connV3) InitialWindowSize() (uint32, error) {
-	conn.initialWindowSizeM.Lock()
-	defer conn.initialWindowSizeM.Unlock()
-	return conn.initialWindowSize, nil
+	conn.initialWindowSizeLock.Lock()
+	i := conn.initialWindowSize
+	conn.initialWindowSizeLock.Unlock()
+	return i, nil
 }
 
 // Ping is used by spdy.PingServer and spdy.PingClient to send
@@ -1122,7 +1126,7 @@ func (conn *connV3) processFrame(frame Frame) bool {
 			switch setting.ID {
 			case SETTINGS_INITIAL_WINDOW_SIZE:
 				conn.Lock()
-				conn.initialWindowSizeM.Lock()
+				conn.initialWindowSizeLock.Lock()
 				initial := int64(conn.initialWindowSize)
 				current := conn.connectionWindowSize
 				inbound := int64(setting.Value)
@@ -1134,7 +1138,7 @@ func (conn *connV3) processFrame(frame Frame) bool {
 					}
 					conn.initialWindowSize = setting.Value
 				}
-				conn.initialWindowSizeM.Unlock()
+				conn.initialWindowSizeLock.Unlock()
 				conn.Unlock()
 
 			case SETTINGS_MAX_CONCURRENT_STREAMS:

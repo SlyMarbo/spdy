@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/SlyMarbo/spin"
 )
 
 // connV2 is a spdy.Conn implementing SPDY/2. This is used in both
@@ -25,37 +27,38 @@ import (
 // or NewClientConn.
 type connV2 struct {
 	sync.Mutex
-	remoteAddr          string
-	server              *http.Server
-	conn                net.Conn
-	buf                 *bufio.Reader
-	tlsState            *tls.ConnectionState
-	streams             map[StreamID]Stream            // map of active streams.
-	output              [8]chan Frame                  // one output channel per priority level.
-	pings               map[uint32]chan<- Ping         // response channel for pings.
-	nextPingID          uint32                         // next outbound ping ID.
-	compressor          Compressor                     // outbound compression state.
-	decompressor        Decompressor                   // inbound decompression state.
-	receivedSettings    Settings                       // settings sent by client.
-	lastPushStreamID    StreamID                       // last push stream ID. (even)
-	lastRequestStreamID StreamID                       // last request stream ID. (odd)
-	oddity              StreamID                       // whether locally-sent streams are odd or even.
-	initialWindowSize   uint32                         // initial transport window.
-	initialWindowSizeM  sync.Mutex                     // mutex for initialWindowSize
-	goawayReceived      bool                           // goaway has been received.
-	goawaySent          bool                           // goaway has been sent.
-	numBenignErrors     int                            // number of non-serious errors encountered.
-	requestStreamLimit  *streamLimit                   // Limit on streams started by the client.
-	pushStreamLimit     *streamLimit                   // Limit on streams started by the server.
-	pushRequests        map[StreamID]*http.Request     // map of requests sent in server pushes.
-	pushReceiver        Receiver                       // Receiver to call for server Pushes.
-	stop                chan bool                      // this channel is closed when the connection closes.
-	sending             chan struct{}                  // this channel is used to ensure pending frames are sent.
-	init                func()                         // this function is called before the connection begins.
-	readTimeout         time.Duration                  // optional timeout for network reads.
-	writeTimeout        time.Duration                  // optional timeout for network writes.
-	pushedResources     map[Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
-	shutdownOnce        sync.Once                      // used to ensure clean shutdown.
+	remoteAddr            string
+	server                *http.Server
+	conn                  net.Conn
+	connLock              spin.Lock // protects the interface value of the above conn.
+	buf                   *bufio.Reader
+	tlsState              *tls.ConnectionState
+	streams               map[StreamID]Stream            // map of active streams.
+	output                [8]chan Frame                  // one output channel per priority level.
+	pings                 map[uint32]chan<- Ping         // response channel for pings.
+	nextPingID            uint32                         // next outbound ping ID.
+	compressor            Compressor                     // outbound compression state.
+	decompressor          Decompressor                   // inbound decompression state.
+	receivedSettings      Settings                       // settings sent by client.
+	lastPushStreamID      StreamID                       // last push stream ID. (even)
+	lastRequestStreamID   StreamID                       // last request stream ID. (odd)
+	oddity                StreamID                       // whether locally-sent streams are odd or even.
+	initialWindowSize     uint32                         // initial transport window.
+	initialWindowSizeLock spin.Lock                      // lock for initialWindowSize
+	goawayReceived        bool                           // goaway has been received.
+	goawaySent            bool                           // goaway has been sent.
+	numBenignErrors       int                            // number of non-serious errors encountered.
+	requestStreamLimit    *streamLimit                   // Limit on streams started by the client.
+	pushStreamLimit       *streamLimit                   // Limit on streams started by the server.
+	pushRequests          map[StreamID]*http.Request     // map of requests sent in server pushes.
+	pushReceiver          Receiver                       // Receiver to call for server Pushes.
+	stop                  chan bool                      // this channel is closed when the connection closes.
+	sending               chan struct{}                  // this channel is used to ensure pending frames are sent.
+	init                  func()                         // this function is called before the connection begins.
+	readTimeout           time.Duration                  // optional timeout for network reads.
+	writeTimeout          time.Duration                  // optional timeout for network writes.
+	pushedResources       map[Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
+	shutdownOnce          sync.Once                      // used to ensure clean shutdown.
 }
 
 // Close ends the connection, cleaning up relevant resources.
@@ -105,10 +108,12 @@ func (conn *connV2) shutdown() {
 		close(conn.stop)
 	}
 
+	conn.connLock.Lock()
 	if conn.conn != nil {
 		conn.conn.Close()
 		conn.conn = nil
 	}
+	conn.connLock.Unlock()
 
 	for _, stream := range conn.streams {
 		if err := stream.Close(); err != nil {
@@ -142,17 +147,19 @@ func (conn *connV2) CloseNotify() <-chan bool {
 }
 
 func (conn *connV2) Conn() net.Conn {
-	conn.Lock()
-	defer conn.Unlock()
-	return conn.conn
+	conn.connLock.Lock()
+	c := conn.conn
+	conn.connLock.Unlock()
+	return c
 }
 
 // InitialWindowSize gives the most recently-received value for
 // the INITIAL_WINDOW_SIZE setting.
 func (conn *connV2) InitialWindowSize() (uint32, error) {
-	conn.initialWindowSizeM.Lock()
-	defer conn.initialWindowSizeM.Unlock()
-	return conn.initialWindowSize, nil
+	conn.initialWindowSizeLock.Lock()
+	i := conn.initialWindowSize
+	conn.initialWindowSizeLock.Unlock()
+	return i, nil
 }
 
 // Ping is used by spdy.PingServer and spdy.PingClient to send
@@ -1026,9 +1033,9 @@ func (conn *connV2) processFrame(frame Frame) bool {
 			conn.receivedSettings[setting.ID] = setting
 			switch setting.ID {
 			case SETTINGS_INITIAL_WINDOW_SIZE:
-				conn.initialWindowSizeM.Lock()
+				conn.initialWindowSizeLock.Lock()
 				conn.initialWindowSize = setting.Value
-				conn.initialWindowSizeM.Unlock()
+				conn.initialWindowSizeLock.Unlock()
 
 			case SETTINGS_MAX_CONCURRENT_STREAMS:
 				if conn.server == nil {
@@ -1249,24 +1256,30 @@ func (conn *connV2) selectFrameToSend(prioritise bool) (frame Frame) {
 
 // Add timeouts if requested by the server.
 func (conn *connV2) refreshTimeouts() {
+	conn.connLock.Lock()
 	if d := conn.readTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetReadDeadline(time.Now().Add(d))
 	}
 	if d := conn.writeTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetWriteDeadline(time.Now().Add(d))
 	}
+	conn.connLock.Unlock()
 }
 
 // Add timeouts if requested by the server.
 func (conn *connV2) refreshReadTimeout() {
+	conn.connLock.Lock()
 	if d := conn.readTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetReadDeadline(time.Now().Add(d))
 	}
+	conn.connLock.Unlock()
 }
 
 // Add timeouts if requested by the server.
 func (conn *connV2) refreshWriteTimeout() {
+	conn.connLock.Lock()
 	if d := conn.writeTimeout; d != 0 && conn.conn != nil {
 		conn.conn.SetWriteDeadline(time.Now().Add(d))
 	}
+	conn.connLock.Unlock()
 }
