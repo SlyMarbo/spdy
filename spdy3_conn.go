@@ -59,6 +59,7 @@ type connV3 struct {
 	writeTimeout        time.Duration                  // optional timeout for network writes.
 	flowControl         FlowControl                    // flow control module.
 	pushedResources     map[Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
+	shutdownOnce        sync.Once                      // used to ensure clean shutdown.
 
 	// SPDY/3.1
 	subversion                int            // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
@@ -71,14 +72,16 @@ type connV3 struct {
 // Close ends the connection, cleaning up relevant resources.
 // Close can be called multiple times safely.
 func (conn *connV3) Close() (err error) {
-	conn.Lock()
-	defer conn.Unlock()
+	conn.shutdownOnce.Do(conn.shutdown)
+	return nil
+}
 
+func (conn *connV3) shutdown() {
 	if conn.closed() {
-		return nil
+		return
 	}
 
-	// Inform the other endpoint that the connection is closing.
+	// Try to inform the other endpoint that the connection is closing.
 	if !conn.goawaySent && conn.sending == nil {
 		goaway := new(goawayFrameV3)
 		if conn.server != nil {
@@ -119,8 +122,7 @@ func (conn *connV3) Close() (err error) {
 	}
 
 	for _, stream := range conn.streams {
-		err = stream.Close()
-		if err != nil {
+		if err := stream.Close(); err != nil {
 			debug.Println(err)
 		}
 	}
@@ -144,18 +146,16 @@ func (conn *connV3) Close() (err error) {
 			close(stream)
 		}
 	}
-
-	return nil
 }
 
-func (c *connV3) CloseNotify() <-chan bool {
-	return c.stop
+func (conn *connV3) CloseNotify() <-chan bool {
+	return conn.stop
 }
 
-func (c *connV3) Conn() net.Conn {
-	c.Lock()
-	defer c.Unlock()
-	return c.conn
+func (conn *connV3) Conn() net.Conn {
+	conn.Lock()
+	defer conn.Unlock()
+	return conn.conn
 }
 
 // InitialWindowSize gives the most recently-received value for
@@ -395,14 +395,14 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	return out, nil
 }
 
-func (c *connV3) RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error) {
+func (conn *connV3) RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error) {
 	res := new(response)
 	res.Request = request
 	res.Data = new(bytes.Buffer)
 	res.Receiver = receiver
 
 	// Send the request.
-	stream, err := c.Request(request, res, priority)
+	stream, err := conn.Request(request, res, priority)
 	if err != nil {
 		return nil, err
 	}
@@ -440,30 +440,30 @@ func (conn *connV3) Run() error {
 	return nil
 }
 
-func (c *connV3) SetFlowControl(f FlowControl) error {
-	c.Lock()
-	c.flowControl = f
-	c.Unlock()
+func (conn *connV3) SetFlowControl(f FlowControl) error {
+	conn.Lock()
+	conn.flowControl = f
+	conn.Unlock()
 	return nil
 }
 
-func (c *connV3) SetTimeout(d time.Duration) {
-	c.Lock()
-	c.readTimeout = d
-	c.writeTimeout = d
-	c.Unlock()
+func (conn *connV3) SetTimeout(d time.Duration) {
+	conn.Lock()
+	conn.readTimeout = d
+	conn.writeTimeout = d
+	conn.Unlock()
 }
 
-func (c *connV3) SetReadTimeout(d time.Duration) {
-	c.Lock()
-	c.readTimeout = d
-	c.Unlock()
+func (conn *connV3) SetReadTimeout(d time.Duration) {
+	conn.Lock()
+	conn.readTimeout = d
+	conn.Unlock()
 }
 
-func (c *connV3) SetWriteTimeout(d time.Duration) {
-	c.Lock()
-	c.writeTimeout = d
-	c.Unlock()
+func (conn *connV3) SetWriteTimeout(d time.Duration) {
+	conn.Lock()
+	conn.writeTimeout = d
+	conn.Unlock()
 }
 
 // closed indicates whether the connection has
