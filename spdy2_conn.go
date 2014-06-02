@@ -419,15 +419,6 @@ func (conn *connV2) Run() error {
 		conn.init()
 	}
 
-	// Ensure no panics happen.
-	defer func() {
-		if v := recover(); v != nil {
-			if !conn.closed() {
-				log.Println("Encountered error in connection:", v)
-			}
-		}
-	}()
-
 	// Start the main loop.
 	go conn.readFrames()
 
@@ -1106,6 +1097,15 @@ func (conn *connV2) processFrame(frame Frame) bool {
 // Returning from readFrames begins the cleanup and exit
 // process for this connection.
 func (conn *connV2) readFrames() {
+	// Ensure no panics happen.
+	defer func() {
+		if v := recover(); v != nil {
+			if !conn.closed() {
+				log.Println("Encountered receive error:", v)
+			}
+		}
+	}()
+
 	for {
 
 		// This is the mechanism for handling too many benign errors.
