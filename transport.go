@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -330,20 +329,20 @@ func (r *response) ReceiveData(req *http.Request, data []byte, finished bool) {
 	}
 }
 
-var statusRegex = regexp.MustCompile(`\A\s*(?P<code>\d+)`)
-
 func (r *response) ReceiveHeader(req *http.Request, header http.Header) {
 	r.headerM.Lock()
 	if r.Header == nil {
 		r.Header = make(http.Header)
 	}
 	updateHeader(r.Header, header)
-	if status := r.Header.Get(":status"); status != "" && statusRegex.MatchString(status) {
-		if matches := statusRegex.FindAllStringSubmatch(status, -1); matches != nil {
-			s, err := strconv.Atoi(matches[0][1])
-			if err == nil {
-				r.StatusCode = s
-			}
+	if status := r.Header.Get(":status"); status != "" {
+		status = strings.TrimSpace(status)
+		if i := strings.Index(status, " "); i >= 0 {
+			status = status[:i]
+		}
+		s, err := strconv.Atoi(status)
+		if err == nil {
+			r.StatusCode = s
 		}
 	}
 	if r.Receiver != nil {
