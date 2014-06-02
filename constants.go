@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net/url"
 	"strings"
-	"sync"
 )
 
 // Important errors.
@@ -149,8 +148,11 @@ const DEFAULT_INITIAL_CLIENT_WINDOW_SIZE = 10485760
 // Maximum delta window size field for WINDOW_UPDATE.
 const MAX_DELTA_WINDOW_SIZE = 0x7fffffff
 
-// Header sent by the client to initiate the connection.
-const SPDY4_CLIENT_CONNECTION_HEADER = "FOO * HTTP/2.0\r\n\r\nBA\r\n\r\n"
+// The default maximum number of concurrent streams.
+const DEFAULT_STREAM_LIMIT = 1000
+
+// NO_STREAM_LIMIT can be used to disable the stream limit.
+const NO_STREAM_LIMIT = 0x80000000
 
 var statusCodeText = map[StatusCode]string{
 	RST_STREAM_PROTOCOL_ERROR:        "PROTOCOL_ERROR",
@@ -175,62 +177,6 @@ var settingText = map[uint32]string{
 	SETTINGS_DOWNLOAD_RETRANS_RATE:          "DOWNLOAD_RETRANS_RATE",
 	SETTINGS_INITIAL_WINDOW_SIZE:            "INITIAL_WINDOW_SIZE",
 	SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE: "CLIENT_CERTIFICATE_VECTOR_SIZE",
-}
-
-// streamLimit is used to add and enforce
-// a limit on the number of concurrently
-// active streams.
-type streamLimit struct {
-	sync.Mutex
-	limit   uint32
-	current uint32
-}
-
-func newStreamLimit(limit uint32) *streamLimit {
-	out := new(streamLimit)
-	out.limit = limit
-	return out
-}
-
-// The default maximum number of concurrent streams.
-const DEFAULT_STREAM_LIMIT = 1000
-
-// NO_STREAM_LIMIT can be used to disable the stream limit.
-const NO_STREAM_LIMIT = 0x80000000
-
-// SetLimit is used to modify the stream limit. If the
-// limit is set to NO_STREAM_LIMIT, then the limiting
-// is disabled.
-func (s *streamLimit) SetLimit(l uint32) {
-	s.Lock()
-	s.limit = l
-	s.Unlock()
-}
-
-// Limit returns the current limit.
-func (s *streamLimit) Limit() uint32 {
-	return s.limit
-}
-
-// Add is called when a new stream is to be opened. Add
-// returns a bool indicating whether the stream is safe
-// open.
-func (s *streamLimit) Add() bool {
-	s.Lock()
-	defer s.Unlock()
-	if s.current >= s.limit {
-		return false
-	}
-	s.current++
-	return true
-}
-
-// Close is called when a stream is closed; thus freeing
-// up a slot.
-func (s *streamLimit) Close() {
-	s.Lock()
-	s.current--
-	s.Unlock()
 }
 
 // statusCodeIsFatal returns a bool

@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SlyMarbo/spdy/spdyutils"
 	"github.com/SlyMarbo/spin"
 )
 
@@ -49,8 +50,8 @@ type connV3 struct {
 	goawayReceived        bool                           // goaway has been received.
 	goawaySent            bool                           // goaway has been sent.
 	numBenignErrors       int                            // number of non-serious errors encountered.
-	requestStreamLimit    *streamLimit                   // Limit on streams started by the client.
-	pushStreamLimit       *streamLimit                   // Limit on streams started by the server.
+	requestStreamLimit    *spdyutils.StreamLimit         // Limit on streams started by the client.
+	pushStreamLimit       *spdyutils.StreamLimit         // Limit on streams started by the server.
 	vectorIndex           uint16                         // current limit on the credential vector size.
 	certificates          map[uint16][]*x509.Certificate // certificates received in CREDENTIAL frames and TLS handshake.
 	pushRequests          map[StreamID]*http.Request     // map of requests sent in server pushes.

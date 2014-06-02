@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/SlyMarbo/spdy/spdyutils"
 )
 
 // NewServerConn is used to create a SPDY connection, using the given
@@ -58,8 +60,8 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		out.lastRequestStreamID = 0
 		out.oddity = 0
 		out.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
-		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
-		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
+		out.requestStreamLimit = spdyutils.NewStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushStreamLimit = spdyutils.NewStreamLimit(NO_STREAM_LIMIT)
 		out.vectorIndex = 8
 		out.certificates = make(map[uint16][]*x509.Certificate, 8)
 		if out.tlsState != nil && out.tlsState.PeerCertificates != nil {
@@ -114,8 +116,8 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		out.oddity = 0
 		out.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
 		out.connectionWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
-		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
-		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
+		out.requestStreamLimit = spdyutils.NewStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushStreamLimit = spdyutils.NewStreamLimit(NO_STREAM_LIMIT)
 		out.vectorIndex = 8
 		out.stop = make(chan bool)
 		out.init = func() {
@@ -166,8 +168,8 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (spdyCon
 		out.lastRequestStreamID = 0
 		out.oddity = 0
 		out.initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE
-		out.requestStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
-		out.pushStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
+		out.requestStreamLimit = spdyutils.NewStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.pushStreamLimit = spdyutils.NewStreamLimit(NO_STREAM_LIMIT)
 		out.stop = make(chan bool)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.

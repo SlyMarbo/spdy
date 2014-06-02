@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SlyMarbo/spdy/spdyutils"
 	"github.com/SlyMarbo/spin"
 )
 
@@ -48,8 +49,8 @@ type connV2 struct {
 	goawayReceived        bool                           // goaway has been received.
 	goawaySent            bool                           // goaway has been sent.
 	numBenignErrors       int                            // number of non-serious errors encountered.
-	requestStreamLimit    *streamLimit                   // Limit on streams started by the client.
-	pushStreamLimit       *streamLimit                   // Limit on streams started by the server.
+	requestStreamLimit    *spdyutils.StreamLimit         // Limit on streams started by the client.
+	pushStreamLimit       *spdyutils.StreamLimit         // Limit on streams started by the server.
 	pushRequests          map[StreamID]*http.Request     // map of requests sent in server pushes.
 	pushReceiver          Receiver                       // Receiver to call for server Pushes.
 	stop                  chan bool                      // this channel is closed when the connection closes.

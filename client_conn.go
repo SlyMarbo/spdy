@@ -10,6 +10,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+
+	"github.com/SlyMarbo/spdy/spdyutils"
 )
 
 // init modifies http.DefaultClient to use a spdy.Transport, enabling
@@ -56,8 +58,8 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 		out.lastRequestStreamID = 0
 		out.oddity = 1
 		out.initialWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-		out.requestStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
-		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.requestStreamLimit = spdyutils.NewStreamLimit(NO_STREAM_LIMIT)
+		out.pushStreamLimit = spdyutils.NewStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
 		out.stop = make(chan bool)
@@ -102,8 +104,8 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 		out.oddity = 1
 		out.initialWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
 		out.connectionWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-		out.requestStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
-		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.requestStreamLimit = spdyutils.NewStreamLimit(NO_STREAM_LIMIT)
+		out.pushStreamLimit = spdyutils.NewStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
 		out.stop = make(chan bool)
@@ -148,8 +150,8 @@ func NewClientConn(conn net.Conn, push Receiver, version float64) (spdyConn Conn
 		out.lastRequestStreamID = 0
 		out.oddity = 1
 		out.initialWindowSize = DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
-		out.requestStreamLimit = newStreamLimit(NO_STREAM_LIMIT)
-		out.pushStreamLimit = newStreamLimit(DEFAULT_STREAM_LIMIT)
+		out.requestStreamLimit = spdyutils.NewStreamLimit(NO_STREAM_LIMIT)
+		out.pushStreamLimit = spdyutils.NewStreamLimit(DEFAULT_STREAM_LIMIT)
 		out.pushReceiver = push
 		out.pushRequests = make(map[StreamID]*http.Request)
 		out.stop = make(chan bool)
