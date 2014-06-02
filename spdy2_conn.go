@@ -383,6 +383,8 @@ func (conn *connV2) Request(request *http.Request, receiver Receiver, priority P
 	out.header = make(http.Header)
 	out.stop = conn.stop
 	out.finished = make(chan struct{})
+	out.headerChan = make(chan func())
+	go out.processFrames()
 
 	// Store in the connection map.
 	conn.streams[syn.StreamID] = out

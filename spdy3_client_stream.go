@@ -17,6 +17,7 @@ import (
 type clientStreamV3 struct {
 	sync.Mutex
 	recvMutex    sync.Mutex
+	shutdownOnce sync.Once
 	conn         Conn
 	streamID     StreamID
 	flow         *flowControl
@@ -25,6 +26,7 @@ type clientStreamV3 struct {
 	request      *http.Request
 	receiver     Receiver
 	header       http.Header
+	headerChan   chan func()
 	responseCode int
 	stop         <-chan bool
 	finished     chan struct{}
@@ -86,8 +88,11 @@ func (s *clientStreamV3) WriteHeader(int) {
 
 // Close is used to stop the stream safely.
 func (s *clientStreamV3) Close() error {
-	s.Lock()
-	defer s.Unlock()
+	s.shutdownOnce.Do(s.shutdown)
+	return nil
+}
+
+func (s *clientStreamV3) shutdown() {
 	s.writeHeader()
 	if s.state != nil {
 		if s.state.OpenThere() {
@@ -107,12 +112,16 @@ func (s *clientStreamV3) Close() error {
 	default:
 		close(s.finished)
 	}
+	select {
+	case <-s.headerChan:
+	default:
+		close(s.headerChan)
+	}
 	s.output = nil
 	s.request = nil
 	s.receiver = nil
 	s.header = nil
 	s.stop = nil
-	return nil
 }
 
 func (s *clientStreamV3) Read(out []byte) (int, error) {
@@ -150,34 +159,34 @@ func (s *clientStreamV3) ReceiveFrame(frame Frame) error {
 
 		// Give to the client.
 		s.flow.Receive(frame.Data)
-		go func() {
+		s.headerChan <- func() {
 			s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
 				close(s.finished)
 			}
-		}()
+		}
 
 	case *synReplyFrameV3:
-		go func() {
+		s.headerChan <- func() {
 			s.receiver.ReceiveHeader(s.request, frame.Header)
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
 				close(s.finished)
 			}
-		}()
+		}
 
 	case *headersFrameV3:
-		go func() {
+		s.headerChan <- func() {
 			s.receiver.ReceiveHeader(s.request, frame.Header)
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
 				close(s.finished)
 			}
-		}()
+		}
 
 	case *windowUpdateFrameV3:
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
@@ -257,4 +266,10 @@ func (s *clientStreamV3) writeHeader() {
 	}
 
 	s.output <- header
+}
+
+func (s *clientStreamV3) processFrames() {
+	for f := range s.headerChan {
+		f()
+	}
 }

@@ -392,6 +392,8 @@ func (conn *connV3) Request(request *http.Request, receiver Receiver, priority P
 	out.stop = conn.stop
 	out.finished = make(chan struct{})
 	out.AddFlowControl(conn.flowControl)
+	out.headerChan = make(chan func())
+	go out.processFrames()
 
 	// Store in the connection map.
 	conn.streams[syn.StreamID] = out

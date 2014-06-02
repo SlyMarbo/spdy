@@ -17,6 +17,7 @@ import (
 type clientStreamV2 struct {
 	sync.Mutex
 	recvMutex    sync.Mutex
+	shutdownOnce sync.Once
 	conn         Conn
 	streamID     StreamID
 	state        *StreamState
@@ -24,6 +25,7 @@ type clientStreamV2 struct {
 	request      *http.Request
 	receiver     Receiver
 	header       http.Header
+	headerChan   chan func()
 	responseCode int
 	stop         <-chan bool
 	finished     chan struct{}
@@ -86,8 +88,11 @@ func (s *clientStreamV2) WriteHeader(int) {
 // Close is used to cancel a mid-air
 // request.
 func (s *clientStreamV2) Close() error {
-	s.Lock()
-	defer s.Unlock()
+	s.shutdownOnce.Do(s.shutdown)
+	return nil
+}
+
+func (s *clientStreamV2) shutdown() {
 	s.writeHeader()
 	if s.state != nil {
 		if s.state.OpenThere() {
@@ -104,12 +109,16 @@ func (s *clientStreamV2) Close() error {
 	default:
 		close(s.finished)
 	}
+	select {
+	case <-s.headerChan:
+	default:
+		close(s.headerChan)
+	}
 	s.output = nil
 	s.request = nil
 	s.receiver = nil
 	s.header = nil
 	s.stop = nil
-	return nil
 }
 
 func (s *clientStreamV2) Read(out []byte) (int, error) {
@@ -146,23 +155,34 @@ func (s *clientStreamV2) ReceiveFrame(frame Frame) error {
 		}
 
 		// Give to the client.
-		s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
+		s.headerChan <- func() {
+			s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
 
-		if frame.Flags.FIN() {
-			s.state.CloseThere()
-			close(s.finished)
+			if frame.Flags.FIN() {
+				s.state.CloseThere()
+				close(s.finished)
+			}
 		}
 
 	case *synReplyFrameV2:
-		s.receiver.ReceiveHeader(s.request, frame.Header)
+		s.headerChan <- func() {
+			s.receiver.ReceiveHeader(s.request, frame.Header)
 
-		if frame.Flags.FIN() {
-			s.state.CloseThere()
-			close(s.finished)
+			if frame.Flags.FIN() {
+				s.state.CloseThere()
+				close(s.finished)
+			}
 		}
 
 	case *headersFrameV2:
-		s.receiver.ReceiveHeader(s.request, frame.Header)
+		s.headerChan <- func() {
+			s.receiver.ReceiveHeader(s.request, frame.Header)
+
+			if frame.Flags.FIN() {
+				s.state.CloseThere()
+				close(s.finished)
+			}
+		}
 
 	case *windowUpdateFrameV2:
 		// Ignore.
@@ -228,4 +248,10 @@ func (s *clientStreamV2) writeHeader() {
 	}
 
 	s.output <- header
+}
+
+func (s *clientStreamV2) processFrames() {
+	for f := range s.headerChan {
+		f()
+	}
 }
