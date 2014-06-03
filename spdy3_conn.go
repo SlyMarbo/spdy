@@ -58,6 +58,7 @@ type connV3 struct {
 	pushReceiver          Receiver                       // Receiver to call for server Pushes.
 	stop                  chan bool                      // this channel is closed when the connection closes.
 	sending               chan struct{}                  // this channel is used to ensure pending frames are sent.
+	sendingLock           spin.Lock                      // protects changes to sending's value.
 	init                  func()                         // this function is called before the connection begins.
 	readTimeout           time.Duration                  // optional timeout for network reads.
 	writeTimeout          time.Duration                  // optional timeout for network writes.
@@ -86,7 +87,10 @@ func (conn *connV3) shutdown() {
 	}
 
 	// Try to inform the other endpoint that the connection is closing.
-	if !conn.goawaySent && conn.sending == nil {
+	conn.sendingLock.Lock()
+	isSending := conn.sending != nil
+	conn.sendingLock.Unlock()
+	if !conn.goawaySent && !isSending {
 		goaway := new(goawayFrameV3)
 		if conn.server != nil {
 			goaway.LastGoodStreamID = conn.lastRequestStreamID
@@ -102,14 +106,18 @@ func (conn *connV3) shutdown() {
 	}
 
 	// Ensure any pending frames are sent.
+	conn.sendingLock.Lock()
 	if conn.sending == nil {
 		conn.sending = make(chan struct{})
+		conn.sendingLock.Unlock()
 		select {
 		case <-conn.sending:
 		case <-time.After(200 * time.Millisecond):
 		}
+		conn.sendingLock.Lock()
 	}
 	conn.sending = nil
+	conn.sendingLock.Unlock()
 
 	select {
 	case _, ok := <-conn.stop:
@@ -1032,11 +1040,11 @@ func (conn *connV3) handleReadWriteError(err error) {
 	}
 
 	// Make sure conn.Close succeeds and sending stops.
-	conn.Lock()
+	conn.sendingLock.Lock()
 	if conn.sending == nil {
 		conn.sending = make(chan struct{})
 	}
-	conn.Unlock()
+	conn.sendingLock.Unlock()
 
 	conn.Close()
 }
@@ -1407,13 +1415,13 @@ func (conn *connV3) selectFrameToSend(prioritise bool) (frame Frame) {
 		// No frames are immediately pending, so if the
 		// connection is being closed, cease sending
 		// safely.
-		conn.Lock()
+		conn.sendingLock.Lock()
 		if conn.sending != nil {
 			close(conn.sending)
-			conn.Unlock()
+			conn.sendingLock.Unlock()
 			runtime.Goexit()
 		}
-		conn.Unlock()
+		conn.sendingLock.Unlock()
 	}
 
 	// Wait for any frame.
