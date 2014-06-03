@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"sync"
+
+	"github.com/SlyMarbo/spdy/spdyutils"
 )
 
 // pushStreamV2 is a structure that implements the
@@ -20,7 +22,7 @@ type pushStreamV2 struct {
 	conn     Conn
 	streamID StreamID
 	origin   Stream
-	state    *StreamState
+	state    *spdyutils.StreamState
 	output   chan<- Frame
 	header   http.Header
 	stop     <-chan bool
@@ -140,7 +142,7 @@ func (p *pushStreamV2) Run() error {
 	return nil
 }
 
-func (p *pushStreamV2) State() *StreamState {
+func (p *pushStreamV2) State() *spdyutils.StreamState {
 	return p.state
 }
 

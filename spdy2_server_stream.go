@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+
+	"github.com/SlyMarbo/spdy/spdyutils"
 )
 
 // serverStreamV2 is a structure that implements the
@@ -22,7 +24,7 @@ type serverStreamV2 struct {
 	conn           Conn
 	streamID       StreamID
 	requestBody    *bytes.Buffer
-	state          *StreamState
+	state          *spdyutils.StreamState
 	output         chan<- Frame
 	request        *http.Request
 	handler        http.Handler
@@ -276,7 +278,7 @@ func (s *serverStreamV2) Run() error {
 	return nil
 }
 
-func (s *serverStreamV2) State() *StreamState {
+func (s *serverStreamV2) State() *spdyutils.StreamState {
 	return s.state
 }
 

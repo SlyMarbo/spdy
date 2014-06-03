@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/SlyMarbo/spdy/spdyutils"
 )
 
 // clientStreamV3 is a structure that implements
@@ -21,7 +23,7 @@ type clientStreamV3 struct {
 	conn         Conn
 	streamID     StreamID
 	flow         *flowControl
-	state        *StreamState
+	state        *spdyutils.StreamState
 	output       chan<- Frame
 	request      *http.Request
 	receiver     Receiver
@@ -226,7 +228,7 @@ func (s *clientStreamV3) Run() error {
 	return nil
 }
 
-func (s *clientStreamV3) State() *StreamState {
+func (s *clientStreamV3) State() *spdyutils.StreamState {
 	return s.state
 }
 

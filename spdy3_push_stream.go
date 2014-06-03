@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"sync"
+
+	"github.com/SlyMarbo/spdy/spdyutils"
 )
 
 // pushStreamV3 is a structure that implements the
@@ -21,7 +23,7 @@ type pushStreamV3 struct {
 	streamID StreamID
 	flow     *flowControl
 	origin   Stream
-	state    *StreamState
+	state    *spdyutils.StreamState
 	output   chan<- Frame
 	header   http.Header
 	stop     <-chan bool
@@ -146,7 +148,7 @@ func (p *pushStreamV3) Run() error {
 	return nil
 }
 
-func (p *pushStreamV3) State() *StreamState {
+func (p *pushStreamV3) State() *spdyutils.StreamState {
 	return p.state
 }
 

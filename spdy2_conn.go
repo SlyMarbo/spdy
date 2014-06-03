@@ -264,7 +264,7 @@ func (conn *connV2) Push(resource string, origin Stream) (PushStream, error) {
 	out.conn = conn
 	out.streamID = newID
 	out.origin = origin
-	out.state = new(StreamState)
+	out.state = new(spdyutils.StreamState)
 	out.output = conn.output[3]
 	out.header = make(http.Header)
 	out.stop = conn.stop
@@ -376,7 +376,7 @@ func (conn *connV2) Request(request *http.Request, receiver Receiver, priority P
 	out := new(clientStreamV2)
 	out.conn = conn
 	out.streamID = syn.StreamID
-	out.state = new(StreamState)
+	out.state = new(spdyutils.StreamState)
 	out.state.CloseHere()
 	out.output = conn.output[0]
 	out.request = request
@@ -886,7 +886,7 @@ func (conn *connV2) newStream(frame *synStreamFrameV2, priority Priority) *serve
 	stream.conn = conn
 	stream.streamID = frame.StreamID
 	stream.requestBody = new(bytes.Buffer)
-	stream.state = new(StreamState)
+	stream.state = new(spdyutils.StreamState)
 	stream.output = conn.output[priority]
 	// stream.request initialised below
 	stream.handler = conn.server.Handler
