@@ -9,9 +9,6 @@ import (
 	"strings"
 )
 
-// SPDY version of this implementation.
-const DEFAULT_SPDY_VERSION = 3.1
-
 // Frame types in SPDY/2
 const (
 	SYN_STREAMv2    = 1

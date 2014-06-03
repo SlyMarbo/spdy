@@ -5,6 +5,9 @@ import (
 	"sort"
 )
 
+// SPDY version of this implementation.
+const DEFAULT_SPDY_VERSION = 3.1
+
 // Version factors.
 var supportedVersions = map[float64]struct{}{
 	2:   struct{}{},
