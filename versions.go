@@ -141,3 +141,50 @@ func defaultSPDYClientSettings(v float64, m uint32) Settings {
 	}
 	return nil
 }
+
+// frameNamesV4 provides the name for a particular SPDY/3
+// / HTTP/2.0 frame type.
+var frameNamesV4 = map[int]string{
+	DATAv4:             "DATA",
+	HEADERS_PRIORITYv4: "HEADERS+PRIORITY",
+	RST_STREAMv4:       "RST_STREAM",
+	SETTINGSv4:         "SETTINGS",
+	PUSH_PROMISEv4:     "PUSH_PROMISE",
+	PINGv4:             "PING",
+	GOAWAYv4:           "GOAWAY",
+	HEADERSv4:          "HEADERS",
+	WINDOW_UPDATEv4:    "WINDOW_UPDATE",
+	CREDENTIALv4:       "CREDENTIAL",
+}
+
+// frameNamesV3 provides the name for a particular SPDY/3
+// frame type.
+var frameNamesV3 = map[int]string{
+	SYN_STREAMv3:    "SYN_STREAM",
+	SYN_REPLYv3:     "SYN_REPLY",
+	RST_STREAMv3:    "RST_STREAM",
+	SETTINGSv3:      "SETTINGS",
+	PINGv3:          "PING",
+	GOAWAYv3:        "GOAWAY",
+	HEADERSv3:       "HEADERS",
+	WINDOW_UPDATEv3: "WINDOW_UPDATE",
+	CREDENTIALv3:    "CREDENTIAL",
+	CONTROL_FRAMEv3: "CONTROL_FRAME",
+	DATA_FRAMEv3:    "DATA_FRAME",
+}
+
+// frameNamesV2 provides the name for a particular SPDY/2
+// frame type.
+var frameNamesV2 = map[int]string{
+	SYN_STREAMv2:    "SYN_STREAM",
+	SYN_REPLYv2:     "SYN_REPLY",
+	RST_STREAMv2:    "RST_STREAM",
+	SETTINGSv2:      "SETTINGS",
+	NOOPv2:          "NOOP",
+	PINGv2:          "PING",
+	GOAWAYv2:        "GOAWAY",
+	HEADERSv2:       "HEADERS",
+	WINDOW_UPDATEv2: "WINDOW_UPDATE",
+	CONTROL_FRAMEv2: "CONTROL_FRAME",
+	DATA_FRAMEv2:    "DATA_FRAME",
+}

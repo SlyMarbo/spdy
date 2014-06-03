@@ -5,32 +5,12 @@
 package spdy
 
 import (
-	"errors"
 	"net/url"
 	"strings"
 )
 
-// Important errors.
-var (
-	ErrGoaway         = errors.New("Error: GOAWAY received.")
-	ErrConnNil        = errors.New("Error: Connection is nil.")
-	ErrNoFlowControl  = errors.New("Error: This connection does not use flow control.")
-	ErrConnectFail    = errors.New("Error: Failed to connect.")
-	ErrInvalidVersion = errors.New("Error: Invalid SPDY version.")
-)
-
 // SPDY version of this implementation.
 const DEFAULT_SPDY_VERSION = 3.1
-
-// MaxBenignErrors is the maximum number of minor errors each
-// connection will allow without ending the session.
-//
-// By default, MaxBenignErrors is set to 0, disabling checks
-// and allowing minor errors to go unchecked, although they
-// will still be reported to the debug logger. If it is
-// important that no errors go unchecked, such as when testing
-// another implementation, set MaxBenignErrors to 1 or higher.
-var MaxBenignErrors = 0
 
 // Frame types in SPDY/2
 const (
@@ -118,14 +98,6 @@ const (
 	SETTINGS_DOWNLOAD_RETRANS_RATE          = 6
 	SETTINGS_INITIAL_WINDOW_SIZE            = 7
 	SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE = 8
-)
-
-// State variables used internally in StreamState.
-const (
-	stateOpen uint8 = iota
-	stateHalfClosedHere
-	stateHalfClosedThere
-	stateClosed
 )
 
 // Maximum frame size (2 ** 24 -1).
