@@ -20,7 +20,7 @@ import (
 // NewServerConn is used to create a SPDY connection, using the given
 // net.Conn for the underlying connection, and the given http.Server to
 // configure the request serving.
-func NewServerConn(conn net.Conn, server *http.Server, version float64) (common.Conn, error) {
+func NewServerConn(conn net.Conn, server *http.Server, version, subversion int) (common.Conn, error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")
 	}
@@ -30,10 +30,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version float64) (common.
 
 	switch version {
 	case 3:
-		return spdy3.NewConn(conn, server, 0), nil
-
-	case 3.1:
-		return spdy3.NewConn(conn, server, 1), nil
+		return spdy3.NewConn(conn, server, subversion), nil
 
 	case 2:
 		return spdy2.NewConn(conn, server), nil
@@ -91,36 +88,30 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 		switch str {
 		case "spdy/2":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 2)
+				conn, err := NewServerConn(tlsConn, s, 2, 0)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		case "spdy/3":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3)
+				conn, err := NewServerConn(tlsConn, s, 3, 0)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		case "spdy/3.1":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3.1)
+				conn, err := NewServerConn(tlsConn, s, 3, 1)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		}
 	}
@@ -186,36 +177,30 @@ func ListenAndServeSPDY(addr string, certFile string, keyFile string, handler ht
 		switch str {
 		case "spdy/2":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 2)
+				conn, err := NewServerConn(tlsConn, s, 2, 0)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		case "spdy/3":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3)
+				conn, err := NewServerConn(tlsConn, s, 3, 0)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		case "spdy/3.1":
 			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3.1)
+				conn, err := NewServerConn(tlsConn, s, 3, 1)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		}
 	}
@@ -262,7 +247,7 @@ func ListenAndServeSPDY(addr string, certFile string, keyFile string, handler ht
 // ListenAndServeSPDYNoNPN creates a server that listens exclusively
 // for SPDY and (unlike the rest of the package) will not support
 // HTTPS.
-func ListenAndServeSPDYNoNPN(addr string, certFile string, keyFile string, handler http.Handler, version float64) error {
+func ListenAndServeSPDYNoNPN(addr string, certFile string, keyFile string, handler http.Handler, version, subversion int) error {
 	if addr == "" {
 		addr = ":https"
 	}
@@ -312,7 +297,7 @@ func ListenAndServeSPDYNoNPN(addr string, certFile string, keyFile string, handl
 			return e
 		}
 		tempDelay = 0
-		go serveSPDYNoNPN(rw, server, version)
+		go serveSPDYNoNPN(rw, server, version, subversion)
 	}
 }
 
@@ -350,7 +335,7 @@ func serveSPDY(conn net.Conn, srv *http.Server) {
 	return
 }
 
-func serveSPDYNoNPN(conn net.Conn, srv *http.Server, version float64) {
+func serveSPDYNoNPN(conn net.Conn, srv *http.Server, version, subversion int) {
 	defer func() {
 		if v := recover(); v != nil {
 			const size = 4096
@@ -375,14 +360,10 @@ func serveSPDYNoNPN(conn net.Conn, srv *http.Server, version float64) {
 		return
 	}
 
-	serverConn, err := NewServerConn(tlsConn, srv, version)
+	serverConn, err := NewServerConn(tlsConn, srv, version, subversion)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 	serverConn.Run()
-	serverConn = nil
-	runtime.GC()
-
-	return
 }

@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/url"
-	"runtime"
 	"strings"
 
 	"github.com/SlyMarbo/spdy/common"
@@ -64,36 +63,30 @@ func AddSPDY(srv *http.Server) {
 		switch str {
 		case "spdy/2":
 			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 2)
+				conn, err := NewServerConn(tlsConn, s, 2, 0)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		case "spdy/3":
 			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3)
+				conn, err := NewServerConn(tlsConn, s, 3, 0)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		case "spdy/3.1":
 			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3.1)
+				conn, err := NewServerConn(tlsConn, s, 3, 1)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 				conn.Run()
-				conn = nil
-				runtime.GC()
 			}
 		}
 	}

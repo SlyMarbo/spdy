@@ -62,7 +62,7 @@ func Connect(addr string, config *tls.Config, srv *http.Server) (common.Conn, er
 
 	conn, _ = client.Hijack()
 
-	server, err := NewServerConn(conn, srv, 3.1)
+	server, err := NewServerConn(conn, srv, 3, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func (p proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := NewClientConn(conn, nil, 3.1)
+	client, err := NewClientConn(conn, nil, 3, 1)
 	if err != nil {
 		log.Println("Error creating SPDY connection in ProxyConnections.", err)
 		return

@@ -23,19 +23,14 @@ func init() {
 // NewClientConn is used to create a SPDY connection, using the given
 // net.Conn for the underlying connection, and the given Receiver to
 // receive server pushes.
-func NewClientConn(conn net.Conn, push common.Receiver, version float64) (common.Conn, error) {
+func NewClientConn(conn net.Conn, push common.Receiver, version, subversion int) (common.Conn, error) {
 	if conn == nil {
 		return nil, errors.New("Error: Connection initialised with nil net.conn.")
 	}
 
 	switch version {
 	case 3:
-		out := spdy3.NewConn(conn, nil, 0)
-		out.PushReceiver = push
-		return out, nil
-
-	case 3.1:
-		out := spdy3.NewConn(conn, nil, 1)
+		out := spdy3.NewConn(conn, nil, subversion)
 		out.PushReceiver = push
 		return out, nil
 

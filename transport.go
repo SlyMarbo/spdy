@@ -251,7 +251,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 				return t.doHTTP(tcpConn, req)
 
 			case "spdy/3.1":
-				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 3.1)
+				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 3, 1)
 				if err != nil {
 					return nil, err
 				}
@@ -260,7 +260,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 				conn = newConn
 
 			case "spdy/3":
-				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 3)
+				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 3, 0)
 				if err != nil {
 					return nil, err
 				}
@@ -269,7 +269,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 				conn = newConn
 
 			case "spdy/2":
-				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 2)
+				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 2, 0)
 				if err != nil {
 					return nil, err
 				}
