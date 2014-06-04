@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/SlyMarbo/spdy"
+	"github.com/SlyMarbo/spdy/common"
 )
 
 func handle(err error) {
@@ -15,7 +16,7 @@ func handle(err error) {
 	}
 }
 
-func handleProxy(conn spdy.Conn) {
+func handleProxy(conn common.Conn) {
 	url := "http://" + conn.Conn().RemoteAddr().String() + "/"
 
 	req, err := http.NewRequest("GET", url, nil)
