@@ -100,7 +100,7 @@ func (s *ClientStream) shutdown() {
 	if s.state != nil {
 		if s.state.OpenThere() {
 			// Send the RST_STREAM.
-			rst := new(frames.RstStreamFrame)
+			rst := new(frames.RST_STREAM)
 			rst.StreamID = s.streamID
 			rst.Status = common.RST_STREAM_CANCEL
 			s.output <- rst
@@ -152,7 +152,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 
 	// Process the frame depending on its type.
 	switch frame := frame.(type) {
-	case *frames.DataFrame:
+	case *frames.DATA:
 
 		// Extract the data.
 		data := frame.Data
@@ -171,7 +171,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 			}
 		}
 
-	case *frames.SynReplyFrame:
+	case *frames.SYN_REPLY:
 		s.headerChan <- func() {
 			s.receiver.ReceiveHeader(s.request, frame.Header)
 
@@ -181,7 +181,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 			}
 		}
 
-	case *frames.HeadersFrame:
+	case *frames.HEADERS:
 		s.headerChan <- func() {
 			s.receiver.ReceiveHeader(s.request, frame.Header)
 
@@ -191,10 +191,10 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 			}
 		}
 
-	case *frames.WindowUpdateFrame:
+	case *frames.WINDOW_UPDATE:
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
 		if err != nil {
-			reply := new(frames.RstStreamFrame)
+			reply := new(frames.RST_STREAM)
 			reply.StreamID = s.streamID
 			reply.Status = common.RST_STREAM_FLOW_CONTROL_ERROR
 			s.output <- reply
@@ -256,7 +256,7 @@ func (s *ClientStream) writeHeader() {
 	}
 
 	// Create the HEADERS frame.
-	header := new(frames.HeadersFrame)
+	header := new(frames.HEADERS)
 	header.StreamID = s.streamID
 	header.Header = make(http.Header)
 

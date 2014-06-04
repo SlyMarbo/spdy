@@ -10,7 +10,7 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type SynStreamFrame struct {
+type SYN_STREAM struct {
 	Flags         common.Flags
 	StreamID      common.StreamID
 	AssocStreamID common.StreamID
@@ -20,7 +20,7 @@ type SynStreamFrame struct {
 	rawHeader     []byte
 }
 
-func (frame *SynStreamFrame) Compress(com common.Compressor) error {
+func (frame *SYN_STREAM) Compress(com common.Compressor) error {
 	if frame.rawHeader != nil {
 		return nil
 	}
@@ -34,7 +34,7 @@ func (frame *SynStreamFrame) Compress(com common.Compressor) error {
 	return nil
 }
 
-func (frame *SynStreamFrame) Decompress(decom common.Decompressor) error {
+func (frame *SYN_STREAM) Decompress(decom common.Decompressor) error {
 	if frame.Header != nil {
 		return nil
 	}
@@ -49,17 +49,17 @@ func (frame *SynStreamFrame) Decompress(decom common.Decompressor) error {
 	return nil
 }
 
-func (frame *SynStreamFrame) Name() string {
+func (frame *SYN_STREAM) Name() string {
 	return "SYN_STREAM"
 }
 
-func (frame *SynStreamFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *SYN_STREAM) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 18)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], SYN_STREAM, common.FLAG_FIN|common.FLAG_UNIDIRECTIONAL)
+	err = controlFrameCommonProcessing(data[:5], _SYN_STREAM, common.FLAG_FIN|common.FLAG_UNIDIRECTIONAL)
 	if err != nil {
 		return 18, err
 	}
@@ -98,7 +98,7 @@ func (frame *SynStreamFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *SynStreamFrame) String() string {
+func (frame *SYN_STREAM) String() string {
 	buf := new(bytes.Buffer)
 	flags := ""
 	if frame.Flags.FIN() {
@@ -125,7 +125,7 @@ func (frame *SynStreamFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SynStreamFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *SYN_STREAM) WriteTo(writer io.Writer) (int64, error) {
 	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Headers not written.")
 	}
@@ -176,7 +176,7 @@ func (frame *SynStreamFrame) WriteTo(writer io.Writer) (int64, error) {
 }
 
 // SPDY/3.1
-type SynStreamFrameV3_1 struct {
+type SYN_STREAMV3_1 struct {
 	Flags         common.Flags
 	StreamID      common.StreamID
 	AssocStreamID common.StreamID
@@ -185,7 +185,7 @@ type SynStreamFrameV3_1 struct {
 	rawHeader     []byte
 }
 
-func (frame *SynStreamFrameV3_1) Compress(com common.Compressor) error {
+func (frame *SYN_STREAMV3_1) Compress(com common.Compressor) error {
 	if frame.rawHeader != nil {
 		return nil
 	}
@@ -199,7 +199,7 @@ func (frame *SynStreamFrameV3_1) Compress(com common.Compressor) error {
 	return nil
 }
 
-func (frame *SynStreamFrameV3_1) Decompress(decom common.Decompressor) error {
+func (frame *SYN_STREAMV3_1) Decompress(decom common.Decompressor) error {
 	if frame.Header != nil {
 		return nil
 	}
@@ -214,17 +214,17 @@ func (frame *SynStreamFrameV3_1) Decompress(decom common.Decompressor) error {
 	return nil
 }
 
-func (frame *SynStreamFrameV3_1) Name() string {
+func (frame *SYN_STREAMV3_1) Name() string {
 	return "SYN_STREAM"
 }
 
-func (frame *SynStreamFrameV3_1) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *SYN_STREAMV3_1) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 18)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], SYN_STREAM, common.FLAG_FIN|common.FLAG_UNIDIRECTIONAL)
+	err = controlFrameCommonProcessing(data[:5], _SYN_STREAM, common.FLAG_FIN|common.FLAG_UNIDIRECTIONAL)
 	if err != nil {
 		return 18, err
 	}
@@ -262,7 +262,7 @@ func (frame *SynStreamFrameV3_1) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *SynStreamFrameV3_1) String() string {
+func (frame *SYN_STREAMV3_1) String() string {
 	buf := new(bytes.Buffer)
 	flags := ""
 	if frame.Flags.FIN() {
@@ -288,7 +288,7 @@ func (frame *SynStreamFrameV3_1) String() string {
 	return buf.String()
 }
 
-func (frame *SynStreamFrameV3_1) WriteTo(writer io.Writer) (int64, error) {
+func (frame *SYN_STREAMV3_1) WriteTo(writer io.Writer) (int64, error) {
 	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Headers not written.")
 	}

@@ -15,30 +15,30 @@ func ReadFrame(reader *bufio.Reader) (frame common.Frame, err error) {
 	}
 
 	if start[0] != 128 {
-		frame = new(DataFrame)
+		frame = new(DATA)
 		_, err = frame.ReadFrom(reader)
 		return frame, err
 	}
 
 	switch common.BytesToUint16(start[2:4]) {
-	case SYN_STREAM:
-		frame = new(SynStreamFrame)
-	case SYN_REPLY:
-		frame = new(SynReplyFrame)
-	case RST_STREAM:
-		frame = new(RstStreamFrame)
-	case SETTINGS:
-		frame = new(SettingsFrame)
-	case NOOP:
-		frame = new(NoopFrame)
-	case PING:
-		frame = new(PingFrame)
-	case GOAWAY:
-		frame = new(GoawayFrame)
-	case HEADERS:
-		frame = new(HeadersFrame)
-	case WINDOW_UPDATE:
-		frame = new(WindowUpdateFrame)
+	case _SYN_STREAM:
+		frame = new(SYN_STREAM)
+	case _SYN_REPLY:
+		frame = new(SYN_REPLY)
+	case _RST_STREAM:
+		frame = new(RST_STREAM)
+	case _SETTINGS:
+		frame = new(SETTINGS)
+	case _NOOP:
+		frame = new(NOOP)
+	case _PING:
+		frame = new(PING)
+	case _GOAWAY:
+		frame = new(GOAWAY)
+	case _HEADERS:
+		frame = new(HEADERS)
+	case _WINDOW_UPDATE:
+		frame = new(WINDOW_UPDATE)
 
 	default:
 		return nil, errors.New("Error Failed to parse frame type.")
@@ -56,7 +56,7 @@ func ReadFrame(reader *bufio.Reader) (frame common.Frame, err error) {
 func controlFrameCommonProcessing(data []byte, frameType uint16, flags byte) error {
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return common.IncorrectFrame(DATA_FRAME, int(frameType), 2)
+		return common.IncorrectFrame(_DATA_FRAME, int(frameType), 2)
 	}
 
 	// Check version.
@@ -81,31 +81,31 @@ func controlFrameCommonProcessing(data []byte, frameType uint16, flags byte) err
 
 // Frame types in SPDY/2
 const (
-	SYN_STREAM    = 1
-	SYN_REPLY     = 2
-	RST_STREAM    = 3
-	SETTINGS      = 4
-	NOOP          = 5
-	PING          = 6
-	GOAWAY        = 7
-	HEADERS       = 8
-	WINDOW_UPDATE = 9
-	CONTROL_FRAME = -1
-	DATA_FRAME    = -2
+	_SYN_STREAM    = 1
+	_SYN_REPLY     = 2
+	_RST_STREAM    = 3
+	_SETTINGS      = 4
+	_NOOP          = 5
+	_PING          = 6
+	_GOAWAY        = 7
+	_HEADERS       = 8
+	_WINDOW_UPDATE = 9
+	_CONTROL_FRAME = -1
+	_DATA_FRAME    = -2
 )
 
 // frameNames provides the name for a particular SPDY/2
 // frame type.
 var frameNames = map[int]string{
-	SYN_STREAM:    "SYN_STREAM",
-	SYN_REPLY:     "SYN_REPLY",
-	RST_STREAM:    "RST_STREAM",
-	SETTINGS:      "SETTINGS",
-	NOOP:          "NOOP",
-	PING:          "PING",
-	GOAWAY:        "GOAWAY",
-	HEADERS:       "HEADERS",
-	WINDOW_UPDATE: "WINDOW_UPDATE",
-	CONTROL_FRAME: "CONTROL_FRAME",
-	DATA_FRAME:    "DATA_FRAME",
+	_SYN_STREAM:    "SYN_STREAM",
+	_SYN_REPLY:     "SYN_REPLY",
+	_RST_STREAM:    "RST_STREAM",
+	_SETTINGS:      "SETTINGS",
+	_NOOP:          "NOOP",
+	_PING:          "PING",
+	_GOAWAY:        "GOAWAY",
+	_HEADERS:       "HEADERS",
+	_WINDOW_UPDATE: "WINDOW_UPDATE",
+	_CONTROL_FRAME: "CONTROL_FRAME",
+	_DATA_FRAME:    "DATA_FRAME",
 }

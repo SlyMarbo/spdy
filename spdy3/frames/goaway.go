@@ -8,30 +8,30 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type GoawayFrame struct {
+type GOAWAY struct {
 	LastGoodStreamID common.StreamID
 	Status           common.StatusCode
 }
 
-func (frame *GoawayFrame) Compress(comp common.Compressor) error {
+func (frame *GOAWAY) Compress(comp common.Compressor) error {
 	return nil
 }
 
-func (frame *GoawayFrame) Decompress(decomp common.Decompressor) error {
+func (frame *GOAWAY) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
-func (frame *GoawayFrame) Name() string {
+func (frame *GOAWAY) Name() string {
 	return "GOAWAY"
 }
 
-func (frame *GoawayFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *GOAWAY) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 16)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], GOAWAY, 0)
+	err = controlFrameCommonProcessing(data[:5], _GOAWAY, 0)
 	if err != nil {
 		return 16, err
 	}
@@ -52,7 +52,7 @@ func (frame *GoawayFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *GoawayFrame) String() string {
+func (frame *GOAWAY) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("GOAWAY {\n\t")
@@ -63,7 +63,7 @@ func (frame *GoawayFrame) String() string {
 	return buf.String()
 }
 
-func (frame *GoawayFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *GOAWAY) WriteTo(writer io.Writer) (int64, error) {
 	if !frame.LastGoodStreamID.Valid() {
 		return 0, common.StreamIdTooLarge
 	}

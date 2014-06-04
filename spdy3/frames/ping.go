@@ -8,29 +8,29 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type PingFrame struct {
+type PING struct {
 	PingID uint32
 }
 
-func (frame *PingFrame) Compress(comp common.Compressor) error {
+func (frame *PING) Compress(comp common.Compressor) error {
 	return nil
 }
 
-func (frame *PingFrame) Decompress(decomp common.Decompressor) error {
+func (frame *PING) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
-func (frame *PingFrame) Name() string {
+func (frame *PING) Name() string {
 	return "PING"
 }
 
-func (frame *PingFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *PING) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 12)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], PING, 0)
+	err = controlFrameCommonProcessing(data[:5], _PING, 0)
 	if err != nil {
 		return 12, err
 	}
@@ -46,7 +46,7 @@ func (frame *PingFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return 12, nil
 }
 
-func (frame *PingFrame) String() string {
+func (frame *PING) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("PING {\n\t")
@@ -56,7 +56,7 @@ func (frame *PingFrame) String() string {
 	return buf.String()
 }
 
-func (frame *PingFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *PING) WriteTo(writer io.Writer) (int64, error) {
 	out := make([]byte, 12)
 
 	out[0] = 128                      // Control bit and Version

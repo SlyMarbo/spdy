@@ -70,7 +70,7 @@ type Conn struct {
 	shutdownOnce          sync.Once                             // used to ensure clean shutdown.
 
 	// SPDY/3.1
-	dataBuffer                []*frames.DataFrame // used to store frames witheld for flow control.
+	dataBuffer                []*frames.DATA // used to store frames witheld for flow control.
 	connectionWindowSize      int64
 	initialWindowSizeThere    uint32
 	connectionWindowSizeThere int64
@@ -117,7 +117,7 @@ func NewConn(conn net.Conn, server *http.Server, subversion int) *Conn {
 		out.vectorIndex = 8
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
-			settings := new(frames.SettingsFrame)
+			settings := new(frames.SETTINGS)
 			settings.Settings = defaultServerSettings(common.DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
@@ -148,7 +148,7 @@ func NewConn(conn net.Conn, server *http.Server, subversion int) *Conn {
 		out.pushRequests = make(map[common.StreamID]*http.Request)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
-			settings := new(frames.SettingsFrame)
+			settings := new(frames.SETTINGS)
 			settings.Settings = defaultClientSettings(common.DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
@@ -183,7 +183,7 @@ func (conn *Conn) shutdown() {
 	isSending := conn.sending != nil
 	conn.sendingLock.Unlock()
 	if !conn.goawaySent && !isSending {
-		goaway := new(frames.GoawayFrame)
+		goaway := new(frames.GOAWAY)
 		if conn.server != nil {
 			goaway.LastGoodStreamID = conn.lastRequestStreamID
 		} else {
@@ -281,7 +281,7 @@ func (conn *Conn) Ping() (<-chan common.Ping, error) {
 		return nil, errors.New("Error: Conn has been closed.")
 	}
 
-	ping := new(frames.PingFrame)
+	ping := new(frames.PING)
 	pid := conn.nextPingID
 	if pid+2 < pid {
 		if pid&1 == 0 {
@@ -344,7 +344,7 @@ func (conn *Conn) Push(resource string, origin common.Stream) (common.PushStream
 	}
 
 	// Prepare the SYN_STREAM.
-	push := new(frames.SynStreamFrame)
+	push := new(frames.SYN_STREAM)
 	push.Flags = common.FLAG_UNIDIRECTIONAL
 	push.AssocStreamID = origin.StreamID()
 	push.Priority = 7
@@ -419,7 +419,7 @@ func (conn *Conn) Request(request *http.Request, receiver common.Receiver, prior
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
-	syn := new(frames.SynStreamFrame)
+	syn := new(frames.SYN_STREAM)
 	syn.Priority = priority
 	syn.Header = request.Header
 	syn.Header.Set(":method", request.Method)
@@ -429,7 +429,7 @@ func (conn *Conn) Request(request *http.Request, receiver common.Receiver, prior
 	syn.Header.Set(":scheme", url.Scheme)
 
 	// Prepare the request body, if any.
-	body := make([]*frames.DataFrame, 0, 1)
+	body := make([]*frames.DATA, 0, 1)
 	if request.Body != nil {
 		buf := make([]byte, 32*1024)
 		n, err := request.Body.Read(buf)
@@ -438,7 +438,7 @@ func (conn *Conn) Request(request *http.Request, receiver common.Receiver, prior
 		}
 		total := n
 		for n > 0 {
-			data := new(frames.DataFrame)
+			data := new(frames.DATA)
 			data.Data = make([]byte, n)
 			copy(data.Data, buf[:n])
 			body = append(body, data)
@@ -576,7 +576,7 @@ func (conn *Conn) closed() bool {
 }
 
 // handleClientData performs the processing of DATA frames sent by the client.
-func (conn *Conn) handleClientData(frame *frames.DataFrame) {
+func (conn *Conn) handleClientData(frame *frames.DATA) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -625,7 +625,7 @@ func (conn *Conn) handleClientData(frame *frames.DataFrame) {
 }
 
 // handleHeaders performs the processing of HEADERS frames.
-func (conn *Conn) handleHeaders(frame *frames.HeadersFrame) {
+func (conn *Conn) handleHeaders(frame *frames.HEADERS) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -661,7 +661,7 @@ func (conn *Conn) handleHeaders(frame *frames.HeadersFrame) {
 }
 
 // handlePush performs the processing of SYN_STREAM frames forming a server push.
-func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
+func (conn *Conn) handlePush(frame *frames.SYN_STREAM) {
 	conn.Lock()
 
 	// Check stream creation is allowed.
@@ -708,7 +708,7 @@ func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
 
 	// Check stream limit would allow the new stream.
 	if !conn.pushStreamLimit.Add() {
-		rst := new(frames.RstStreamFrame)
+		rst := new(frames.RST_STREAM)
 		rst.StreamID = sid
 		rst.Status = common.RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
@@ -758,7 +758,7 @@ func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
 
 	// Check whether the receiver wants this resource.
 	if conn.PushReceiver != nil && !conn.PushReceiver.ReceiveRequest(request) {
-		rst := new(frames.RstStreamFrame)
+		rst := new(frames.RST_STREAM)
 		rst.StreamID = sid
 		rst.Status = common.RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
@@ -778,7 +778,7 @@ func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
 }
 
 // handleRequest performs the processing of SYN_STREAM request frames.
-func (conn *Conn) handleRequest(frame *frames.SynStreamFrame) {
+func (conn *Conn) handleRequest(frame *frames.SYN_STREAM) {
 	conn.Lock()
 	defer conn.Unlock()
 
@@ -822,7 +822,7 @@ func (conn *Conn) handleRequest(frame *frames.SynStreamFrame) {
 
 	// Check stream limit would allow the new stream.
 	if !conn.requestStreamLimit.Add() {
-		rst := new(frames.RstStreamFrame)
+		rst := new(frames.RST_STREAM)
 		rst.StreamID = sid
 		rst.Status = common.RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
@@ -854,7 +854,7 @@ func (conn *Conn) handleRequest(frame *frames.SynStreamFrame) {
 }
 
 // handleRstStream performs the processing of RST_STREAM frames.
-func (conn *Conn) handleRstStream(frame *frames.RstStreamFrame) {
+func (conn *Conn) handleRstStream(frame *frames.RST_STREAM) {
 	conn.Lock()
 	defer conn.Unlock()
 
@@ -918,7 +918,7 @@ func (conn *Conn) handleRstStream(frame *frames.RstStreamFrame) {
 }
 
 // handleServerData performs the processing of DATA frames sent by the server.
-func (conn *Conn) handleServerData(frame *frames.DataFrame) {
+func (conn *Conn) handleServerData(frame *frames.DATA) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -954,7 +954,7 @@ func (conn *Conn) handleServerData(frame *frames.DataFrame) {
 }
 
 // handleSynReply performs the processing of SYN_REPLY frames.
-func (conn *Conn) handleSynReply(frame *frames.SynReplyFrame) {
+func (conn *Conn) handleSynReply(frame *frames.SYN_REPLY) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -998,7 +998,7 @@ func (conn *Conn) handleSynReply(frame *frames.SynReplyFrame) {
 }
 
 // handleWindowUpdate performs the processing of WINDOW_UPDATE frames.
-func (conn *Conn) handleWindowUpdate(frame *frames.WindowUpdateFrame) {
+func (conn *Conn) handleWindowUpdate(frame *frames.WINDOW_UPDATE) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -1022,7 +1022,7 @@ func (conn *Conn) handleWindowUpdate(frame *frames.WindowUpdateFrame) {
 	// Handle connection-level flow control.
 	if sid.Zero() && conn.Subversion > 0 {
 		if int64(delta)+conn.connectionWindowSize > common.MAX_TRANSFER_WINDOW_SIZE {
-			goaway := new(frames.GoawayFrame)
+			goaway := new(frames.GOAWAY)
 			if conn.server != nil {
 				goaway.LastGoodStreamID = conn.lastRequestStreamID
 			} else {
@@ -1055,7 +1055,7 @@ func (conn *Conn) handleWindowUpdate(frame *frames.WindowUpdateFrame) {
 }
 
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
-func (conn *Conn) newStream(frame *frames.SynStreamFrame, priority common.Priority) *ServerStream {
+func (conn *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) *ServerStream {
 	stream := new(ServerStream)
 	stream.conn = conn
 	stream.streamID = frame.StreamID
@@ -1144,7 +1144,7 @@ func (conn *Conn) handleReadWriteError(err error) {
 // protocolError informs the other endpoint that a protocol error has
 // occurred, stops all running streams, and ends the connection.
 func (conn *Conn) protocolError(streamID common.StreamID) {
-	reply := new(frames.RstStreamFrame)
+	reply := new(frames.RST_STREAM)
 	reply.StreamID = streamID
 	reply.Status = common.RST_STREAM_PROTOCOL_ERROR
 	select {
@@ -1156,7 +1156,7 @@ func (conn *Conn) protocolError(streamID common.StreamID) {
 	}
 
 	if !conn.goawaySent {
-		goaway := new(frames.GoawayFrame)
+		goaway := new(frames.GOAWAY)
 		if conn.server != nil {
 			goaway.LastGoodStreamID = conn.lastRequestStreamID
 		} else {
@@ -1181,14 +1181,14 @@ func (conn *Conn) protocolError(streamID common.StreamID) {
 func (conn *Conn) processFrame(frame common.Frame) bool {
 	switch frame := frame.(type) {
 
-	case *frames.SynStreamFrame:
+	case *frames.SYN_STREAM:
 		if conn.server == nil {
 			conn.handlePush(frame)
 		} else {
 			conn.handleRequest(frame)
 		}
-	case *frames.SynStreamFrameV3_1:
-		f3 := new(frames.SynStreamFrame)
+	case *frames.SYN_STREAMV3_1:
+		f3 := new(frames.SYN_STREAM)
 		f3.Flags = frame.Flags
 		f3.StreamID = frame.StreamID
 		f3.AssocStreamID = frame.AssocStreamID
@@ -1201,10 +1201,10 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 			conn.handleRequest(f3)
 		}
 
-	case *frames.SynReplyFrame:
+	case *frames.SYN_REPLY:
 		conn.handleSynReply(frame)
 
-	case *frames.RstStreamFrame:
+	case *frames.RST_STREAM:
 		if frame.Status.IsFatal() {
 			code := frame.Status.String()
 			log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID)
@@ -1213,7 +1213,7 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 		}
 		conn.handleRstStream(frame)
 
-	case *frames.SettingsFrame:
+	case *frames.SETTINGS:
 		for _, setting := range frame.Settings {
 			conn.receivedSettings[setting.ID] = setting
 			switch setting.ID {
@@ -1243,7 +1243,7 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 			}
 		}
 
-	case *frames.PingFrame:
+	case *frames.PING:
 		// Check whether Ping ID is a response.
 		if frame.PingID&1 == conn.nextPingID&1 {
 			conn.Lock()
@@ -1262,7 +1262,7 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 			conn.output[0] <- frame
 		}
 
-	case *frames.GoawayFrame:
+	case *frames.GOAWAY:
 		lastProcessed := frame.LastGoodStreamID
 		for streamID, stream := range conn.streams {
 			if streamID&1 == conn.oddity && streamID > lastProcessed {
@@ -1273,13 +1273,13 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 		}
 		conn.goawayReceived = true
 
-	case *frames.HeadersFrame:
+	case *frames.HEADERS:
 		conn.handleHeaders(frame)
 
-	case *frames.WindowUpdateFrame:
+	case *frames.WINDOW_UPDATE:
 		conn.handleWindowUpdate(frame)
 
-	case *frames.CredentialFrame:
+	case *frames.CREDENTIAL:
 		if conn.Subversion > 0 {
 			return false
 		}
@@ -1288,7 +1288,7 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 			return false
 		}
 		if frame.Slot >= conn.vectorIndex {
-			setting := new(frames.SettingsFrame)
+			setting := new(frames.SETTINGS)
 			setting.Settings = common.Settings{
 				common.SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE: &common.Setting{
 					ID:    common.SETTINGS_CLIENT_CERTIFICATE_VECTOR_SIZE,
@@ -1300,11 +1300,11 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 		}
 		conn.certificates[frame.Slot] = frame.Certificates
 
-	case *frames.DataFrame:
+	case *frames.DATA:
 		if conn.Subversion > 0 {
 			// The transfer window shouldn't already be negative.
 			if conn.connectionWindowSizeThere < 0 {
-				goaway := new(frames.GoawayFrame)
+				goaway := new(frames.GOAWAY)
 				goaway.Status = common.GOAWAY_FLOW_CONTROL_ERROR
 				conn.output[0] <- goaway
 				conn.Close()
@@ -1314,7 +1314,7 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 
 			delta := conn.flowControl.ReceiveData(0, conn.initialWindowSizeThere, conn.connectionWindowSizeThere)
 			if delta != 0 {
-				grow := new(frames.WindowUpdateFrame)
+				grow := new(frames.WINDOW_UPDATE)
 				grow.StreamID = 0
 				grow.DeltaWindowSize = delta
 				conn.output[0] <- grow
@@ -1424,14 +1424,14 @@ Loop:
 
 		// Process connection-level flow control.
 		if conn.Subversion > 0 {
-			if frame, ok := frame.(*frames.DataFrame); ok {
+			if frame, ok := frame.(*frames.DATA); ok {
 				size := int64(8 + len(frame.Data))
 				if size > conn.connectionWindowSize {
 					// Buffer this frame and try again.
 					if conn.dataBuffer == nil {
-						conn.dataBuffer = []*frames.DataFrame{frame}
+						conn.dataBuffer = []*frames.DATA{frame}
 					} else {
-						buffer := make([]*frames.DataFrame, 1, len(conn.dataBuffer)+1)
+						buffer := make([]*frames.DATA, 1, len(conn.dataBuffer)+1)
 						buffer[0] = frame
 						buffer = append(buffer, conn.dataBuffer...)
 						conn.dataBuffer = buffer

@@ -10,14 +10,14 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type HeadersFrame struct {
+type HEADERS struct {
 	Flags     common.Flags
 	StreamID  common.StreamID
 	Header    http.Header
 	rawHeader []byte
 }
 
-func (frame *HeadersFrame) Compress(com common.Compressor) error {
+func (frame *HEADERS) Compress(com common.Compressor) error {
 	if frame.rawHeader != nil {
 		return nil
 	}
@@ -31,7 +31,7 @@ func (frame *HeadersFrame) Compress(com common.Compressor) error {
 	return nil
 }
 
-func (frame *HeadersFrame) Decompress(decom common.Decompressor) error {
+func (frame *HEADERS) Decompress(decom common.Decompressor) error {
 	if frame.Header != nil {
 		return nil
 	}
@@ -46,17 +46,17 @@ func (frame *HeadersFrame) Decompress(decom common.Decompressor) error {
 	return nil
 }
 
-func (frame *HeadersFrame) Name() string {
+func (frame *HEADERS) Name() string {
 	return "HEADERS"
 }
 
-func (frame *HeadersFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *HEADERS) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 16)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], HEADERS, common.FLAG_FIN)
+	err = controlFrameCommonProcessing(data[:5], _HEADERS, common.FLAG_FIN)
 	if err != nil {
 		return 16, err
 	}
@@ -89,7 +89,7 @@ func (frame *HeadersFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *HeadersFrame) String() string {
+func (frame *HEADERS) String() string {
 	buf := new(bytes.Buffer)
 
 	Flags := ""
@@ -111,7 +111,7 @@ func (frame *HeadersFrame) String() string {
 	return buf.String()
 }
 
-func (frame *HeadersFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *HEADERS) WriteTo(writer io.Writer) (int64, error) {
 	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Headers not written.")
 	}

@@ -58,7 +58,7 @@ func (s *ClientStream) Write(inputData []byte) (int, error) {
 	// Chunk the response if necessary.
 	written := 0
 	for len(data) > common.MAX_DATA_SIZE {
-		dataFrame := new(frames.DataFrame)
+		dataFrame := new(frames.DATA)
 		dataFrame.StreamID = s.streamID
 		dataFrame.Data = data[:common.MAX_DATA_SIZE]
 		s.output <- dataFrame
@@ -71,7 +71,7 @@ func (s *ClientStream) Write(inputData []byte) (int, error) {
 		return written, nil
 	}
 
-	dataFrame := new(frames.DataFrame)
+	dataFrame := new(frames.DATA)
 	dataFrame.StreamID = s.streamID
 	dataFrame.Data = data
 	s.output <- dataFrame
@@ -100,7 +100,7 @@ func (s *ClientStream) shutdown() {
 	if s.state != nil {
 		if s.state.OpenThere() {
 			// Send the RST_STREAM.
-			rst := new(frames.RstStreamFrame)
+			rst := new(frames.RST_STREAM)
 			rst.StreamID = s.streamID
 			rst.Status = common.RST_STREAM_CANCEL
 			s.output <- rst
@@ -149,7 +149,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 
 	// Process the frame depending on its type.
 	switch frame := frame.(type) {
-	case *frames.DataFrame:
+	case *frames.DATA:
 
 		// Extract the data.
 		data := frame.Data
@@ -167,7 +167,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 			}
 		}
 
-	case *frames.SynReplyFrame:
+	case *frames.SYN_REPLY:
 		s.headerChan <- func() {
 			s.receiver.ReceiveHeader(s.request, frame.Header)
 
@@ -177,7 +177,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 			}
 		}
 
-	case *frames.HeadersFrame:
+	case *frames.HEADERS:
 		s.headerChan <- func() {
 			s.receiver.ReceiveHeader(s.request, frame.Header)
 
@@ -187,7 +187,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 			}
 		}
 
-	case *frames.WindowUpdateFrame:
+	case *frames.WINDOW_UPDATE:
 		// Ignore.
 
 	default:
@@ -241,7 +241,7 @@ func (s *ClientStream) writeHeader() {
 	}
 
 	// Create the HEADERS frame.
-	header := new(frames.HeadersFrame)
+	header := new(frames.HEADERS)
 	header.StreamID = s.streamID
 	header.Header = common.CloneHeader(s.header)
 

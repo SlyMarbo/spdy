@@ -72,7 +72,7 @@ func (s *ServerStream) Write(inputData []byte) (int, error) {
 	// Chunk the response if necessary.
 	written := 0
 	for len(data) > common.MAX_DATA_SIZE {
-		dataFrame := new(frames.DataFrame)
+		dataFrame := new(frames.DATA)
 		dataFrame.StreamID = s.streamID
 		dataFrame.Data = data[:common.MAX_DATA_SIZE]
 		s.output <- dataFrame
@@ -85,7 +85,7 @@ func (s *ServerStream) Write(inputData []byte) (int, error) {
 		return written, nil
 	}
 
-	dataFrame := new(frames.DataFrame)
+	dataFrame := new(frames.DATA)
 	dataFrame.StreamID = s.streamID
 	dataFrame.Data = data
 	s.output <- dataFrame
@@ -111,7 +111,7 @@ func (s *ServerStream) WriteHeader(code int) {
 	s.header.Set("version", "HTTP/1.1")
 
 	// Create the response SYN_REPLY.
-	synReply := new(frames.SynReplyFrame)
+	synReply := new(frames.SYN_REPLY)
 	synReply.StreamID = s.streamID
 	synReply.Header = common.CloneHeader(s.header)
 
@@ -178,7 +178,7 @@ func (s *ServerStream) ReceiveFrame(frame common.Frame) error {
 
 	// Process the frame depending on its type.
 	switch frame := frame.(type) {
-	case *frames.DataFrame:
+	case *frames.DATA:
 		s.requestBody.Write(frame.Data)
 		if frame.Flags.FIN() {
 			select {
@@ -189,7 +189,7 @@ func (s *ServerStream) ReceiveFrame(frame common.Frame) error {
 			s.state.CloseThere()
 		}
 
-	case *frames.SynReplyFrame:
+	case *frames.SYN_REPLY:
 		common.UpdateHeader(s.header, frame.Header)
 		if frame.Flags.FIN() {
 			select {
@@ -200,10 +200,10 @@ func (s *ServerStream) ReceiveFrame(frame common.Frame) error {
 			s.state.CloseThere()
 		}
 
-	case *frames.HeadersFrame:
+	case *frames.HEADERS:
 		common.UpdateHeader(s.header, frame.Header)
 
-	case *frames.WindowUpdateFrame:
+	case *frames.WINDOW_UPDATE:
 		// Ignore.
 
 	default:
@@ -258,7 +258,7 @@ func (s *ServerStream) Run() error {
 			s.header.Set("version", "HTTP/1.1")
 
 			// Create the response SYN_REPLY.
-			synReply := new(frames.SynReplyFrame)
+			synReply := new(frames.SYN_REPLY)
 			synReply.Flags = common.FLAG_FIN
 			synReply.StreamID = s.streamID
 			synReply.Header = s.header
@@ -266,7 +266,7 @@ func (s *ServerStream) Run() error {
 			s.output <- synReply
 		} else if s.state.OpenHere() {
 			// Create the DATA.
-			data := new(frames.DataFrame)
+			data := new(frames.DATA)
 			data.StreamID = s.streamID
 			data.Flags = common.FLAG_FIN
 			data.Data = []byte{}
@@ -307,7 +307,7 @@ func (s *ServerStream) writeHeader() {
 	}
 
 	// Create the HEADERS frame.
-	header := new(frames.HeadersFrame)
+	header := new(frames.HEADERS)
 	header.StreamID = s.streamID
 	header.Header = common.CloneHeader(s.header)
 

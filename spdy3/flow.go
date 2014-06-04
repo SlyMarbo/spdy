@@ -198,7 +198,7 @@ func (f *flowControl) Flush() {
 		log.Printf("Stream %d is no longer constrained.\n", f.streamID)
 	}
 
-	dataFrame := new(frames.DataFrame)
+	dataFrame := new(frames.DATA)
 	dataFrame.StreamID = f.streamID
 	dataFrame.Data = out
 
@@ -221,7 +221,7 @@ func (f *flowControl) Paused() bool {
 func (f *flowControl) Receive(data []byte) {
 	// The transfer window shouldn't already be negative.
 	if f.transferWindowThere < 0 {
-		rst := new(frames.RstStreamFrame)
+		rst := new(frames.RST_STREAM)
 		rst.StreamID = f.streamID
 		rst.Status = common.RST_STREAM_FLOW_CONTROL_ERROR
 		f.output <- rst
@@ -233,7 +233,7 @@ func (f *flowControl) Receive(data []byte) {
 	// Regrow the window if it's half-empty.
 	delta := f.flowControl.ReceiveData(f.streamID, f.initialWindowThere, f.transferWindowThere)
 	if delta != 0 {
-		grow := new(frames.WindowUpdateFrame)
+		grow := new(frames.WINDOW_UPDATE)
 		grow.StreamID = f.streamID
 		grow.DeltaWindowSize = delta
 		f.output <- grow
@@ -300,7 +300,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
 		return l, nil
 	}
 
-	dataFrame := new(frames.DataFrame)
+	dataFrame := new(frames.DATA)
 	dataFrame.StreamID = f.streamID
 	dataFrame.Data = data
 

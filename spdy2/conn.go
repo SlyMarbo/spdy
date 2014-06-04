@@ -104,7 +104,7 @@ func NewConn(conn net.Conn, server *http.Server) *Conn {
 		out.pushStreamLimit = common.NewStreamLimit(common.NO_STREAM_LIMIT)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
-			settings := new(frames.SettingsFrame)
+			settings := new(frames.SETTINGS)
 			settings.Settings = defaultServerSettings(common.DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
@@ -125,7 +125,7 @@ func NewConn(conn net.Conn, server *http.Server) *Conn {
 		out.pushRequests = make(map[common.StreamID]*http.Request)
 		out.init = func() {
 			// Initialise the connection by sending the connection settings.
-			settings := new(frames.SettingsFrame)
+			settings := new(frames.SETTINGS)
 			settings.Settings = defaultClientSettings(common.DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
@@ -150,7 +150,7 @@ func (conn *Conn) shutdown() {
 	isSending := conn.sending != nil
 	conn.sendingLock.Unlock()
 	if !conn.goawaySent && !isSending {
-		goaway := new(frames.GoawayFrame)
+		goaway := new(frames.GOAWAY)
 		if conn.server != nil {
 			goaway.LastGoodStreamID = conn.lastRequestStreamID
 		} else {
@@ -251,7 +251,7 @@ func (conn *Conn) Ping() (<-chan common.Ping, error) {
 		return nil, errors.New("Error: Conn has been closed.")
 	}
 
-	ping := new(frames.PingFrame)
+	ping := new(frames.PING)
 	pid := conn.nextPingID
 	if pid+2 < pid {
 		if pid&1 == 0 {
@@ -314,7 +314,7 @@ func (conn *Conn) Push(resource string, origin common.Stream) (common.PushStream
 	}
 
 	// Prepare the SYN_STREAM.
-	push := new(frames.SynStreamFrame)
+	push := new(frames.SYN_STREAM)
 	push.Flags = common.FLAG_UNIDIRECTIONAL
 	push.AssocStreamID = origin.StreamID()
 	push.Priority = 3
@@ -389,7 +389,7 @@ func (conn *Conn) Request(request *http.Request, receiver common.Receiver, prior
 		path = "/" + path
 	}
 
-	syn := new(frames.SynStreamFrame)
+	syn := new(frames.SYN_STREAM)
 	syn.Priority = priority
 	syn.Header = request.Header
 	syn.Header.Set("method", request.Method)
@@ -399,7 +399,7 @@ func (conn *Conn) Request(request *http.Request, receiver common.Receiver, prior
 	syn.Header.Set("scheme", url.Scheme)
 
 	// Prepare the request body, if any.
-	body := make([]*frames.DataFrame, 0, 1)
+	body := make([]*frames.DATA, 0, 1)
 	if request.Body != nil {
 		buf := make([]byte, 32*1024)
 		n, err := request.Body.Read(buf)
@@ -408,7 +408,7 @@ func (conn *Conn) Request(request *http.Request, receiver common.Receiver, prior
 		}
 		total := n
 		for n > 0 {
-			data := new(frames.DataFrame)
+			data := new(frames.DATA)
 			data.Data = make([]byte, n)
 			copy(data.Data, buf[:n])
 			body = append(body, data)
@@ -542,7 +542,7 @@ func (conn *Conn) closed() bool {
 }
 
 // handleClientData performs the processing of DATA frames sent by the client.
-func (conn *Conn) handleClientData(frame *frames.DataFrame) {
+func (conn *Conn) handleClientData(frame *frames.DATA) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -591,7 +591,7 @@ func (conn *Conn) handleClientData(frame *frames.DataFrame) {
 }
 
 // handleHeaders performs the processing of HEADERS frames.
-func (conn *Conn) handleHeaders(frame *frames.HeadersFrame) {
+func (conn *Conn) handleHeaders(frame *frames.HEADERS) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -627,7 +627,7 @@ func (conn *Conn) handleHeaders(frame *frames.HeadersFrame) {
 }
 
 // handlePush performs the processing of SYN_STREAM frames forming a server push.
-func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
+func (conn *Conn) handlePush(frame *frames.SYN_STREAM) {
 	conn.Lock()
 
 	// Check stream creation is allowed.
@@ -674,7 +674,7 @@ func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
 
 	// Check stream limit would allow the new stream.
 	if !conn.pushStreamLimit.Add() {
-		rst := new(frames.RstStreamFrame)
+		rst := new(frames.RST_STREAM)
 		rst.StreamID = sid
 		rst.Status = common.RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
@@ -724,7 +724,7 @@ func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
 
 	// Check whether the receiver wants this resource.
 	if conn.PushReceiver != nil && !conn.PushReceiver.ReceiveRequest(request) {
-		rst := new(frames.RstStreamFrame)
+		rst := new(frames.RST_STREAM)
 		rst.StreamID = sid
 		rst.Status = common.RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
@@ -744,7 +744,7 @@ func (conn *Conn) handlePush(frame *frames.SynStreamFrame) {
 }
 
 // handleRequest performs the processing of SYN_STREAM request frames.
-func (conn *Conn) handleRequest(frame *frames.SynStreamFrame) {
+func (conn *Conn) handleRequest(frame *frames.SYN_STREAM) {
 	conn.Lock()
 	defer conn.Unlock()
 
@@ -788,7 +788,7 @@ func (conn *Conn) handleRequest(frame *frames.SynStreamFrame) {
 
 	// Check stream limit would allow the new stream.
 	if !conn.requestStreamLimit.Add() {
-		rst := new(frames.RstStreamFrame)
+		rst := new(frames.RST_STREAM)
 		rst.StreamID = sid
 		rst.Status = common.RST_STREAM_REFUSED_STREAM
 		conn.output[0] <- rst
@@ -820,7 +820,7 @@ func (conn *Conn) handleRequest(frame *frames.SynStreamFrame) {
 }
 
 // handleRstStream performs the processing of RST_STREAM frames.
-func (conn *Conn) handleRstStream(frame *frames.RstStreamFrame) {
+func (conn *Conn) handleRstStream(frame *frames.RST_STREAM) {
 	conn.Lock()
 	defer conn.Unlock()
 
@@ -880,7 +880,7 @@ func (conn *Conn) handleRstStream(frame *frames.RstStreamFrame) {
 }
 
 // handleServerData performs the processing of DATA frames sent by the server.
-func (conn *Conn) handleServerData(frame *frames.DataFrame) {
+func (conn *Conn) handleServerData(frame *frames.DATA) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -916,7 +916,7 @@ func (conn *Conn) handleServerData(frame *frames.DataFrame) {
 }
 
 // handleSynReply performs the processing of SYN_REPLY frames.
-func (conn *Conn) handleSynReply(frame *frames.SynReplyFrame) {
+func (conn *Conn) handleSynReply(frame *frames.SYN_REPLY) {
 	conn.Lock()
 
 	sid := frame.StreamID
@@ -959,7 +959,7 @@ func (conn *Conn) handleSynReply(frame *frames.SynReplyFrame) {
 }
 
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
-func (conn *Conn) newStream(frame *frames.SynStreamFrame, priority common.Priority) *ServerStream {
+func (conn *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) *ServerStream {
 	stream := new(ServerStream)
 	stream.conn = conn
 	stream.streamID = frame.StreamID
@@ -1045,7 +1045,7 @@ func (conn *Conn) handleReadWriteError(err error) {
 // protocolError informs the other endpoint that a protocol error has
 // occurred, stops all running streams, and ends the connection.
 func (conn *Conn) protocolError(streamID common.StreamID) {
-	reply := new(frames.RstStreamFrame)
+	reply := new(frames.RST_STREAM)
 	reply.StreamID = streamID
 	reply.Status = common.RST_STREAM_PROTOCOL_ERROR
 	select {
@@ -1057,7 +1057,7 @@ func (conn *Conn) protocolError(streamID common.StreamID) {
 	}
 
 	if !conn.goawaySent {
-		goaway := new(frames.GoawayFrame)
+		goaway := new(frames.GOAWAY)
 		if conn.server != nil {
 			goaway.LastGoodStreamID = conn.lastRequestStreamID
 		} else {
@@ -1081,17 +1081,17 @@ func (conn *Conn) protocolError(streamID common.StreamID) {
 func (conn *Conn) processFrame(frame common.Frame) bool {
 	switch frame := frame.(type) {
 
-	case *frames.SynStreamFrame:
+	case *frames.SYN_STREAM:
 		if conn.server == nil {
 			conn.handlePush(frame)
 		} else {
 			conn.handleRequest(frame)
 		}
 
-	case *frames.SynReplyFrame:
+	case *frames.SYN_REPLY:
 		conn.handleSynReply(frame)
 
-	case *frames.RstStreamFrame:
+	case *frames.RST_STREAM:
 		if frame.Status.IsFatal() {
 			code := frame.Status.String()
 			log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID)
@@ -1100,7 +1100,7 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 		}
 		conn.handleRstStream(frame)
 
-	case *frames.SettingsFrame:
+	case *frames.SETTINGS:
 		for _, setting := range frame.Settings {
 			conn.receivedSettings[setting.ID] = setting
 			switch setting.ID {
@@ -1118,10 +1118,10 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 			}
 		}
 
-	case *frames.NoopFrame:
+	case *frames.NOOP:
 		// Ignore.
 
-	case *frames.PingFrame:
+	case *frames.PING:
 		// Check whether Ping ID is a response.
 		if frame.PingID&1 == conn.nextPingID&1 {
 			conn.Lock()
@@ -1141,7 +1141,7 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 			conn.output[0] <- frame
 		}
 
-	case *frames.GoawayFrame:
+	case *frames.GOAWAY:
 		lastProcessed := frame.LastGoodStreamID
 		for streamID, stream := range conn.streams {
 			if streamID&1 == conn.oddity && streamID > lastProcessed {
@@ -1152,13 +1152,13 @@ func (conn *Conn) processFrame(frame common.Frame) bool {
 		}
 		conn.goawayReceived = true
 
-	case *frames.HeadersFrame:
+	case *frames.HEADERS:
 		conn.handleHeaders(frame)
 
-	case *frames.WindowUpdateFrame:
+	case *frames.WINDOW_UPDATE:
 		// Ignore.
 
-	case *frames.DataFrame:
+	case *frames.DATA:
 		if conn.server == nil {
 			conn.handleServerData(frame)
 		} else {

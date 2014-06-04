@@ -9,31 +9,31 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type CredentialFrame struct {
+type CREDENTIAL struct {
 	Slot         uint16
 	Proof        []byte
 	Certificates []*x509.Certificate
 }
 
-func (frame *CredentialFrame) Compress(comp common.Compressor) error {
+func (frame *CREDENTIAL) Compress(comp common.Compressor) error {
 	return nil
 }
 
-func (frame *CredentialFrame) Decompress(decomp common.Decompressor) error {
+func (frame *CREDENTIAL) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
-func (frame *CredentialFrame) Name() string {
+func (frame *CREDENTIAL) Name() string {
 	return "CREDENTIAL"
 }
 
-func (frame *CredentialFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *CREDENTIAL) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 18)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], CREDENTIAL, 0)
+	err = controlFrameCommonProcessing(data[:5], _CREDENTIAL, 0)
 	if err != nil {
 		return 18, err
 	}
@@ -80,7 +80,7 @@ func (frame *CredentialFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *CredentialFrame) String() string {
+func (frame *CREDENTIAL) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("CREDENTIAL {\n\t")
@@ -92,7 +92,7 @@ func (frame *CredentialFrame) String() string {
 	return buf.String()
 }
 
-func (frame *CredentialFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *CREDENTIAL) WriteTo(writer io.Writer) (int64, error) {
 	proofLength := len(frame.Proof)
 	certsLength := 0
 	for _, cert := range frame.Certificates {

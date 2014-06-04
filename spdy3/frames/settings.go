@@ -10,34 +10,34 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type SettingsFrame struct {
+type SETTINGS struct {
 	Flags    common.Flags
 	Settings common.Settings
 }
 
-func (frame *SettingsFrame) Add(flags common.Flags, id uint32, value uint32) {
+func (frame *SETTINGS) Add(flags common.Flags, id uint32, value uint32) {
 	frame.Settings[id] = &common.Setting{flags, id, value}
 }
 
-func (frame *SettingsFrame) Compress(comp common.Compressor) error {
+func (frame *SETTINGS) Compress(comp common.Compressor) error {
 	return nil
 }
 
-func (frame *SettingsFrame) Decompress(decomp common.Decompressor) error {
+func (frame *SETTINGS) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
-func (frame *SettingsFrame) Name() string {
+func (frame *SETTINGS) Name() string {
 	return "SETTINGS"
 }
 
-func (frame *SettingsFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *SETTINGS) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 12)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], SETTINGS, common.FLAG_SETTINGS_CLEAR_SETTINGS)
+	err = controlFrameCommonProcessing(data[:5], _SETTINGS, common.FLAG_SETTINGS_CLEAR_SETTINGS)
 	if err != nil {
 		return 12, err
 	}
@@ -76,7 +76,7 @@ func (frame *SettingsFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length), nil
 }
 
-func (frame *SettingsFrame) String() string {
+func (frame *SETTINGS) String() string {
 	buf := new(bytes.Buffer)
 	flags := ""
 	if frame.Flags.CLEAR_SETTINGS() {
@@ -101,7 +101,7 @@ func (frame *SettingsFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SettingsFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *SETTINGS) WriteTo(writer io.Writer) (int64, error) {
 	settings := encodeSettings(frame.Settings)
 	numSettings := uint32(len(frame.Settings))
 	length := 4 + len(settings)

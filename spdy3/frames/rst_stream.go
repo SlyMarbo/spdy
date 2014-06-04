@@ -8,30 +8,30 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type RstStreamFrame struct {
+type RST_STREAM struct {
 	StreamID common.StreamID
 	Status   common.StatusCode
 }
 
-func (frame *RstStreamFrame) Compress(comp common.Compressor) error {
+func (frame *RST_STREAM) Compress(comp common.Compressor) error {
 	return nil
 }
 
-func (frame *RstStreamFrame) Decompress(decomp common.Decompressor) error {
+func (frame *RST_STREAM) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
-func (frame *RstStreamFrame) Name() string {
+func (frame *RST_STREAM) Name() string {
 	return "RST_STREAM"
 }
 
-func (frame *RstStreamFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *RST_STREAM) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 16)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], RST_STREAM, 0)
+	err = controlFrameCommonProcessing(data[:5], _RST_STREAM, 0)
 	if err != nil {
 		return 16, err
 	}
@@ -54,7 +54,7 @@ func (frame *RstStreamFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *RstStreamFrame) String() string {
+func (frame *RST_STREAM) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("RST_STREAM {\n\t")
@@ -65,7 +65,7 @@ func (frame *RstStreamFrame) String() string {
 	return buf.String()
 }
 
-func (frame *RstStreamFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *RST_STREAM) WriteTo(writer io.Writer) (int64, error) {
 	if !frame.StreamID.Valid() {
 		return 0, common.StreamIdTooLarge
 	}

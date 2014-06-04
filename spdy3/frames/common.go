@@ -16,37 +16,37 @@ func ReadFrame(reader *bufio.Reader, subversion int) (frame common.Frame, err er
 	}
 
 	if start[0] != 128 {
-		frame = new(DataFrame)
+		frame = new(DATA)
 		_, err = frame.ReadFrom(reader)
 		return frame, err
 	}
 
 	switch common.BytesToUint16(start[2:4]) {
-	case SYN_STREAM:
+	case _SYN_STREAM:
 		switch subversion {
 		case 0:
-			frame = new(SynStreamFrame)
+			frame = new(SYN_STREAM)
 		case 1:
-			frame = new(SynStreamFrameV3_1)
+			frame = new(SYN_STREAMV3_1)
 		default:
 			return nil, fmt.Errorf("Error: Given subversion %d is unrecognised.", subversion)
 		}
-	case SYN_REPLY:
-		frame = new(SynReplyFrame)
-	case RST_STREAM:
-		frame = new(RstStreamFrame)
-	case SETTINGS:
-		frame = new(SettingsFrame)
-	case PING:
-		frame = new(PingFrame)
-	case GOAWAY:
-		frame = new(GoawayFrame)
-	case HEADERS:
-		frame = new(HeadersFrame)
-	case WINDOW_UPDATE:
-		frame = &WindowUpdateFrame{subversion: subversion}
-	case CREDENTIAL:
-		frame = new(CredentialFrame)
+	case _SYN_REPLY:
+		frame = new(SYN_REPLY)
+	case _RST_STREAM:
+		frame = new(RST_STREAM)
+	case _SETTINGS:
+		frame = new(SETTINGS)
+	case _PING:
+		frame = new(PING)
+	case _GOAWAY:
+		frame = new(GOAWAY)
+	case _HEADERS:
+		frame = new(HEADERS)
+	case _WINDOW_UPDATE:
+		frame = &WINDOW_UPDATE{subversion: subversion}
+	case _CREDENTIAL:
+		frame = new(CREDENTIAL)
 
 	default:
 		return nil, errors.New("Error Failed to parse frame type.")
@@ -64,7 +64,7 @@ func ReadFrame(reader *bufio.Reader, subversion int) (frame common.Frame, err er
 func controlFrameCommonProcessing(data []byte, frameType uint16, flags byte) error {
 	// Check it's a control frame.
 	if data[0] != 128 {
-		return common.IncorrectFrame(DATA_FRAME, int(frameType), 3)
+		return common.IncorrectFrame(_DATA_FRAME, int(frameType), 3)
 	}
 
 	// Check version.
@@ -89,31 +89,31 @@ func controlFrameCommonProcessing(data []byte, frameType uint16, flags byte) err
 
 // Frame types in SPDY/3
 const (
-	SYN_STREAM    = 1
-	SYN_REPLY     = 2
-	RST_STREAM    = 3
-	SETTINGS      = 4
-	PING          = 6
-	GOAWAY        = 7
-	HEADERS       = 8
-	WINDOW_UPDATE = 9
-	CREDENTIAL    = 10
-	CONTROL_FRAME = -1
-	DATA_FRAME    = -2
+	_SYN_STREAM    = 1
+	_SYN_REPLY     = 2
+	_RST_STREAM    = 3
+	_SETTINGS      = 4
+	_PING          = 6
+	_GOAWAY        = 7
+	_HEADERS       = 8
+	_WINDOW_UPDATE = 9
+	_CREDENTIAL    = 10
+	_CONTROL_FRAME = -1
+	_DATA_FRAME    = -2
 )
 
 // frameNames provides the name for a particular SPDY/3
 // frame type.
 var frameNames = map[int]string{
-	SYN_STREAM:    "SYN_STREAM",
-	SYN_REPLY:     "SYN_REPLY",
-	RST_STREAM:    "RST_STREAM",
-	SETTINGS:      "SETTINGS",
-	PING:          "PING",
-	GOAWAY:        "GOAWAY",
-	HEADERS:       "HEADERS",
-	WINDOW_UPDATE: "WINDOW_UPDATE",
-	CREDENTIAL:    "CREDENTIAL",
-	CONTROL_FRAME: "CONTROL_FRAME",
-	DATA_FRAME:    "DATA_FRAME",
+	_SYN_STREAM:    "SYN_STREAM",
+	_SYN_REPLY:     "SYN_REPLY",
+	_RST_STREAM:    "RST_STREAM",
+	_SETTINGS:      "SETTINGS",
+	_PING:          "PING",
+	_GOAWAY:        "GOAWAY",
+	_HEADERS:       "HEADERS",
+	_WINDOW_UPDATE: "WINDOW_UPDATE",
+	_CREDENTIAL:    "CREDENTIAL",
+	_CONTROL_FRAME: "CONTROL_FRAME",
+	_DATA_FRAME:    "DATA_FRAME",
 }

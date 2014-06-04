@@ -57,7 +57,7 @@ func (p *PushStream) Write(inputData []byte) (int, error) {
 	// Chunk the response if necessary.
 	written := 0
 	for len(data) > common.MAX_DATA_SIZE {
-		dataFrame := new(frames.DataFrame)
+		dataFrame := new(frames.DATA)
 		dataFrame.StreamID = p.streamID
 		dataFrame.Data = data[:common.MAX_DATA_SIZE]
 		p.output <- dataFrame
@@ -70,7 +70,7 @@ func (p *PushStream) Write(inputData []byte) (int, error) {
 		return written, nil
 	}
 
-	dataFrame := new(frames.DataFrame)
+	dataFrame := new(frames.DATA)
 	dataFrame.StreamID = p.streamID
 	dataFrame.Data = data
 	p.output <- dataFrame
@@ -125,7 +125,7 @@ func (p *PushStream) ReceiveFrame(frame common.Frame) error {
 
 	// Process the frame depending on its type.
 	switch frame := frame.(type) {
-	case *frames.WindowUpdateFrame:
+	case *frames.WINDOW_UPDATE:
 		// Ignore.
 
 	default:
@@ -157,7 +157,7 @@ func (p *PushStream) StreamID() common.StreamID {
 
 func (p *PushStream) Finish() {
 	p.writeHeader()
-	end := new(frames.DataFrame)
+	end := new(frames.DATA)
 	end.StreamID = p.streamID
 	end.Data = []byte{}
 	end.Flags = common.FLAG_FIN
@@ -188,7 +188,7 @@ func (p *PushStream) writeHeader() {
 		return
 	}
 
-	header := new(frames.HeadersFrame)
+	header := new(frames.HEADERS)
 	header.StreamID = p.streamID
 	header.Header = common.CloneHeader(p.header)
 	for name := range header.Header {

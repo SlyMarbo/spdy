@@ -9,30 +9,30 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type WindowUpdateFrame struct {
+type WINDOW_UPDATE struct {
 	StreamID        common.StreamID
 	DeltaWindowSize uint32
 }
 
-func (frame *WindowUpdateFrame) Compress(comp common.Compressor) error {
+func (frame *WINDOW_UPDATE) Compress(comp common.Compressor) error {
 	return nil
 }
 
-func (frame *WindowUpdateFrame) Decompress(decomp common.Decompressor) error {
+func (frame *WINDOW_UPDATE) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
-func (frame *WindowUpdateFrame) Name() string {
+func (frame *WINDOW_UPDATE) Name() string {
 	return "WINDOW_UPDATE"
 }
 
-func (frame *WindowUpdateFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *WINDOW_UPDATE) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 16)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], WINDOW_UPDATE, 0)
+	err = controlFrameCommonProcessing(data[:5], _WINDOW_UPDATE, 0)
 	if err != nil {
 		return 16, err
 	}
@@ -59,7 +59,7 @@ func (frame *WindowUpdateFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return 16, nil
 }
 
-func (frame *WindowUpdateFrame) String() string {
+func (frame *WINDOW_UPDATE) String() string {
 	buf := new(bytes.Buffer)
 
 	buf.WriteString("WINDOW_UPDATE {\n\t")
@@ -70,6 +70,6 @@ func (frame *WindowUpdateFrame) String() string {
 	return buf.String()
 }
 
-func (frame *WindowUpdateFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *WINDOW_UPDATE) WriteTo(writer io.Writer) (int64, error) {
 	return 0, nil
 }

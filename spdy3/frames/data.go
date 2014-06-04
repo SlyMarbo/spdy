@@ -9,25 +9,25 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type DataFrame struct {
+type DATA struct {
 	StreamID common.StreamID
 	Flags    common.Flags
 	Data     []byte
 }
 
-func (frame *DataFrame) Compress(comp common.Compressor) error {
+func (frame *DATA) Compress(comp common.Compressor) error {
 	return nil
 }
 
-func (frame *DataFrame) Decompress(decomp common.Decompressor) error {
+func (frame *DATA) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
-func (frame *DataFrame) Name() string {
+func (frame *DATA) Name() string {
 	return "DATA"
 }
 
-func (frame *DataFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *DATA) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 8)
 	if err != nil {
 		return 0, err
@@ -35,7 +35,7 @@ func (frame *DataFrame) ReadFrom(reader io.Reader) (int64, error) {
 
 	// Check it's a data frame.
 	if data[0]&0x80 == 1 {
-		return 8, common.IncorrectFrame(CONTROL_FRAME, DATA_FRAME, 3)
+		return 8, common.IncorrectFrame(_CONTROL_FRAME, _DATA_FRAME, 3)
 	}
 
 	// Check flags.
@@ -68,7 +68,7 @@ func (frame *DataFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *DataFrame) String() string {
+func (frame *DATA) String() string {
 	buf := new(bytes.Buffer)
 
 	flags := ""
@@ -95,7 +95,7 @@ func (frame *DataFrame) String() string {
 	return buf.String()
 }
 
-func (frame *DataFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *DATA) WriteTo(writer io.Writer) (int64, error) {
 	length := len(frame.Data)
 	if length > common.MAX_DATA_SIZE {
 		return 0, errors.New("Error: Data size too large.")

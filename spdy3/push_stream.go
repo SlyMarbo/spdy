@@ -124,10 +124,10 @@ func (p *PushStream) ReceiveFrame(frame common.Frame) error {
 
 	// Process the frame depending on its type.
 	switch frame := frame.(type) {
-	case *frames.WindowUpdateFrame:
+	case *frames.WINDOW_UPDATE:
 		err := p.flow.UpdateWindow(frame.DeltaWindowSize)
 		if err != nil {
-			reply := new(frames.RstStreamFrame)
+			reply := new(frames.RST_STREAM)
 			reply.StreamID = p.streamID
 			reply.Status = common.RST_STREAM_FLOW_CONTROL_ERROR
 			p.output <- reply
@@ -163,7 +163,7 @@ func (p *PushStream) StreamID() common.StreamID {
 
 func (p *PushStream) Finish() {
 	p.writeHeader()
-	end := new(frames.DataFrame)
+	end := new(frames.DATA)
 	end.StreamID = p.streamID
 	end.Data = []byte{}
 	end.Flags = common.FLAG_FIN
@@ -194,7 +194,7 @@ func (p *PushStream) writeHeader() {
 		return
 	}
 
-	header := new(frames.HeadersFrame)
+	header := new(frames.HEADERS)
 	header.StreamID = p.streamID
 	header.Header = make(http.Header)
 

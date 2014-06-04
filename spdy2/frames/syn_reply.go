@@ -10,14 +10,14 @@ import (
 	"github.com/SlyMarbo/spdy/common"
 )
 
-type SynReplyFrame struct {
+type SYN_REPLY struct {
 	Flags     common.Flags
 	StreamID  common.StreamID
 	Header    http.Header
 	rawHeader []byte
 }
 
-func (frame *SynReplyFrame) Compress(com common.Compressor) error {
+func (frame *SYN_REPLY) Compress(com common.Compressor) error {
 	if frame.rawHeader != nil {
 		return nil
 	}
@@ -31,7 +31,7 @@ func (frame *SynReplyFrame) Compress(com common.Compressor) error {
 	return nil
 }
 
-func (frame *SynReplyFrame) Decompress(decom common.Decompressor) error {
+func (frame *SYN_REPLY) Decompress(decom common.Decompressor) error {
 	if frame.Header != nil {
 		return nil
 	}
@@ -46,17 +46,17 @@ func (frame *SynReplyFrame) Decompress(decom common.Decompressor) error {
 	return nil
 }
 
-func (frame *SynReplyFrame) Name() string {
+func (frame *SYN_REPLY) Name() string {
 	return "SYN_REPLY"
 }
 
-func (frame *SynReplyFrame) ReadFrom(reader io.Reader) (int64, error) {
+func (frame *SYN_REPLY) ReadFrom(reader io.Reader) (int64, error) {
 	data, err := common.ReadExactly(reader, 14)
 	if err != nil {
 		return 0, err
 	}
 
-	err = controlFrameCommonProcessing(data[:5], SYN_REPLY, common.FLAG_FIN)
+	err = controlFrameCommonProcessing(data[:5], _SYN_REPLY, common.FLAG_FIN)
 	if err != nil {
 		return 14, err
 	}
@@ -82,7 +82,7 @@ func (frame *SynReplyFrame) ReadFrom(reader io.Reader) (int64, error) {
 	return int64(length + 8), nil
 }
 
-func (frame *SynReplyFrame) String() string {
+func (frame *SYN_REPLY) String() string {
 	buf := new(bytes.Buffer)
 	flags := ""
 	if frame.Flags.FIN() {
@@ -103,7 +103,7 @@ func (frame *SynReplyFrame) String() string {
 	return buf.String()
 }
 
-func (frame *SynReplyFrame) WriteTo(writer io.Writer) (int64, error) {
+func (frame *SYN_REPLY) WriteTo(writer io.Writer) (int64, error) {
 	if frame.rawHeader == nil {
 		return 0, errors.New("Error: Header not written.")
 	}
