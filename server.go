@@ -50,29 +50,7 @@ func NewServerConn(conn net.Conn, server *http.Server, version, subversion int) 
 // concatenation of the server's certificate followed by the
 // CA's certificate.
 //
-// A trivial example server is:
-//
-//      import (
-//              "github.com/SlyMarbo/spdy"
-//              "log"
-//              "net/http"
-//      )
-//
-//      func httpHandler(w http.ResponseWriter, req *http.Request) {
-//              w.Header().Set("Content-Type", "text/plain")
-//              w.Write([]byte("This is an example server.\n"))
-//      }
-//
-//      func main() {
-//              http.HandleFunc("/", httpHandler)
-//              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
-//              err := spdy.ListenAndServeTLS(":10443", "cert.pem", "key.pem", nil)
-//              if err != nil {
-//                      log.Fatal(err)
-//              }
-//      }
-//
-// One can use generate_cert.go in crypto/tls to generate cert.pem and key.pem.
+// See examples/server/server.go for a simple example server.
 func ListenAndServeTLS(addr string, certFile string, keyFile string, handler http.Handler) error {
 	npnStrings := npn()
 	server := &http.Server{
@@ -119,7 +97,7 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 	return server.ListenAndServeTLS(certFile, keyFile)
 }
 
-// ListenAndServeTLS listens on the TCP network address addr
+// ListenAndServeSpdyOnly listens on the TCP network address addr
 // and then calls Serve with handler to handle requests on
 // incoming connections.  Handler is typically nil, in which
 // case the DefaultServeMux is used. Additionally, files
@@ -132,30 +110,8 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 // IMPORTANT NOTE: Unlike spdy.ListenAndServeTLS, this function
 // will ONLY serve SPDY. HTTPS requests are refused.
 //
-// A trivial example server is:
-//
-//      import (
-//              "github.com/SlyMarbo/spdy"
-//              "log"
-//              "net/http"
-//      )
-//
-//      func httpHandler(w http.ResponseWriter, req *http.Request) {
-//              w.Header().Set("Content-Type", "text/plain")
-//              w.Write([]byte("This is an example server.\n"))
-//      }
-//
-//      func main() {
-//              http.HandleFunc("/", httpHandler)
-//              log.Printf("About to listen on 10443. Go to https://127.0.0.1:10443/")
-//              err := spdy.ListenAndServeSPDY(":10443", "cert.pem", "key.pem", nil)
-//              if err != nil {
-//                      log.Fatal(err)
-//              }
-//      }
-//
-// One can use generate_cert.go in crypto/tls to generate cert.pem and key.pem.
-func ListenAndServeSPDY(addr string, certFile string, keyFile string, handler http.Handler) error {
+// See examples/spdy_only_server/server.go for a simple example server.
+func ListenAndServeSpdyOnly(addr string, certFile string, keyFile string, handler http.Handler) error {
 	npnStrings := npn()
 	if addr == "" {
 		addr = ":https"
