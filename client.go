@@ -17,7 +17,7 @@ import (
 // init modifies http.DefaultClient to use a spdy.Transport, enabling
 // support for SPDY in functions like http.Get.
 func init() {
-	http.DefaultClient = &http.Client{Transport: new(Transport)}
+	http.DefaultClient = NewClient(false)
 }
 
 // NewClientConn is used to create a SPDY connection, using the given
@@ -42,4 +42,9 @@ func NewClientConn(conn net.Conn, push common.Receiver, version, subversion int)
 	default:
 		return nil, errors.New("Error: Unrecognised SPDY version.")
 	}
+}
+
+// NewClient creates an http.Client that supports SPDY.
+func NewClient(insecureSkipVerify bool) *http.Client {
+	return &http.Client{Transport: NewTransport(insecureSkipVerify)}
 }

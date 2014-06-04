@@ -83,6 +83,16 @@ type Transport struct {
 	PushReceiver common.Receiver
 }
 
+// NewTransport gives a simple initialised Transport.
+func NewTransport(insecureSkipVerify bool) *Transport {
+	return &Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: insecureSkipVerify,
+			NextProtos:         npn(),
+		},
+	}
+}
+
 // dial makes the connection to an endpoint.
 func (t *Transport) dial(u *url.URL) (net.Conn, error) {
 
