@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/SlyMarbo/spdy"
+	"github.com/SlyMarbo/spdy/common"
 )
 
 func init() {
@@ -38,7 +39,7 @@ func TestProxyConnect(t *testing.T) {
 	go func() {
 		srv := &http.Server{
 			Addr: conn.Addr().String(),
-			Handler: spdy.ProxyConnections(spdy.ProxyConnHandlerFunc(func(conn spdy.Conn) {
+			Handler: spdy.ProxyConnections(spdy.ProxyConnHandlerFunc(func(conn common.Conn) {
 				req, err := http.NewRequest("GET", "http://example.com/", nil)
 				if err != nil {
 					errChan <- err

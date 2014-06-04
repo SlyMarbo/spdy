@@ -1,36 +1,45 @@
-package spdy
+package common
 
 import (
 	"io"
+	"io/ioutil"
 	logging "log"
-
-	"github.com/SlyMarbo/spdy/common"
+	"os"
 )
 
-var log = common.GetLogger()
-var debug = common.GetDebugLogger()
+var log = logging.New(os.Stderr, "(spdy) ", logging.LstdFlags|logging.Lshortfile)
+var debug = logging.New(ioutil.Discard, "(spdy debug) ", logging.LstdFlags)
+var VerboseLogging = false
+
+func GetLogger() *logging.Logger {
+	return log
+}
+
+func GetDebugLogger() *logging.Logger {
+	return debug
+}
 
 // SetLogger sets the package's error logger.
 func SetLogger(l *logging.Logger) {
-	common.SetLogger(l)
+	log = l
 }
 
 // SetLogOutput sets the output for the package's error logger.
 func SetLogOutput(w io.Writer) {
-	common.SetLogOutput(w)
+	log = logging.New(w, "(spdy) ", logging.LstdFlags|logging.Lshortfile)
 }
 
 // SetDebugLogger sets the package's debug info logger.
 func SetDebugLogger(l *logging.Logger) {
-	common.SetDebugLogger(l)
+	debug = l
 }
 
 // SetDebugOutput sets the output for the package's debug info logger.
 func SetDebugOutput(w io.Writer) {
-	common.SetDebugOutput(w)
+	debug = logging.New(w, "(spdy debug) ", logging.LstdFlags)
 }
 
 // EnableDebugOutput sets the output for the package's debug info logger to os.Stdout.
 func EnableDebugOutput() {
-	common.EnableDebugOutput()
+	SetDebugOutput(os.Stdout)
 }

@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	spdy.EnableDebugOutput()
+	// spdy.EnableDebugOutput()
 }
 
 func TestClient(t *testing.T) {
