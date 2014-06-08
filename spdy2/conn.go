@@ -133,103 +133,8 @@ func NewConn(conn net.Conn, server *http.Server) *Conn {
 	return out
 }
 
-// Close ends the connection, cleaning up relevant resources.
-// Close can be called multiple times safely.
-func (conn *Conn) Close() (err error) {
-	conn.shutdownOnce.Do(conn.shutdown)
-	return nil
-}
-
-func (conn *Conn) shutdown() {
-	if conn.closed() {
-		return
-	}
-
-	// Try to inform the other endpoint that the connection is closing.
-	conn.sendingLock.Lock()
-	isSending := conn.sending != nil
-	conn.sendingLock.Unlock()
-	if !conn.goawaySent && !isSending {
-		goaway := new(frames.GOAWAY)
-		if conn.server != nil {
-			goaway.LastGoodStreamID = conn.lastRequestStreamID
-		} else {
-			goaway.LastGoodStreamID = conn.lastPushStreamID
-		}
-		select {
-		case conn.output[0] <- goaway:
-			conn.goawaySent = true
-		case <-time.After(100 * time.Millisecond):
-			debug.Println("Failed to send closing GOAWAY.")
-		}
-	}
-
-	// Give any pending frames 200ms to send.
-	conn.sendingLock.Lock()
-	if conn.sending == nil {
-		conn.sending = make(chan struct{})
-		conn.sendingLock.Unlock()
-		select {
-		case <-conn.sending:
-		case <-time.After(200 * time.Millisecond):
-		}
-		conn.sendingLock.Lock()
-	}
-	conn.sending = nil
-	conn.sendingLock.Unlock()
-
-	select {
-	case _, ok := <-conn.stop:
-		if ok {
-			close(conn.stop)
-		}
-	default:
-		close(conn.stop)
-	}
-
-	conn.connLock.Lock()
-	if conn.conn != nil {
-		conn.conn.Close()
-		conn.conn = nil
-	}
-	conn.connLock.Unlock()
-
-	for _, stream := range conn.streams {
-		if err := stream.Close(); err != nil {
-			debug.Println(err)
-		}
-	}
-	conn.streams = nil
-
-	if conn.compressor != nil {
-		conn.compressor.Close()
-		conn.compressor = nil
-	}
-	conn.decompressor = nil
-
-	conn.pushedResources = nil
-
-	for _, stream := range conn.output {
-		select {
-		case _, ok := <-stream:
-			if ok {
-				close(stream)
-			}
-		default:
-			close(stream)
-		}
-	}
-}
-
 func (conn *Conn) CloseNotify() <-chan bool {
 	return conn.stop
-}
-
-func (conn *Conn) Conn() net.Conn {
-	conn.connLock.Lock()
-	c := conn.conn
-	conn.connLock.Unlock()
-	return c
 }
 
 // InitialWindowSize gives the most recently-received value for
@@ -1196,7 +1101,6 @@ func (conn *Conn) readFrames() {
 		}
 
 		// ReadFrame takes care of the frame parsing for us.
-		conn.refreshReadTimeout()
 		frame, err := frames.ReadFrame(conn.buf)
 		if err != nil {
 			conn.handleReadWriteError(err)
@@ -1271,7 +1175,6 @@ func (conn *Conn) send() {
 
 		// Leave the specifics of writing to the
 		// connection up to the frame.
-		conn.refreshWriteTimeout()
 		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
 			conn.handleReadWriteError(err)
@@ -1333,34 +1236,4 @@ func (conn *Conn) selectFrameToSend(prioritise bool) (frame common.Frame) {
 	case _ = <-conn.stop:
 		return nil
 	}
-}
-
-// Add timeouts if requested by the server.
-func (conn *Conn) refreshTimeouts() {
-	conn.connLock.Lock()
-	if d := conn.readTimeout; d != 0 && conn.conn != nil {
-		conn.conn.SetReadDeadline(time.Now().Add(d))
-	}
-	if d := conn.writeTimeout; d != 0 && conn.conn != nil {
-		conn.conn.SetWriteDeadline(time.Now().Add(d))
-	}
-	conn.connLock.Unlock()
-}
-
-// Add timeouts if requested by the server.
-func (conn *Conn) refreshReadTimeout() {
-	conn.connLock.Lock()
-	if d := conn.readTimeout; d != 0 && conn.conn != nil {
-		conn.conn.SetReadDeadline(time.Now().Add(d))
-	}
-	conn.connLock.Unlock()
-}
-
-// Add timeouts if requested by the server.
-func (conn *Conn) refreshWriteTimeout() {
-	conn.connLock.Lock()
-	if d := conn.writeTimeout; d != 0 && conn.conn != nil {
-		conn.conn.SetWriteDeadline(time.Now().Add(d))
-	}
-	conn.connLock.Unlock()
 }

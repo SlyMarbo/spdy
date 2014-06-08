@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"time"
 )
 
 /**************
@@ -22,8 +21,7 @@ import (
 // early by using Close.
 type Conn interface {
 	http.CloseNotifier
-	io.Closer
-	Conn() net.Conn
+	net.Conn
 	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
 	Push(url string, origin Stream) (PushStream, error)
@@ -31,16 +29,13 @@ type Conn interface {
 	RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error)
 	Run() error
 	SetFlowControl(FlowControl) error
-	SetTimeout(time.Duration)
-	SetReadTimeout(time.Duration)
-	SetWriteTimeout(time.Duration)
 }
 
 // Stream contains a single SPDY stream.
 type Stream interface {
 	http.CloseNotifier
 	http.ResponseWriter
-	io.ReadCloser
+	io.Closer
 	Conn() Conn
 	ReceiveFrame(Frame) error
 	Run() error
