@@ -52,6 +52,15 @@ type PushStream interface {
 	Finish()
 }
 
+// PriorityStream represents a SPDY stream with a priority.
+type PriorityStream interface {
+	Stream
+
+	// Priority returns the stream's
+	// priority.
+	Priority() Priority
+}
+
 // Frame represents a single SPDY frame.
 type Frame interface {
 	fmt.Stringer

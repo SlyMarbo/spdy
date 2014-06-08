@@ -864,7 +864,6 @@ func (conn *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) 
 	}
 
 	out := streams.NewResponseStream(conn, frame, conn.output[priority], conn.server.Handler, request, conn.stop)
-	out.Priority = priority
 
 	return out
 }

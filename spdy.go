@@ -129,11 +129,8 @@ func AddSPDY(srv *http.Server) {
 //              }
 //      }
 func GetPriority(w http.ResponseWriter) (int, error) {
-	if stream, ok := w.(*spdy3.ServerStream); ok {
-		return int(stream.Priority), nil
-	}
-	if stream, ok := w.(*spdy2.ServerStream); ok {
-		return int(stream.Priority), nil
+	if stream, ok := w.(common.PriorityStream); ok {
+		return int(stream.Priority()), nil
 	}
 	return 0, common.ErrNotSPDY
 }

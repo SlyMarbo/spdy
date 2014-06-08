@@ -21,7 +21,6 @@ import (
 // client requests.
 type ResponseStream struct {
 	sync.Mutex
-	Priority common.Priority
 
 	shutdownOnce   sync.Once
 	conn           common.Conn
@@ -33,6 +32,7 @@ type ResponseStream struct {
 	request        *http.Request
 	handler        http.Handler
 	header         http.Header
+	priority       common.Priority
 	unidirectional bool
 	responseCode   int
 	stop           chan bool
@@ -50,6 +50,7 @@ func NewResponseStream(conn common.Conn, frame *frames.SYN_STREAM, output chan<-
 		out.handler = http.DefaultServeMux
 	}
 	out.request = request
+	out.priority = frame.Priority
 	out.stop = stop
 	out.unidirectional = frame.Flags.UNIDIRECTIONAL()
 	out.requestBody = new(bytes.Buffer)
@@ -367,4 +368,12 @@ func (s *ResponseStream) writeHeader() {
 	}
 
 	s.output <- header
+}
+
+/******************
+ * PriorityStream *
+ ******************/
+
+func (s *ResponseStream) Priority() common.Priority {
+	return s.priority
 }
