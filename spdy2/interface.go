@@ -1,7 +1,6 @@
 package spdy2
 
 import (
-	"net"
 	"time"
 
 	"github.com/SlyMarbo/spdy/spdy2/frames"
@@ -95,30 +94,30 @@ func (conn *Conn) shutdown() {
 	}
 }
 
-func (c *Conn) Read(b []byte) (int, error) {
-	panic("not implemented")
+func (c *Conn) SetReadTimeout(d time.Duration) {
+	c.timeoutLock.Lock()
+	c.readTimeout = d
+	c.timeoutLock.Unlock()
 }
 
-func (c *Conn) Write(b []byte) (int, error) {
-	panic("not implemented")
+func (c *Conn) SetWriteTimeout(d time.Duration) {
+	c.timeoutLock.Lock()
+	c.writeTimeout = d
+	c.timeoutLock.Unlock()
 }
 
-func (c *Conn) LocalAddr() net.Addr {
-	return c.conn.LocalAddr()
+func (c *Conn) refreshReadTimeout() {
+	c.timeoutLock.Lock()
+	if d := c.readTimeout; d != 0 && c.conn != nil {
+		c.conn.SetReadDeadline(time.Now().Add(d))
+	}
+	c.timeoutLock.Unlock()
 }
 
-func (c *Conn) RemoteAddr() net.Addr {
-	return c.conn.RemoteAddr()
-}
-
-func (c *Conn) SetDeadline(t time.Time) error {
-	return c.conn.SetDeadline(t)
-}
-
-func (c *Conn) SetReadDeadline(t time.Time) error {
-	return c.conn.SetReadDeadline(t)
-}
-
-func (c *Conn) SetWriteDeadline(t time.Time) error {
-	return c.conn.SetWriteDeadline(t)
+func (c *Conn) refreshWriteTimeout() {
+	c.timeoutLock.Lock()
+	if d := c.writeTimeout; d != 0 && c.conn != nil {
+		c.conn.SetWriteDeadline(time.Now().Add(d))
+	}
+	c.timeoutLock.Unlock()
 }

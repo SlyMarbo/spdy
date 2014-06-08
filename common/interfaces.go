@@ -7,7 +7,6 @@ package common
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 )
 
@@ -21,7 +20,7 @@ import (
 // early by using Close.
 type Conn interface {
 	http.CloseNotifier
-	net.Conn
+	io.Closer
 	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
 	Push(url string, origin Stream) (PushStream, error)

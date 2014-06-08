@@ -62,6 +62,7 @@ type Conn struct {
 	init                  func()                                // this function is called before the connection begins.
 	readTimeout           time.Duration                         // optional timeout for network reads.
 	writeTimeout          time.Duration                         // optional timeout for network writes.
+	timeoutLock           spin.Lock                             // protects changes to readTimeout and writeTimeout.
 	pushedResources       map[common.Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
 	shutdownOnce          sync.Once                             // used to ensure clean shutdown.
 }
@@ -1044,6 +1045,7 @@ func (conn *Conn) readFrames() {
 		}
 
 		// ReadFrame takes care of the frame parsing for us.
+		conn.refreshReadTimeout()
 		frame, err := frames.ReadFrame(conn.buf)
 		if err != nil {
 			conn.handleReadWriteError(err)
@@ -1118,6 +1120,7 @@ func (conn *Conn) send() {
 
 		// Leave the specifics of writing to the
 		// connection up to the frame.
+		conn.refreshWriteTimeout()
 		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
 			conn.handleReadWriteError(err)

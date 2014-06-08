@@ -66,6 +66,7 @@ type Conn struct {
 	init                  func()                                // this function is called before the connection begins.
 	readTimeout           time.Duration                         // optional timeout for network reads.
 	writeTimeout          time.Duration                         // optional timeout for network writes.
+	timeoutLock           spin.Lock                             // protects readTimeout and writeTimeout.
 	flowControl           common.FlowControl                    // flow control module.
 	pushedResources       map[common.Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
 	shutdownOnce          sync.Once                             // used to ensure clean shutdown.
@@ -435,25 +436,6 @@ func (conn *Conn) SetFlowControl(f common.FlowControl) error {
 	conn.flowControl = f
 	conn.Unlock()
 	return nil
-}
-
-func (conn *Conn) SetTimeout(d time.Duration) {
-	conn.Lock()
-	conn.readTimeout = d
-	conn.writeTimeout = d
-	conn.Unlock()
-}
-
-func (conn *Conn) SetReadTimeout(d time.Duration) {
-	conn.Lock()
-	conn.readTimeout = d
-	conn.Unlock()
-}
-
-func (conn *Conn) SetWriteTimeout(d time.Duration) {
-	conn.Lock()
-	conn.writeTimeout = d
-	conn.Unlock()
 }
 
 // closed indicates whether the connection has
@@ -1226,6 +1208,7 @@ func (conn *Conn) readFrames() {
 		}
 
 		// ReadFrame takes care of the frame parsing for us.
+		conn.refreshReadTimeout()
 		frame, err := frames.ReadFrame(conn.buf, conn.Subversion)
 		if err != nil {
 			conn.handleReadWriteError(err)
@@ -1322,6 +1305,7 @@ Loop:
 
 		// Leave the specifics of writing to the
 		// connection up to the frame.
+		conn.refreshWriteTimeout()
 		_, err = frame.WriteTo(conn.conn)
 		if err != nil {
 			conn.handleReadWriteError(err)
