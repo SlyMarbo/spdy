@@ -85,13 +85,15 @@ func (s *ClientStream) WriteHeader(int) {
 }
 
 /*****************
- * io.ReadCloser *
+ * io.Closer *
  *****************/
 
 // Close is used to cancel a mid-air
 // request.
 func (s *ClientStream) Close() error {
+	s.Lock()
 	s.shutdownOnce.Do(s.shutdown)
+	s.Unlock()
 	return nil
 }
 
@@ -122,13 +124,6 @@ func (s *ClientStream) shutdown() {
 	s.receiver = nil
 	s.header = nil
 	s.stop = nil
-}
-
-func (s *ClientStream) Read(out []byte) (int, error) {
-	log.Println("ClientStream.Read() is unimplemented. " +
-		"To get the response from a client directly (and not via the Response), " +
-		"provide a Receiver to clientConn.Request().")
-	return 0, nil
 }
 
 /**********

@@ -7,7 +7,6 @@ package spdy2
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 
@@ -20,13 +19,14 @@ import (
 // for performing server pushes.
 type PushStream struct {
 	sync.Mutex
-	conn     common.Conn
-	streamID common.StreamID
-	origin   common.Stream
-	state    *common.StreamState
-	output   chan<- common.Frame
-	header   http.Header
-	stop     <-chan bool
+	shutdownOnce sync.Once
+	conn         common.Conn
+	streamID     common.StreamID
+	origin       common.Stream
+	state        *common.StreamState
+	output       chan<- common.Frame
+	header       http.Header
+	stop         <-chan bool
 }
 
 /***********************
@@ -86,12 +86,17 @@ func (p *PushStream) WriteHeader(int) {
 }
 
 /*****************
- * io.ReadCloser *
+ * io.Closer *
  *****************/
 
 func (p *PushStream) Close() error {
 	p.Lock()
-	defer p.Unlock()
+	p.shutdownOnce.Do(p.shutdown)
+	p.Unlock()
+	return nil
+}
+
+func (p *PushStream) shutdown() {
 	p.writeHeader()
 	if p.state != nil {
 		p.state.Close()
@@ -100,11 +105,6 @@ func (p *PushStream) Close() error {
 	p.output = nil
 	p.header = nil
 	p.stop = nil
-	return nil
-}
-
-func (p *PushStream) Read(out []byte) (int, error) {
-	return 0, io.EOF
 }
 
 /**********

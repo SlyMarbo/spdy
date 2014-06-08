@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -24,6 +23,7 @@ type ServerStream struct {
 	sync.Mutex
 	Priority common.Priority
 
+	shutdownOnce   sync.Once
 	conn           common.Conn
 	streamID       common.StreamID
 	requestBody    *bytes.Buffer
@@ -130,12 +130,17 @@ func (s *ServerStream) WriteHeader(code int) {
 }
 
 /*****************
- * io.ReadCloser *
+ * io.Closer *
  *****************/
 
 func (s *ServerStream) Close() error {
 	s.Lock()
-	defer s.Unlock()
+	s.shutdownOnce.Do(s.shutdown)
+	s.Unlock()
+	return nil
+}
+
+func (s *ServerStream) shutdown() {
 	s.writeHeader()
 	if s.state != nil {
 		s.state.Close()
@@ -149,15 +154,6 @@ func (s *ServerStream) Close() error {
 	s.handler = nil
 	s.header = nil
 	s.stop = nil
-	return nil
-}
-
-func (s *ServerStream) Read(out []byte) (int, error) {
-	n, err := s.requestBody.Read(out)
-	if err == io.EOF && s.state.OpenThere() {
-		return n, nil
-	}
-	return n, err
 }
 
 /**********
