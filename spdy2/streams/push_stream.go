@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package spdy2
+package streams
 
 import (
 	"errors"
@@ -27,6 +27,18 @@ type PushStream struct {
 	output       chan<- common.Frame
 	header       http.Header
 	stop         <-chan bool
+}
+
+func NewPushStream(conn common.Conn, streamID common.StreamID, origin common.Stream, output chan<- common.Frame, stop chan bool) *PushStream {
+	out := new(PushStream)
+	out.conn = conn
+	out.streamID = streamID
+	out.origin = origin
+	out.output = output
+	out.stop = stop
+	out.state = new(common.StreamState)
+	out.header = make(http.Header)
+	return out
 }
 
 /***********************

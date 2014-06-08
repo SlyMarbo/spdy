@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package spdy2
+package streams
 
 import (
 	"errors"
@@ -14,19 +14,20 @@ import (
 	"github.com/SlyMarbo/spdy/spdy2/frames"
 )
 
-// ClientStream is a structure that implements
+// RequestStream is a structure that implements
 // the Stream and ResponseWriter interfaces. This
 // is used for responding to client requests.
-type ClientStream struct {
+type RequestStream struct {
 	sync.Mutex
+	Request  *http.Request
+	Receiver common.Receiver
+
 	recvMutex    sync.Mutex
 	shutdownOnce sync.Once
 	conn         common.Conn
 	streamID     common.StreamID
 	state        *common.StreamState
 	output       chan<- common.Frame
-	request      *http.Request
-	receiver     common.Receiver
 	header       http.Header
 	headerChan   chan func()
 	responseCode int
@@ -34,16 +35,31 @@ type ClientStream struct {
 	finished     chan struct{}
 }
 
+func NewRequestStream(conn common.Conn, streamID common.StreamID, output chan<- common.Frame, stop chan bool) *RequestStream {
+	out := new(RequestStream)
+	out.conn = conn
+	out.streamID = streamID
+	out.output = output
+	out.stop = stop
+	out.state = new(common.StreamState)
+	out.state.CloseHere()
+	out.header = make(http.Header)
+	out.finished = make(chan struct{})
+	out.headerChan = make(chan func(), 5)
+	go out.processFrames()
+	return out
+}
+
 /***********************
  * http.ResponseWriter *
  ***********************/
 
-func (s *ClientStream) Header() http.Header {
+func (s *RequestStream) Header() http.Header {
 	return s.header
 }
 
 // Write is one method with which request data is sent.
-func (s *ClientStream) Write(inputData []byte) (int, error) {
+func (s *RequestStream) Write(inputData []byte) (int, error) {
 	if s.closed() || s.state.ClosedHere() {
 		return 0, errors.New("Error: Stream already closed.")
 	}
@@ -80,7 +96,7 @@ func (s *ClientStream) Write(inputData []byte) (int, error) {
 }
 
 // WriteHeader is used to set the HTTP status code.
-func (s *ClientStream) WriteHeader(int) {
+func (s *RequestStream) WriteHeader(int) {
 	s.writeHeader()
 }
 
@@ -90,14 +106,14 @@ func (s *ClientStream) WriteHeader(int) {
 
 // Close is used to cancel a mid-air
 // request.
-func (s *ClientStream) Close() error {
+func (s *RequestStream) Close() error {
 	s.Lock()
 	s.shutdownOnce.Do(s.shutdown)
 	s.Unlock()
 	return nil
 }
 
-func (s *ClientStream) shutdown() {
+func (s *RequestStream) shutdown() {
 	s.writeHeader()
 	if s.state != nil {
 		if s.state.OpenThere() {
@@ -120,8 +136,8 @@ func (s *ClientStream) shutdown() {
 		close(s.headerChan)
 	}
 	s.output = nil
-	s.request = nil
-	s.receiver = nil
+	s.Request = nil
+	s.Receiver = nil
 	s.header = nil
 	s.stop = nil
 }
@@ -130,11 +146,11 @@ func (s *ClientStream) shutdown() {
  * Stream *
  **********/
 
-func (s *ClientStream) Conn() common.Conn {
+func (s *RequestStream) Conn() common.Conn {
 	return s.conn
 }
 
-func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
+func (s *RequestStream) ReceiveFrame(frame common.Frame) error {
 	s.recvMutex.Lock()
 	defer s.recvMutex.Unlock()
 
@@ -154,7 +170,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 
 		// Give to the client.
 		s.headerChan <- func() {
-			s.receiver.ReceiveData(s.request, data, frame.Flags.FIN())
+			s.Receiver.ReceiveData(s.Request, data, frame.Flags.FIN())
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
@@ -164,7 +180,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 
 	case *frames.SYN_REPLY:
 		s.headerChan <- func() {
-			s.receiver.ReceiveHeader(s.request, frame.Header)
+			s.Receiver.ReceiveHeader(s.Request, frame.Header)
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
@@ -174,7 +190,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 
 	case *frames.HEADERS:
 		s.headerChan <- func() {
-			s.receiver.ReceiveHeader(s.request, frame.Header)
+			s.Receiver.ReceiveHeader(s.Request, frame.Header)
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
@@ -192,7 +208,7 @@ func (s *ClientStream) ReceiveFrame(frame common.Frame) error {
 	return nil
 }
 
-func (s *ClientStream) CloseNotify() <-chan bool {
+func (s *RequestStream) CloseNotify() <-chan bool {
 	return s.stop
 }
 
@@ -200,7 +216,7 @@ func (s *ClientStream) CloseNotify() <-chan bool {
 // the stream. Data is recieved,
 // processed, and then the stream
 // is cleaned up and closed.
-func (s *ClientStream) Run() error {
+func (s *RequestStream) Run() error {
 	// Receive and process inbound frames.
 	<-s.finished
 
@@ -209,16 +225,16 @@ func (s *ClientStream) Run() error {
 	return nil
 }
 
-func (s *ClientStream) State() *common.StreamState {
+func (s *RequestStream) State() *common.StreamState {
 	return s.state
 }
 
-func (s *ClientStream) StreamID() common.StreamID {
+func (s *RequestStream) StreamID() common.StreamID {
 	return s.streamID
 }
 
-func (s *ClientStream) closed() bool {
-	if s.conn == nil || s.state == nil || s.receiver == nil {
+func (s *RequestStream) closed() bool {
+	if s.conn == nil || s.state == nil || s.Receiver == nil {
 		return true
 	}
 	select {
@@ -230,7 +246,7 @@ func (s *ClientStream) closed() bool {
 }
 
 // writeHeader is used to flush HTTP headers.
-func (s *ClientStream) writeHeader() {
+func (s *RequestStream) writeHeader() {
 	if len(s.header) == 0 {
 		return
 	}
@@ -248,7 +264,7 @@ func (s *ClientStream) writeHeader() {
 	s.output <- header
 }
 
-func (s *ClientStream) processFrames() {
+func (s *RequestStream) processFrames() {
 	for f := range s.headerChan {
 		f()
 	}
