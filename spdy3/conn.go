@@ -22,6 +22,7 @@ import (
 
 	"github.com/SlyMarbo/spdy/common"
 	"github.com/SlyMarbo/spdy/spdy3/frames"
+	"github.com/SlyMarbo/spdy/spdy3/streams"
 	"github.com/SlyMarbo/spin"
 )
 
@@ -127,7 +128,7 @@ func NewConn(conn net.Conn, server *http.Server, subversion int) *Conn {
 		if d := server.WriteTimeout; d != 0 {
 			out.SetWriteTimeout(d)
 		}
-		out.flowControl = DefaultFlowControl(common.DEFAULT_INITIAL_WINDOW_SIZE)
+		out.flowControl = streams.DefaultFlowControl(common.DEFAULT_INITIAL_WINDOW_SIZE)
 		out.pushedResources = make(map[common.Stream]map[string]struct{})
 
 		if subversion == 0 {
@@ -152,7 +153,7 @@ func NewConn(conn net.Conn, server *http.Server, subversion int) *Conn {
 			settings.Settings = defaultClientSettings(common.DEFAULT_STREAM_LIMIT)
 			out.output[0] <- settings
 		}
-		out.flowControl = DefaultFlowControl(common.DEFAULT_INITIAL_CLIENT_WINDOW_SIZE)
+		out.flowControl = streams.DefaultFlowControl(common.DEFAULT_INITIAL_CLIENT_WINDOW_SIZE)
 
 		if subversion == 1 {
 			out.connectionWindowSize = common.DEFAULT_INITIAL_CLIENT_WINDOW_SIZE
@@ -368,14 +369,7 @@ func (conn *Conn) Push(resource string, origin common.Stream) (common.PushStream
 	conn.output[0] <- push
 
 	// Create the pushStream.
-	out := new(PushStream)
-	out.conn = conn
-	out.streamID = newID
-	out.origin = origin
-	out.state = new(common.StreamState)
-	out.output = conn.output[7]
-	out.header = make(http.Header)
-	out.stop = conn.stop
+	out := streams.NewPushStream(conn, newID, origin, conn.output[7], conn.stop)
 	out.AddFlowControl(conn.flowControl)
 
 	// Store in the connection map.
@@ -481,20 +475,10 @@ func (conn *Conn) Request(request *http.Request, receiver common.Receiver, prior
 	}
 
 	// Create the request stream.
-	out := new(ClientStream)
-	out.conn = conn
-	out.streamID = syn.StreamID
-	out.state = new(common.StreamState)
-	out.state.CloseHere()
-	out.output = conn.output[0]
-	out.request = request
-	out.receiver = receiver
-	out.header = make(http.Header)
-	out.stop = conn.stop
-	out.finished = make(chan struct{})
+	out := streams.NewRequestStream(conn, syn.StreamID, conn.output[0], conn.stop)
+	out.Request = request
+	out.Receiver = receiver
 	out.AddFlowControl(conn.flowControl)
-	out.headerChan = make(chan func(), 5)
-	go out.processFrames()
 
 	// Store in the connection map.
 	conn.streams[syn.StreamID] = out
@@ -880,7 +864,7 @@ func (conn *Conn) handleRstStream(frame *frames.RST_STREAM) {
 		if !ok {
 			return
 		}
-		_, ok = stream.(*PushStream)
+		_, ok = stream.(*streams.PushStream)
 		if sid&1 == conn.oddity && !ok {
 			log.Println("Error: Cannot cancel locally-sent streams.")
 			conn.numBenignErrors++
@@ -1055,32 +1039,7 @@ func (conn *Conn) handleWindowUpdate(frame *frames.WINDOW_UPDATE) {
 }
 
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
-func (conn *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) *ServerStream {
-	stream := new(ServerStream)
-	stream.conn = conn
-	stream.streamID = frame.StreamID
-	// stream.flow is initialised in stream.AddFlowControl below.
-	stream.requestBody = new(bytes.Buffer)
-	stream.state = new(common.StreamState)
-	stream.output = conn.output[priority]
-	// stream.request initialised below.
-	stream.handler = conn.server.Handler
-	if stream.handler == nil {
-		stream.handler = http.DefaultServeMux
-	}
-	stream.header = make(http.Header)
-	stream.unidirectional = frame.Flags.UNIDIRECTIONAL()
-	stream.responseCode = 0
-	stream.ready = make(chan struct{})
-	stream.stop = conn.stop
-	stream.wroteHeader = false
-	stream.Priority = priority
-
-	if frame.Flags.FIN() {
-		close(stream.ready)
-		stream.state.CloseThere()
-	}
-
+func (conn *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) *streams.ResponseStream {
 	header := frame.Header
 	rawUrl := header.Get(":scheme") + "://" + header.Get(":host") + header.Get(":path")
 
@@ -1100,7 +1059,7 @@ func (conn *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) 
 	method := header.Get(":method")
 
 	// Build this into a request to present to the Handler.
-	stream.request = &http.Request{
+	request := &http.Request{
 		Method:     method,
 		URL:        url,
 		Proto:      vers,
@@ -1111,12 +1070,13 @@ func (conn *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) 
 		Host:       url.Host,
 		RequestURI: url.RequestURI(),
 		TLS:        conn.tlsState,
-		Body:       &common.ReadCloser{stream.requestBody},
 	}
 
-	stream.AddFlowControl(conn.flowControl)
+	out := streams.NewResponseStream(conn, frame, conn.output[priority], conn.server.Handler, request, conn.stop)
+	out.Priority = priority
+	out.AddFlowControl(conn.flowControl)
 
-	return stream
+	return out
 }
 
 // handleReadWriteError differentiates between normal and

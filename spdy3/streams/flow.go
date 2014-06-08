@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package spdy3
+package streams
 
 import (
 	"errors"
@@ -49,33 +49,6 @@ type flowControl struct {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (s *ServerStream) AddFlowControl(f common.FlowControl) {
-	if s.flow != nil {
-		return
-	}
-
-	s.flow = new(flowControl)
-	initialWindow, err := s.conn.InitialWindowSize()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	s.flow.streamID = s.streamID
-	s.flow.output = s.output
-	s.flow.buffer = make([][]byte, 0, 10)
-	s.flow.initialWindow = initialWindow
-	s.flow.transferWindow = int64(initialWindow)
-	s.flow.stream = s
-	s.flow.flowControl = f
-	s.flow.initialWindowThere = f.InitialWindowSize()
-	s.flow.transferWindowThere = int64(s.flow.initialWindowThere)
-}
-
-// AddFlowControl initialises flow control for
-// the Stream. If the Stream is running at an
-// older SPDY version than SPDY/3, the flow
-// control has no effect. Multiple calls to
-// AddFlowControl are safe.
 func (p *PushStream) AddFlowControl(f common.FlowControl) {
 	if p.flow != nil {
 		return
@@ -103,7 +76,7 @@ func (p *PushStream) AddFlowControl(f common.FlowControl) {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (r *ClientStream) AddFlowControl(f common.FlowControl) {
+func (r *RequestStream) AddFlowControl(f common.FlowControl) {
 	if r.flow != nil {
 		return
 	}
@@ -123,6 +96,33 @@ func (r *ClientStream) AddFlowControl(f common.FlowControl) {
 	r.flow.flowControl = f
 	r.flow.initialWindowThere = f.InitialWindowSize()
 	r.flow.transferWindowThere = int64(r.flow.initialWindowThere)
+}
+
+// AddFlowControl initialises flow control for
+// the Stream. If the Stream is running at an
+// older SPDY version than SPDY/3, the flow
+// control has no effect. Multiple calls to
+// AddFlowControl are safe.
+func (s *ResponseStream) AddFlowControl(f common.FlowControl) {
+	if s.flow != nil {
+		return
+	}
+
+	s.flow = new(flowControl)
+	initialWindow, err := s.conn.InitialWindowSize()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	s.flow.streamID = s.streamID
+	s.flow.output = s.output
+	s.flow.buffer = make([][]byte, 0, 10)
+	s.flow.initialWindow = initialWindow
+	s.flow.transferWindow = int64(initialWindow)
+	s.flow.stream = s
+	s.flow.flowControl = f
+	s.flow.initialWindowThere = f.InitialWindowSize()
+	s.flow.transferWindowThere = int64(s.flow.initialWindowThere)
 }
 
 // CheckInitialWindow is used to handle the race

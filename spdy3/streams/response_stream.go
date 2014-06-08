@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package spdy3
+package streams
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -17,13 +16,14 @@ import (
 	"github.com/SlyMarbo/spdy/spdy3/frames"
 )
 
-// ServerStream is a structure that implements the
+// ResponseStream is a structure that implements the
 // Stream interface. This is used for responding to
 // client requests.
-type ServerStream struct {
+type ResponseStream struct {
 	sync.Mutex
 	Priority common.Priority
 
+	shutdownOnce   sync.Once
 	conn           common.Conn
 	streamID       common.StreamID
 	flow           *flowControl
@@ -40,16 +40,42 @@ type ServerStream struct {
 	wroteHeader    bool
 }
 
+func NewResponseStream(conn common.Conn, frame *frames.SYN_STREAM, output chan<- common.Frame, handler http.Handler, request *http.Request, stop chan bool) *ResponseStream {
+	out := new(ResponseStream)
+	out.conn = conn
+	out.streamID = frame.StreamID
+	out.output = output
+	out.handler = handler
+	if out.handler == nil {
+		out.handler = http.DefaultServeMux
+	}
+	out.request = request
+	out.stop = stop
+	out.unidirectional = frame.Flags.UNIDIRECTIONAL()
+	out.requestBody = new(bytes.Buffer)
+	out.state = new(common.StreamState)
+	out.header = make(http.Header)
+	out.responseCode = 0
+	out.ready = make(chan struct{})
+	out.wroteHeader = false
+	if frame.Flags.FIN() {
+		close(out.ready)
+		out.state.CloseThere()
+	}
+	out.request.Body = &common.ReadCloser{out.requestBody}
+	return out
+}
+
 /***********************
  * http.ResponseWriter *
  ***********************/
 
-func (s *ServerStream) Header() http.Header {
+func (s *ResponseStream) Header() http.Header {
 	return s.header
 }
 
 // Write is the main method with which data is sent.
-func (s *ServerStream) Write(inputData []byte) (int, error) {
+func (s *ResponseStream) Write(inputData []byte) (int, error) {
 	if s.unidirectional {
 		return 0, errors.New("Error: Stream is unidirectional.")
 	}
@@ -90,7 +116,7 @@ func (s *ServerStream) Write(inputData []byte) (int, error) {
 }
 
 // WriteHeader is used to set the HTTP status code.
-func (s *ServerStream) WriteHeader(code int) {
+func (s *ResponseStream) WriteHeader(code int) {
 	if s.unidirectional {
 		log.Println("Error: Stream is unidirectional.")
 		return
@@ -129,12 +155,17 @@ func (s *ServerStream) WriteHeader(code int) {
 }
 
 /*****************
- * io.ReadCloser *
+ * io.Closer *
  *****************/
 
-func (s *ServerStream) Close() error {
+func (s *ResponseStream) Close() error {
 	s.Lock()
-	defer s.Unlock()
+	s.shutdownOnce.Do(s.shutdown)
+	s.Unlock()
+	return nil
+}
+
+func (s *ResponseStream) shutdown() {
 	s.writeHeader()
 	if s.state != nil {
 		s.state.Close()
@@ -151,26 +182,17 @@ func (s *ServerStream) Close() error {
 	s.handler = nil
 	s.header = nil
 	s.stop = nil
-	return nil
-}
-
-func (s *ServerStream) Read(out []byte) (int, error) {
-	n, err := s.requestBody.Read(out)
-	if err == io.EOF && s.state.OpenThere() {
-		return n, nil
-	}
-	return n, err
 }
 
 /**********
  * Stream *
  **********/
 
-func (s *ServerStream) Conn() common.Conn {
+func (s *ResponseStream) Conn() common.Conn {
 	return s.conn
 }
 
-func (s *ServerStream) ReceiveFrame(frame common.Frame) error {
+func (s *ResponseStream) ReceiveFrame(frame common.Frame) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -223,7 +245,7 @@ func (s *ServerStream) ReceiveFrame(frame common.Frame) error {
 	return nil
 }
 
-func (s *ServerStream) CloseNotify() <-chan bool {
+func (s *ResponseStream) CloseNotify() <-chan bool {
 	return s.stop
 }
 
@@ -232,7 +254,7 @@ func (s *ServerStream) CloseNotify() <-chan bool {
 // registered handler is called,
 // and then the stream is cleaned
 // up and closed.
-func (s *ServerStream) Run() error {
+func (s *ResponseStream) Run() error {
 	// Catch any panics.
 	defer func() {
 		if v := recover(); v != nil {
@@ -305,15 +327,15 @@ func (s *ServerStream) Run() error {
 	return nil
 }
 
-func (s *ServerStream) State() *common.StreamState {
+func (s *ResponseStream) State() *common.StreamState {
 	return s.state
 }
 
-func (s *ServerStream) StreamID() common.StreamID {
+func (s *ResponseStream) StreamID() common.StreamID {
 	return s.streamID
 }
 
-func (s *ServerStream) closed() bool {
+func (s *ResponseStream) closed() bool {
 	if s.conn == nil || s.state == nil || s.handler == nil {
 		return true
 	}
@@ -326,7 +348,7 @@ func (s *ServerStream) closed() bool {
 }
 
 // writeHeader is used to flush HTTP headers.
-func (s *ServerStream) writeHeader() {
+func (s *ResponseStream) writeHeader() {
 	if len(s.header) == 0 || s.unidirectional {
 		return
 	}

@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package spdy3
+package streams
 
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 
@@ -20,14 +19,28 @@ import (
 // for performing server pushes.
 type PushStream struct {
 	sync.Mutex
-	conn     common.Conn
-	streamID common.StreamID
-	flow     *flowControl
-	origin   common.Stream
-	state    *common.StreamState
-	output   chan<- common.Frame
-	header   http.Header
-	stop     <-chan bool
+
+	shutdownOnce sync.Once
+	conn         common.Conn
+	streamID     common.StreamID
+	flow         *flowControl
+	origin       common.Stream
+	state        *common.StreamState
+	output       chan<- common.Frame
+	header       http.Header
+	stop         <-chan bool
+}
+
+func NewPushStream(conn common.Conn, streamID common.StreamID, origin common.Stream, output chan<- common.Frame, stop chan bool) *PushStream {
+	out := new(PushStream)
+	out.conn = conn
+	out.streamID = streamID
+	out.origin = origin
+	out.output = output
+	out.stop = stop
+	out.state = new(common.StreamState)
+	out.header = make(http.Header)
+	return out
 }
 
 /***********************
@@ -82,12 +95,17 @@ func (p *PushStream) WriteHeader(int) {
 }
 
 /*****************
- * io.ReadCloser *
+ * io.Closer *
  *****************/
 
 func (p *PushStream) Close() error {
 	p.Lock()
-	defer p.Unlock()
+	p.shutdownOnce.Do(p.shutdown)
+	p.Unlock()
+	return nil
+}
+
+func (p *PushStream) shutdown() {
 	p.writeHeader()
 	if p.state != nil {
 		p.state.Close()
@@ -99,11 +117,6 @@ func (p *PushStream) Close() error {
 	p.output = nil
 	p.header = nil
 	p.stop = nil
-	return nil
-}
-
-func (p *PushStream) Read(out []byte) (int, error) {
-	return 0, io.EOF
 }
 
 /**********
