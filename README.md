@@ -31,29 +31,28 @@ Use SPDY's pinging features to test the connection:
 package main
 
 import (
-	"github.com/SlyMarbo/spdy"
 	"net/http"
 	"time"
+
+	"github.com/SlyMarbo/spdy"
 )
 
 func Serve(w http.ResponseWriter, r *http.Request) {
 	// Ping returns a channel which will send an empty struct.
-	ping, err := spdy.PingClient(w)
-	if err != nil {
-		// Not using SPDY.
-	}
-	
-	select {
-	case response := <- ping:
-		if response != nil {
-			// Connection is fine.
-		} else {
-			// Something went wrong.
+	if ping, err := spdy.PingClient(w); err == nil {
+		select {
+		case response := <- ping:
+			if response != nil {
+				// Connection is fine.
+			} else {
+				// Something went wrong.
+			}
+			
+		case <-time.After(timeout):
+			// Ping took too long.
 		}
-		
-	case <-time.After(timeout):
-		// Ping took too long.
-		
+	} else {
+		// Not SPDY
 	}
 	
 	// ...
@@ -67,8 +66,9 @@ Sending a server push:
 package main
 
 import (
-	"github.com/SlyMarbo/spdy"
 	"net/http"
+	
+	"github.com/SlyMarbo/spdy"
 )
 
 func Serve(w http.ResponseWriter, r *http.Request) {
