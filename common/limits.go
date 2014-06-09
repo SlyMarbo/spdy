@@ -5,14 +5,14 @@
 package common
 
 import (
-	"sync"
+	"github.com/SlyMarbo/spin"
 )
 
 // StreamLimit is used to add and enforce
 // a limit on the number of concurrently
 // active streams.
 type StreamLimit struct {
-	sync.Mutex
+	lock    spin.Lock
 	limit   uint32
 	current uint32
 }
@@ -27,9 +27,9 @@ func NewStreamLimit(limit uint32) *StreamLimit {
 // limit is set to NO_STREAM_LIMIT, then the limiting
 // is disabled.
 func (s *StreamLimit) SetLimit(l uint32) {
-	s.Lock()
+	s.lock.Lock()
 	s.limit = l
-	s.Unlock()
+	s.lock.Unlock()
 }
 
 // Limit returns the current limit.
@@ -41,19 +41,20 @@ func (s *StreamLimit) Limit() uint32 {
 // returns a bool indicating whether the stream is safe
 // open.
 func (s *StreamLimit) Add() bool {
-	s.Lock()
-	defer s.Unlock()
+	s.lock.Lock()
 	if s.current >= s.limit {
+		s.lock.Unlock()
 		return false
 	}
 	s.current++
+	s.lock.Unlock()
 	return true
 }
 
 // Close is called when a stream is closed; thus freeing
 // up a slot.
 func (s *StreamLimit) Close() {
-	s.Lock()
+	s.lock.Lock()
 	s.current--
-	s.Unlock()
+	s.lock.Unlock()
 }

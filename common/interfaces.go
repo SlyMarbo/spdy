@@ -19,8 +19,8 @@ import (
 // connection has been terminated. The connection can be ended
 // early by using Close.
 type Conn interface {
-	http.CloseNotifier
 	io.Closer
+	http.CloseNotifier
 	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
 	Push(url string, origin Stream) (PushStream, error)
