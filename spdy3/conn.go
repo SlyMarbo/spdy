@@ -27,56 +27,65 @@ type Conn struct {
 	PushReceiver common.Receiver // Receiver to call for server Pushes.
 	Subversion   int             // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
 
-	remoteAddr              string
-	server                  *http.Server                          // nil if client connection.
-	conn                    net.Conn                              // underlying network (TLS) connection.
-	connLock                spin.Lock                             // protects the interface value of the above conn.
-	buf                     *bufio.Reader                         // buffered reader on conn.
-	tlsState                *tls.ConnectionState                  // underlying TLS connection state.
-	streams                 map[common.StreamID]common.Stream     // map of active streams.
-	streamsLock             spin.Lock                             // protects streams.
-	output                  [8]chan common.Frame                  // one output channel per priority level.
-	pings                   map[uint32]chan<- common.Ping         // response channel for pings.
-	pingsLock               spin.Lock                             // protects pings.
-	nextPingID              uint32                                // next outbound ping ID.
-	nextPingIDLock          spin.Lock                             // protects nextPingID.
-	compressor              common.Compressor                     // outbound compression state.
-	decompressor            common.Decompressor                   // inbound decompression state.
-	receivedSettings        common.Settings                       // settings sent by client.
-	lastPushStreamID        common.StreamID                       // last push stream ID. (even)
-	lastPushStreamIDLock    spin.Lock                             // protects lastPushStreamID.
-	lastRequestStreamID     common.StreamID                       // last request stream ID. (odd)
-	lastRequestStreamIDLock spin.Lock                             // protects lastRequestStreamID.
-	streamCreation          sync.Mutex                            // ensures new streams are sent in order.
-	oddity                  common.StreamID                       // whether locally-sent streams are odd or even.
-	initialWindowSize       uint32                                // initial transport window.
-	initialWindowSizeLock   spin.Lock                             // lock for initialWindowSize
-	goawayReceived          bool                                  // goaway has been received.
-	goawaySent              bool                                  // goaway has been sent.
-	goawayLock              spin.Lock                             // protects goawayReceived and goawaySent.
-	numBenignErrors         int                                   // number of non-serious errors encountered.
-	requestStreamLimit      *common.StreamLimit                   // Limit on streams started by the client.
-	pushStreamLimit         *common.StreamLimit                   // Limit on streams started by the server.
-	vectorIndex             uint16                                // current limit on the credential vector size.
-	certificates            map[uint16][]*x509.Certificate        // certificates received in CREDENTIAL frames and TLS handshake.
-	pushRequests            map[common.StreamID]*http.Request     // map of requests sent in server pushes.
-	stop                    chan bool                             // this channel is closed when the connection closes.
-	sending                 chan struct{}                         // this channel is used to ensure pending frames are sent.
-	sendingLock             spin.Lock                             // protects changes to sending's value.
-	init                    func()                                // this function is called before the connection begins.
-	readTimeout             time.Duration                         // optional timeout for network reads.
-	writeTimeout            time.Duration                         // optional timeout for network writes.
-	timeoutLock             spin.Lock                             // protects readTimeout and writeTimeout.
-	flowControl             common.FlowControl                    // flow control module.
-	flowControlLock         spin.Lock                             // protects flowControl.
-	pushedResources         map[common.Stream]map[string]struct{} // used to prevent duplicate headers being pushed.
-	shutdownOnce            sync.Once                             // used to ensure clean shutdown.
-
 	// SPDY/3.1
 	dataBuffer                []*frames.DATA // used to store frames witheld for flow control.
 	connectionWindowSize      int64
 	initialWindowSizeThere    uint32
 	connectionWindowSizeThere int64
+
+	// network state
+	remoteAddr  string
+	server      *http.Server                      // nil if client connection.
+	conn        net.Conn                          // underlying network (TLS) connection.
+	connLock    spin.Lock                         // protects the interface value of the above conn.
+	buf         *bufio.Reader                     // buffered reader on conn.
+	tlsState    *tls.ConnectionState              // underlying TLS connection state.
+	streams     map[common.StreamID]common.Stream // map of active streams.
+	streamsLock spin.Lock                         // protects streams.
+	output      [8]chan common.Frame              // one output channel per priority level.
+
+	// other state
+	compressor       common.Compressor              // outbound compression state.
+	decompressor     common.Decompressor            // inbound decompression state.
+	receivedSettings common.Settings                // settings sent by client.
+	goawayReceived   bool                           // goaway has been received.
+	goawaySent       bool                           // goaway has been sent.
+	goawayLock       spin.Lock                      // protects goawaySent and goawayReceived.
+	numBenignErrors  int                            // number of non-serious errors encountered.
+	readTimeout      time.Duration                  // optional timeout for network reads.
+	writeTimeout     time.Duration                  // optional timeout for network writes.
+	timeoutLock      spin.Lock                      // protects changes to readTimeout and writeTimeout.
+	vectorIndex      uint16                         // current limit on the credential vector size.
+	certificates     map[uint16][]*x509.Certificate // certificates from CREDENTIALs and TLS handshake.
+	flowControl      common.FlowControl             // flow control module.
+	flowControlLock  spin.Lock                      // protects flowControl.
+
+	// SPDY features
+	pings                map[uint32]chan<- common.Ping         // response channel for pings.
+	pingsLock            spin.Lock                             // protects pings.
+	nextPingID           uint32                                // next outbound ping ID.
+	nextPingIDLock       spin.Lock                             // protects nextPingID.
+	pushStreamLimit      *common.StreamLimit                   // Limit on streams started by the server.
+	pushRequests         map[common.StreamID]*http.Request     // map of requests sent in server pushes.
+	lastPushStreamID     common.StreamID                       // last push stream ID. (even)
+	lastPushStreamIDLock spin.Lock                             // protects lastPushStreamID.
+	pushedResources      map[common.Stream]map[string]struct{} // prevents duplicate headers being pushed.
+
+	// requests
+	lastRequestStreamID     common.StreamID     // last request stream ID. (odd)
+	lastRequestStreamIDLock spin.Lock           // protects lastRequestStreamID.
+	streamCreation          sync.Mutex          // ensures new streams are sent in order.
+	oddity                  common.StreamID     // whether locally-sent streams are odd or even.
+	initialWindowSize       uint32              // initial transport window.
+	initialWindowSizeLock   spin.Lock           // lock for initialWindowSize
+	requestStreamLimit      *common.StreamLimit // Limit on streams started by the client.
+
+	// startup and shutdown
+	stop         chan bool     // this channel is closed when the connection closes.
+	sending      chan struct{} // this channel is used to ensure pending frames are sent.
+	sendingLock  spin.Lock     // protects changes to sending's value.
+	init         func()        // this function is called before the connection begins.
+	shutdownOnce sync.Once     // used to ensure clean shutdown.
 }
 
 // NewConn produces an initialised spdy3 connection.
