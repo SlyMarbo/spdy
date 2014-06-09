@@ -31,6 +31,20 @@ func (c *Conn) criticalCheck(condition bool, sid common.StreamID, format string,
 	return true
 }
 
+func (c *Conn) _RST_STREAM(streamID common.StreamID, status common.StatusCode) {
+	rst := new(frames.RST_STREAM)
+	rst.StreamID = streamID
+	rst.Status = status
+	c.output[0] <- rst
+}
+
+func (c *Conn) _GOAWAY(status common.StatusCode) {
+	goaway := new(frames.GOAWAY)
+	goaway.Status = status
+	c.output[0] <- goaway
+	c.Close()
+}
+
 // handleReadWriteError differentiates between normal and
 // unexpected errors when performing I/O with the network,
 // then shuts down the connection.
@@ -63,9 +77,6 @@ func (c *Conn) protocolError(streamID common.StreamID) {
 	case c.output[0] <- reply:
 	case <-time.After(100 * time.Millisecond):
 		debug.Println("Failed to send PROTOCOL_ERROR RST_STREAM.")
-		c.Close()
-		return
 	}
-
 	c.Close()
 }

@@ -7,7 +7,6 @@ import (
 
 	"github.com/SlyMarbo/spdy/common"
 	"github.com/SlyMarbo/spdy/spdy3/frames"
-	"github.com/SlyMarbo/spdy/spdy3/streams"
 )
 
 // processFrame handles the initial processing of the given
@@ -143,10 +142,8 @@ func (c *Conn) processFrame(frame common.Frame) bool {
 		if c.Subversion > 0 {
 			// The transfer window shouldn't already be negative.
 			if c.connectionWindowSizeThere < 0 {
-				goaway := new(frames.GOAWAY)
-				goaway.Status = common.GOAWAY_FLOW_CONTROL_ERROR
-				c.output[0] <- goaway
-				c.Close()
+				c._GOAWAY(common.GOAWAY_FLOW_CONTROL_ERROR)
+				return false
 			}
 
 			c.connectionWindowSizeThere -= int64(len(frame.Data))
@@ -195,14 +192,10 @@ func (c *Conn) handleClientData(frame *frames.DATA) {
 
 	// Check stream is open.
 	c.streamsLock.Lock()
-	stream, ok := c.streams[sid]
+	stream := c.streams[sid]
 	c.streamsLock.Unlock()
-	if !ok || stream == nil || stream.State().ClosedThere() {
-		if ok {
-			debug.Printf("Warning: Received DATA with Stream ID %d, which is closed.\n", sid)
-		} else {
-			c.check(true, "Received DATA with Stream ID %d, which is unopened", sid)
-		}
+	closed := stream == nil || stream.State().ClosedThere()
+	if c.check(closed, "Received DATA with unopened or closed Stream ID %d", sid) {
 		return
 	}
 
@@ -224,14 +217,10 @@ func (c *Conn) handleHeaders(frame *frames.HEADERS) {
 
 	// Check stream is open.
 	c.streamsLock.Lock()
-	stream, ok := c.streams[sid]
+	stream := c.streams[sid]
 	c.streamsLock.Unlock()
-	if !ok || stream == nil || stream.State().ClosedThere() {
-		if ok {
-			debug.Printf("Warning: Received HEADERS with Stream ID %d, which is closed.\n", sid)
-		} else {
-			c.check(true, "Received HEADERS with Stream ID %d, which is unopened", sid)
-		}
+	closed := stream == nil || stream.State().ClosedThere()
+	if c.check(closed, "Received HEADERS with unopened or closed Stream ID %d", sid) {
 		return
 	}
 
@@ -274,14 +263,12 @@ func (c *Conn) handlePush(frame *frames.SYN_STREAM) {
 
 	// Check stream limit would allow the new stream.
 	if !c.pushStreamLimit.Add() {
-		rst := new(frames.RST_STREAM)
-		rst.StreamID = sid
-		rst.Status = common.RST_STREAM_REFUSED_STREAM
-		c.output[0] <- rst
+		c._RST_STREAM(sid, common.RST_STREAM_REFUSED_STREAM)
 		return
 	}
 
-	if c.criticalCheck(!frame.Priority.Valid(3), sid, "Received SYN_STREAM with invalid priority %d", frame.Priority) {
+	ok := frame.Priority.Valid(3)
+	if c.criticalCheck(!ok, sid, "Received SYN_STREAM with invalid priority %d", frame.Priority) {
 		return
 	}
 
@@ -315,10 +302,7 @@ func (c *Conn) handlePush(frame *frames.SYN_STREAM) {
 
 	// Check whether the receiver wants this resource.
 	if c.PushReceiver != nil && !c.PushReceiver.ReceiveRequest(request) {
-		rst := new(frames.RST_STREAM)
-		rst.StreamID = sid
-		rst.Status = common.RST_STREAM_REFUSED_STREAM
-		c.output[0] <- rst
+		c._RST_STREAM(sid, common.RST_STREAM_REFUSED_STREAM)
 		return
 	}
 
@@ -366,10 +350,7 @@ func (c *Conn) handleRequest(frame *frames.SYN_STREAM) {
 
 	// Check stream limit would allow the new stream.
 	if !c.requestStreamLimit.Add() {
-		rst := new(frames.RST_STREAM)
-		rst.StreamID = sid
-		rst.Status = common.RST_STREAM_REFUSED_STREAM
-		c.output[0] <- rst
+		c._RST_STREAM(sid, common.RST_STREAM_REFUSED_STREAM)
 		return
 	}
 
@@ -396,47 +377,33 @@ func (c *Conn) handleRequest(frame *frames.SYN_STREAM) {
 // handleRstStream performs the processing of RST_STREAM frames.
 func (c *Conn) handleRstStream(frame *frames.RST_STREAM) {
 	sid := frame.StreamID
+	c.streamsLock.Lock()
+	stream := c.streams[sid]
+	c.streamsLock.Unlock()
 
 	// Determine the status code and react accordingly.
 	switch frame.Status {
-	case common.RST_STREAM_INVALID_STREAM:
-		c.check(true, "Received INVALID_STREAM for stream ID %d", sid)
-		fallthrough
-	case common.RST_STREAM_REFUSED_STREAM:
-		c.streamsLock.Lock()
-		stream := c.streams[sid]
-		c.streamsLock.Unlock()
+	case common.RST_STREAM_INVALID_STREAM,
+		common.RST_STREAM_STREAM_ALREADY_CLOSED:
 		if stream != nil {
 			go stream.Close()
 		}
+		fallthrough
+	case common.RST_STREAM_STREAM_IN_USE:
+		c.check(true, "Received %s for stream ID %d", frame.Status, sid)
 
 	case common.RST_STREAM_CANCEL: // Allow cancelling of pushes.
-		c.streamsLock.Lock()
-		stream, ok := c.streams[sid]
-		c.streamsLock.Unlock()
-		if !ok {
+		if c.check(sid&1 == c.oddity && stream == nil, "Cannot cancel locally-sent streams") {
 			return
 		}
-		_, ok = stream.(*streams.PushStream)
-		if c.check(sid&1 == c.oddity && !ok, "Cannot cancel locally-sent streams") {
-			return
+		fallthrough
+	case common.RST_STREAM_REFUSED_STREAM:
+		if stream != nil {
+			go stream.Close()
 		}
-		stream.Close()
 
 	case common.RST_STREAM_FLOW_CONTROL_ERROR:
 		c.numBenignErrors++
-
-	case common.RST_STREAM_STREAM_IN_USE:
-		c.check(true, "Received STREAM_IN_USE for stream ID %d", sid)
-
-	case common.RST_STREAM_STREAM_ALREADY_CLOSED:
-		c.check(true, "Received STREAM_ALREADY_CLOSED for stream ID %d", sid)
-		c.streamsLock.Lock()
-		stream := c.streams[sid]
-		c.streamsLock.Unlock()
-		if stream != nil {
-			go stream.Close()
-		}
 
 	case common.RST_STREAM_INVALID_CREDENTIALS:
 		if c.Subversion > 0 {
@@ -463,14 +430,10 @@ func (c *Conn) handleServerData(frame *frames.DATA) {
 
 	// Check stream is open.
 	c.streamsLock.Lock()
-	stream, ok := c.streams[sid]
+	stream := c.streams[sid]
 	c.streamsLock.Unlock()
-	if !ok || stream == nil || stream.State().ClosedThere() {
-		if ok {
-			debug.Printf("Warning: Received DATA with closed Stream ID %d.\n", sid)
-		} else {
-			c.check(true, "Received DATA with unopened Stream ID %d", sid)
-		}
+	closed := stream == nil || stream.State().ClosedThere()
+	if c.check(closed, "Received DATA with unopened or closed Stream ID %d", sid) {
 		return
 	}
 
@@ -495,10 +458,10 @@ func (c *Conn) handleSynReply(frame *frames.SYN_REPLY) {
 	}
 
 	c.streamsLock.Lock()
-	stream, ok := c.streams[sid]
+	stream := c.streams[sid]
 	c.streamsLock.Unlock()
-	bad := !ok || stream == nil || stream.State() == nil || stream.State().ClosedThere()
-	if c.check(bad, "Received SYN_REPLY with closed or unopened Stream ID %d", sid) {
+	closed := stream == nil || stream.State().ClosedThere()
+	if c.check(closed, "Received SYN_REPLY with unopened or closed Stream ID %d", sid) {
 		return
 	}
 
@@ -543,9 +506,9 @@ func (c *Conn) handleWindowUpdate(frame *frames.WINDOW_UPDATE) {
 
 	// Check stream is open.
 	c.streamsLock.Lock()
-	stream, ok := c.streams[sid]
+	stream := c.streams[sid]
 	c.streamsLock.Unlock()
-	bad = !ok || stream == nil || stream.State().ClosedHere()
+	bad = stream == nil || stream.State().ClosedHere()
 	if c.check(bad, "Received WINDOW_UPDATE with closed or unopened Stream ID %d", sid) {
 		return
 	}
