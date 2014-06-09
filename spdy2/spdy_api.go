@@ -123,3 +123,7 @@ func (c *Conn) Push(resource string, origin common.Stream) (common.PushStream, e
 
 	return out, nil
 }
+
+func (c *Conn) SetFlowControl(common.FlowControl) error {
+	return common.ErrNoFlowControl
+}

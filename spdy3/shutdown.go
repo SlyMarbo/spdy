@@ -13,6 +13,17 @@ func (c *Conn) Close() (err error) {
 	return nil
 }
 
+// closed indicates whether the connection has
+// been closed.
+func (c *Conn) closed() bool {
+	select {
+	case <-c.stop:
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *Conn) shutdown() {
 	if c.closed() {
 		return

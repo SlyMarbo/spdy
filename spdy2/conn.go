@@ -153,21 +153,6 @@ func (c *Conn) Run() error {
 	return nil
 }
 
-func (c *Conn) SetFlowControl(common.FlowControl) error {
-	return common.ErrNoFlowControl
-}
-
-// closed indicates whether the connection has
-// been closed.
-func (c *Conn) closed() bool {
-	select {
-	case _ = <-c.stop:
-		return true
-	default:
-		return false
-	}
-}
-
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
 func (c *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) *streams.ResponseStream {
 	header := frame.Header

@@ -179,17 +179,6 @@ func (c *Conn) Run() error {
 	return nil
 }
 
-// closed indicates whether the connection has
-// been closed.
-func (c *Conn) closed() bool {
-	select {
-	case <-c.stop:
-		return true
-	default:
-		return false
-	}
-}
-
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
 func (c *Conn) newStream(frame *frames.SYN_STREAM) *streams.ResponseStream {
 	header := frame.Header
