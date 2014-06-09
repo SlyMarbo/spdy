@@ -309,7 +309,7 @@ func (c *Conn) handleRequest(frame *frames.SYN_STREAM) {
 	}
 
 	// Create and start new stream.
-	nextStream := c.newStream(frame, frame.Priority)
+	nextStream := c.newStream(frame)
 	// Make sure an error didn't occur when making the stream.
 	if nextStream == nil {
 		return

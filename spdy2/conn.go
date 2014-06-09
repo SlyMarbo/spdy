@@ -136,38 +136,28 @@ func NewConn(conn net.Conn, server *http.Server) *Conn {
 }
 
 func (c *Conn) Run() error {
-	// Start the send loop.
-	go c.send()
-
-	// Prepare any initialisation frames.
-	if c.init != nil {
-		c.init()
+	go c.send()        // Start the send loop.
+	if c.init != nil { // Must be after sending is enabled.
+		c.init() // Prepare any initialisation frames.
 	}
-
-	// Start the main loop.
-	go c.readFrames()
-
-	// Run until the connection ends.
-	<-c.stop
-
+	go c.readFrames() // Start the main loop.
+	<-c.stop          // Run until the connection ends.
 	return nil
 }
 
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
-func (c *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) *streams.ResponseStream {
+func (c *Conn) newStream(frame *frames.SYN_STREAM) *streams.ResponseStream {
 	header := frame.Header
 	rawUrl := header.Get("scheme") + "://" + header.Get("host") + header.Get("url")
 
 	url, err := url.Parse(rawUrl)
-	if err != nil {
-		log.Println("Error: Received SYN_STREAM with invalid request URL: ", err)
+	if c.check(err != nil, "Received SYN_STREAM with invalid request URL (%v)", err) {
 		return nil
 	}
 
 	vers := header.Get("version")
 	major, minor, ok := http.ParseHTTPVersion(vers)
-	if !ok {
-		log.Println("Error: Invalid HTTP version: " + vers)
+	if c.check(!ok, "Invalid HTTP version: "+vers) {
 		return nil
 	}
 
@@ -187,8 +177,9 @@ func (c *Conn) newStream(frame *frames.SYN_STREAM, priority common.Priority) *st
 		TLS:        c.tlsState,
 	}
 
+	output := c.output[frame.Priority]
 	c.streamCreation.Lock()
-	out := streams.NewResponseStream(c, frame, c.output[priority], c.server.Handler, request, c.stop)
+	out := streams.NewResponseStream(c, frame, output, c.server.Handler, request, c.stop)
 	c.streamCreation.Unlock()
 
 	return out
