@@ -8,15 +8,6 @@ func (c *Conn) CloseNotify() <-chan bool {
 	return c.stop
 }
 
-// InitialWindowSize gives the most recently-received value for
-// the INITIAL_WINDOW_SIZE setting.
-func (c *Conn) InitialWindowSize() (uint32, error) {
-	c.initialWindowSizeLock.Lock()
-	i := c.initialWindowSize
-	c.initialWindowSizeLock.Unlock()
-	return i, nil
-}
-
 func (c *Conn) SetReadTimeout(d time.Duration) {
 	c.timeoutLock.Lock()
 	c.readTimeout = d

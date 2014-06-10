@@ -21,7 +21,6 @@ import (
 type Conn interface {
 	io.Closer
 	http.CloseNotifier
-	InitialWindowSize() (uint32, error)
 	Ping() (<-chan Ping, error)
 	Push(url string, origin Stream) (PushStream, error)
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)

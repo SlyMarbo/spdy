@@ -31,6 +31,7 @@ func (f DefaultFlowControl) ReceiveData(_ common.StreamID, initialWindowSize uin
 // versions of SPDY before 3, this has no effect.
 type flowControl struct {
 	sync.Mutex
+	conn                *Conn
 	stream              common.Stream
 	streamID            common.StreamID
 	output              chan<- common.Frame
@@ -49,26 +50,25 @@ type flowControl struct {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (p *PushStream) AddFlowControl(f common.FlowControl) {
-	if p.flow != nil {
+func (s *PushStream) AddFlowControl(f common.FlowControl) {
+	if s.flow != nil {
 		return
 	}
 
-	p.flow = new(flowControl)
-	initialWindow, err := p.conn.InitialWindowSize()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	p.flow.streamID = p.streamID
-	p.flow.output = p.output
-	p.flow.buffer = make([][]byte, 0, 10)
-	p.flow.initialWindow = initialWindow
-	p.flow.transferWindow = int64(initialWindow)
-	p.flow.stream = p
-	p.flow.flowControl = f
-	p.flow.initialWindowThere = f.InitialWindowSize()
-	p.flow.transferWindowThere = int64(p.flow.transferWindowThere)
+	s.flow = new(flowControl)
+	s.flow.conn = s.conn.(*Conn)
+	s.flow.conn.initialWindowSizeLock.Lock()
+	initialWindow := s.flow.conn.initialWindowSize
+	s.flow.conn.initialWindowSizeLock.Unlock()
+	s.flow.streamID = s.streamID
+	s.flow.output = s.output
+	s.flow.buffer = make([][]byte, 0, 10)
+	s.flow.initialWindow = initialWindow
+	s.flow.transferWindow = int64(initialWindow)
+	s.flow.stream = s
+	s.flow.flowControl = f
+	s.flow.initialWindowThere = f.InitialWindowSize()
+	s.flow.transferWindowThere = int64(s.flow.transferWindowThere)
 }
 
 // AddFlowControl initialises flow control for
@@ -76,26 +76,25 @@ func (p *PushStream) AddFlowControl(f common.FlowControl) {
 // older SPDY version than SPDY/3, the flow
 // control has no effect. Multiple calls to
 // AddFlowControl are safe.
-func (r *RequestStream) AddFlowControl(f common.FlowControl) {
-	if r.flow != nil {
+func (s *RequestStream) AddFlowControl(f common.FlowControl) {
+	if s.flow != nil {
 		return
 	}
 
-	r.flow = new(flowControl)
-	initialWindow, err := r.conn.InitialWindowSize()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	r.flow.streamID = r.streamID
-	r.flow.output = r.output
-	r.flow.buffer = make([][]byte, 0, 10)
-	r.flow.initialWindow = initialWindow
-	r.flow.transferWindow = int64(initialWindow)
-	r.flow.stream = r
-	r.flow.flowControl = f
-	r.flow.initialWindowThere = f.InitialWindowSize()
-	r.flow.transferWindowThere = int64(r.flow.initialWindowThere)
+	s.flow = new(flowControl)
+	s.flow.conn = s.conn.(*Conn)
+	s.flow.conn.initialWindowSizeLock.Lock()
+	initialWindow := s.flow.conn.initialWindowSize
+	s.flow.conn.initialWindowSizeLock.Unlock()
+	s.flow.streamID = s.streamID
+	s.flow.output = s.output
+	s.flow.buffer = make([][]byte, 0, 10)
+	s.flow.initialWindow = initialWindow
+	s.flow.transferWindow = int64(initialWindow)
+	s.flow.stream = s
+	s.flow.flowControl = f
+	s.flow.initialWindowThere = f.InitialWindowSize()
+	s.flow.transferWindowThere = int64(s.flow.initialWindowThere)
 }
 
 // AddFlowControl initialises flow control for
@@ -109,11 +108,10 @@ func (s *ResponseStream) AddFlowControl(f common.FlowControl) {
 	}
 
 	s.flow = new(flowControl)
-	initialWindow, err := s.conn.InitialWindowSize()
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	s.flow.conn = s.conn.(*Conn)
+	s.flow.conn.initialWindowSizeLock.Lock()
+	initialWindow := s.flow.conn.initialWindowSize
+	s.flow.conn.initialWindowSizeLock.Unlock()
 	s.flow.streamID = s.streamID
 	s.flow.output = s.output
 	s.flow.buffer = make([][]byte, 0, 10)
@@ -137,11 +135,9 @@ func (f *flowControl) CheckInitialWindow() {
 		return
 	}
 
-	newWindow, err := f.stream.Conn().InitialWindowSize()
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	f.conn.initialWindowSizeLock.Lock()
+	newWindow := f.conn.initialWindowSize
+	f.conn.initialWindowSizeLock.Unlock()
 
 	if f.initialWindow != newWindow {
 		if f.initialWindow > newWindow {
