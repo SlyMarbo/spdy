@@ -5,7 +5,7 @@
 package common
 
 import (
-	"github.com/SlyMarbo/spin"
+	"sync"
 )
 
 // State variables used internally in StreamState.
@@ -20,7 +20,7 @@ const (
 // do not directly affect the stream's state, but it will use that information
 // to effect the changes.
 type StreamState struct {
-	l spin.Lock
+	l sync.Mutex
 	s uint8
 }
 

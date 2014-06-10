@@ -5,14 +5,14 @@
 package common
 
 import (
-	"github.com/SlyMarbo/spin"
+	"sync"
 )
 
 // StreamLimit is used to add and enforce
 // a limit on the number of concurrently
 // active streams.
 type StreamLimit struct {
-	lock    spin.Lock
+	lock    sync.Mutex
 	limit   uint32
 	current uint32
 }
