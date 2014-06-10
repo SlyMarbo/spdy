@@ -15,7 +15,6 @@ import (
 
 	"github.com/SlyMarbo/spdy/common"
 	"github.com/SlyMarbo/spdy/spdy2/frames"
-	"github.com/SlyMarbo/spdy/spdy2/streams"
 )
 
 // Conn is a spdy.Conn implementing SPDY/2. This is used in both
@@ -146,7 +145,7 @@ func NewConn(conn net.Conn, server *http.Server) *Conn {
 // NextProto is intended for use in http.Server.TLSNextProto,
 // using SPDY/2 for the connection.
 func NextProto(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-	NewConn(tlsConn, s, 2).Run()
+	NewConn(tlsConn, s).Run()
 }
 
 func (c *Conn) Run() error {
@@ -160,7 +159,7 @@ func (c *Conn) Run() error {
 }
 
 // newStream is used to create a new serverStream from a SYN_STREAM frame.
-func (c *Conn) newStream(frame *frames.SYN_STREAM) *streams.ResponseStream {
+func (c *Conn) newStream(frame *frames.SYN_STREAM) *ResponseStream {
 	header := frame.Header
 	rawUrl := header.Get("scheme") + "://" + header.Get("host") + header.Get("url")
 
@@ -193,7 +192,7 @@ func (c *Conn) newStream(frame *frames.SYN_STREAM) *streams.ResponseStream {
 
 	output := c.output[frame.Priority]
 	c.streamCreation.Lock()
-	out := streams.NewResponseStream(c, frame, output, c.server.Handler, request, c.stop)
+	out := NewResponseStream(c, frame, output, c.server.Handler, request, c.stop)
 	c.streamCreation.Unlock()
 
 	return out

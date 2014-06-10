@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package streams
+package spdy3
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/SlyMarbo/spdy/common"
-	"github.com/SlyMarbo/spdy/spdy2/frames"
+	"github.com/SlyMarbo/spdy/spdy3/frames"
 )
 
 // ResponseStream is a structure that implements the
@@ -25,6 +25,7 @@ type ResponseStream struct {
 	shutdownOnce   sync.Once
 	conn           common.Conn
 	streamID       common.StreamID
+	flow           *flowControl
 	requestBody    *bytes.Buffer
 	state          *common.StreamState
 	output         chan<- common.Frame
@@ -34,8 +35,8 @@ type ResponseStream struct {
 	priority       common.Priority
 	unidirectional bool
 	responseCode   int
-	ready          chan struct{}
 	stop           chan bool
+	ready          chan struct{}
 	wroteHeader    bool
 }
 
@@ -97,27 +98,22 @@ func (s *ResponseStream) Write(inputData []byte) (int, error) {
 	s.writeHeader()
 
 	// Chunk the response if necessary.
+	// Data is sent to the flow control to
+	// ensure that the protocol is followed.
 	written := 0
 	for len(data) > common.MAX_DATA_SIZE {
-		dataFrame := new(frames.DATA)
-		dataFrame.StreamID = s.streamID
-		dataFrame.Data = data[:common.MAX_DATA_SIZE]
-		s.output <- dataFrame
-
-		written += common.MAX_DATA_SIZE
+		n, err := s.flow.Write(data[:common.MAX_DATA_SIZE])
+		if err != nil {
+			return written, err
+		}
+		written += n
+		data = data[common.MAX_DATA_SIZE:]
 	}
 
-	n := len(data)
-	if n == 0 {
-		return written, nil
-	}
+	n, err := s.flow.Write(data)
+	written += n
 
-	dataFrame := new(frames.DATA)
-	dataFrame.StreamID = s.streamID
-	dataFrame.Data = data
-	s.output <- dataFrame
-
-	return written + n, nil
+	return written, err
 }
 
 // WriteHeader is used to set the HTTP status code.
@@ -134,16 +130,19 @@ func (s *ResponseStream) WriteHeader(code int) {
 
 	s.wroteHeader = true
 	s.responseCode = code
-	s.header.Set("status", strconv.Itoa(code))
-	s.header.Set("version", "HTTP/1.1")
+	s.header.Set(":status", strconv.Itoa(code))
+	s.header.Set(":version", "HTTP/1.1")
 
 	// Create the response SYN_REPLY.
 	synReply := new(frames.SYN_REPLY)
 	synReply.StreamID = s.streamID
-	synReply.Header = common.CloneHeader(s.header)
+	synReply.Header = make(http.Header)
 
 	// Clear the headers that have been sent.
-	for name := range synReply.Header {
+	for name, values := range s.header {
+		for _, value := range values {
+			synReply.Header.Add(name, value)
+		}
 		s.header.Del(name)
 	}
 
@@ -171,6 +170,9 @@ func (s *ResponseStream) shutdown() {
 	s.writeHeader()
 	if s.state != nil {
 		s.state.Close()
+	}
+	if s.flow != nil {
+		s.flow.Close()
 	}
 	if s.requestBody != nil {
 		s.requestBody.Reset()
@@ -203,6 +205,7 @@ func (s *ResponseStream) ReceiveFrame(frame common.Frame) error {
 	switch frame := frame.(type) {
 	case *frames.DATA:
 		s.requestBody.Write(frame.Data)
+		s.flow.Receive(frame.Data)
 		if frame.Flags.FIN() {
 			select {
 			case <-s.ready:
@@ -227,7 +230,14 @@ func (s *ResponseStream) ReceiveFrame(frame common.Frame) error {
 		common.UpdateHeader(s.header, frame.Header)
 
 	case *frames.WINDOW_UPDATE:
-		// Ignore.
+		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
+		if err != nil {
+			reply := new(frames.RST_STREAM)
+			reply.StreamID = s.streamID
+			reply.Status = common.RST_STREAM_FLOW_CONTROL_ERROR
+			s.output <- reply
+			return err
+		}
 
 	default:
 		return errors.New(fmt.Sprintf("Received unknown frame of type %T.", frame))
@@ -269,6 +279,14 @@ func (s *ResponseStream) Run() error {
 	 ***************/
 	s.handler.ServeHTTP(s, s.request)
 
+	// Make sure any queued data has been sent.
+	if s.flow.Paused() && s.state.OpenThere() {
+		s.flow.Flush()
+	}
+	if s.flow.Paused() {
+		log.Printf("Error: Stream %d has been closed with data still buffered.\n", s.streamID)
+	}
+
 	// Close the stream with a SYN_REPLY if
 	// none has been sent, or an empty DATA
 	// frame, if a SYN_REPLY has been sent
@@ -277,14 +295,21 @@ func (s *ResponseStream) Run() error {
 	// this end, then nothing happens.
 	if !s.unidirectional {
 		if s.state.OpenHere() && !s.wroteHeader {
-			s.header.Set("status", "200")
-			s.header.Set("version", "HTTP/1.1")
+			s.header.Set(":status", "200")
+			s.header.Set(":version", "HTTP/1.1")
 
 			// Create the response SYN_REPLY.
 			synReply := new(frames.SYN_REPLY)
 			synReply.Flags = common.FLAG_FIN
 			synReply.StreamID = s.streamID
-			synReply.Header = s.header
+			synReply.Header = make(http.Header)
+
+			for name, values := range s.header {
+				for _, value := range values {
+					synReply.Header.Add(name, value)
+				}
+				s.header.Del(name)
+			}
 
 			s.output <- synReply
 		} else if s.state.OpenHere() {
@@ -332,10 +357,13 @@ func (s *ResponseStream) writeHeader() {
 	// Create the HEADERS frame.
 	header := new(frames.HEADERS)
 	header.StreamID = s.streamID
-	header.Header = common.CloneHeader(s.header)
+	header.Header = make(http.Header)
 
 	// Clear the headers that have been sent.
-	for name := range header.Header {
+	for name, values := range s.header {
+		for _, value := range values {
+			header.Header.Add(name, value)
+		}
 		s.header.Del(name)
 	}
 

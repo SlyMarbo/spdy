@@ -8,7 +8,6 @@ import (
 
 	"github.com/SlyMarbo/spdy/common"
 	"github.com/SlyMarbo/spdy/spdy2/frames"
-	"github.com/SlyMarbo/spdy/spdy2/streams"
 )
 
 // Ping is used by spdy.PingServer and spdy.PingClient to send
@@ -114,7 +113,7 @@ func (c *Conn) Push(resource string, origin common.Stream) (common.PushStream, e
 	c.output[0] <- push
 
 	// Create the PushStream.
-	out := streams.NewPushStream(c, newID, origin, c.output[3], c.stop)
+	out := NewPushStream(c, newID, origin, c.output[3], c.stop)
 
 	// Store in the connection map.
 	c.streamsLock.Lock()

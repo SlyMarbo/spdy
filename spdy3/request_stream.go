@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package streams
+package spdy3
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/SlyMarbo/spdy/common"
-	"github.com/SlyMarbo/spdy/spdy2/frames"
+	"github.com/SlyMarbo/spdy/spdy3/frames"
 )
 
 // RequestStream is a structure that implements
@@ -26,6 +26,7 @@ type RequestStream struct {
 	shutdownOnce sync.Once
 	conn         common.Conn
 	streamID     common.StreamID
+	flow         *flowControl
 	state        *common.StreamState
 	output       chan<- common.Frame
 	header       http.Header
@@ -72,27 +73,27 @@ func (s *RequestStream) Write(inputData []byte) (int, error) {
 	s.writeHeader()
 
 	// Chunk the response if necessary.
+	// Data is sent to the flow control to
+	// ensure that the protocol is followed.
 	written := 0
 	for len(data) > common.MAX_DATA_SIZE {
-		dataFrame := new(frames.DATA)
-		dataFrame.StreamID = s.streamID
-		dataFrame.Data = data[:common.MAX_DATA_SIZE]
-		s.output <- dataFrame
-
-		written += common.MAX_DATA_SIZE
+		n, err := s.flow.Write(data[:common.MAX_DATA_SIZE])
+		if err != nil {
+			return written, err
+		}
+		written += n
+		data = data[common.MAX_DATA_SIZE:]
 	}
 
-	n := len(data)
-	if n == 0 {
-		return written, nil
+	if len(data) > 0 {
+		n, err := s.flow.Write(data)
+		written += n
+		if err != nil {
+			return written, err
+		}
 	}
 
-	dataFrame := new(frames.DATA)
-	dataFrame.StreamID = s.streamID
-	dataFrame.Data = data
-	s.output <- dataFrame
-
-	return written + n, nil
+	return written, nil
 }
 
 // WriteHeader is used to set the HTTP status code.
@@ -104,8 +105,7 @@ func (s *RequestStream) WriteHeader(int) {
  * io.Closer *
  *****************/
 
-// Close is used to cancel a mid-air
-// request.
+// Close is used to stop the stream safely.
 func (s *RequestStream) Close() error {
 	s.Lock()
 	s.shutdownOnce.Do(s.shutdown)
@@ -124,6 +124,9 @@ func (s *RequestStream) shutdown() {
 			s.output <- rst
 		}
 		s.state.Close()
+	}
+	if s.flow != nil {
+		s.flow.Close()
 	}
 	select {
 	case <-s.finished:
@@ -169,6 +172,7 @@ func (s *RequestStream) ReceiveFrame(frame common.Frame) error {
 		}
 
 		// Give to the client.
+		s.flow.Receive(frame.Data)
 		s.headerChan <- func() {
 			s.Receiver.ReceiveData(s.Request, data, frame.Flags.FIN())
 
@@ -199,7 +203,13 @@ func (s *RequestStream) ReceiveFrame(frame common.Frame) error {
 		}
 
 	case *frames.WINDOW_UPDATE:
-		// Ignore.
+		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
+		if err != nil {
+			reply := new(frames.RST_STREAM)
+			reply.StreamID = s.streamID
+			reply.Status = common.RST_STREAM_FLOW_CONTROL_ERROR
+			s.output <- reply
+		}
 
 	default:
 		return errors.New(fmt.Sprintf("Received unknown frame of type %T.", frame))
@@ -219,6 +229,11 @@ func (s *RequestStream) CloseNotify() <-chan bool {
 func (s *RequestStream) Run() error {
 	// Receive and process inbound frames.
 	<-s.finished
+
+	// Make sure any queued data has been sent.
+	if s.flow.Paused() {
+		return errors.New(fmt.Sprintf("Error: Stream %d has been closed with data still buffered.\n", s.streamID))
+	}
 
 	// Clean up state.
 	s.state.CloseHere()
@@ -254,10 +269,13 @@ func (s *RequestStream) writeHeader() {
 	// Create the HEADERS frame.
 	header := new(frames.HEADERS)
 	header.StreamID = s.streamID
-	header.Header = common.CloneHeader(s.header)
+	header.Header = make(http.Header)
 
 	// Clear the headers that have been sent.
-	for name := range header.Header {
+	for name, values := range s.header {
+		for _, value := range values {
+			header.Header.Add(name, value)
+		}
 		s.header.Del(name)
 	}
 

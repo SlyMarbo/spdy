@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package streams
+package spdy2
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/SlyMarbo/spdy/common"
-	"github.com/SlyMarbo/spdy/spdy3/frames"
+	"github.com/SlyMarbo/spdy/spdy2/frames"
 )
 
 // PushStream is a structure that implements the
@@ -19,11 +19,9 @@ import (
 // for performing server pushes.
 type PushStream struct {
 	sync.Mutex
-
 	shutdownOnce sync.Once
 	conn         common.Conn
 	streamID     common.StreamID
-	flow         *flowControl
 	origin       common.Stream
 	state        *common.StreamState
 	output       chan<- common.Frame
@@ -69,22 +67,27 @@ func (p *PushStream) Write(inputData []byte) (int, error) {
 	copy(data, inputData)
 
 	// Chunk the response if necessary.
-	// Data is sent to the flow control to
-	// ensure that the protocol is followed.
 	written := 0
 	for len(data) > common.MAX_DATA_SIZE {
-		n, err := p.flow.Write(data[:common.MAX_DATA_SIZE])
-		if err != nil {
-			return written, err
-		}
-		written += n
-		data = data[common.MAX_DATA_SIZE:]
+		dataFrame := new(frames.DATA)
+		dataFrame.StreamID = p.streamID
+		dataFrame.Data = data[:common.MAX_DATA_SIZE]
+		p.output <- dataFrame
+
+		written += common.MAX_DATA_SIZE
 	}
 
-	n, err := p.flow.Write(data)
-	written += n
+	n := len(data)
+	if n == 0 {
+		return written, nil
+	}
 
-	return written, err
+	dataFrame := new(frames.DATA)
+	dataFrame.StreamID = p.streamID
+	dataFrame.Data = data
+	p.output <- dataFrame
+
+	return written + n, nil
 }
 
 // WriteHeader is provided to satisfy the Stream
@@ -109,9 +112,6 @@ func (p *PushStream) shutdown() {
 	p.writeHeader()
 	if p.state != nil {
 		p.state.Close()
-	}
-	if p.flow != nil {
-		p.flow.Close()
 	}
 	p.origin = nil
 	p.output = nil
@@ -138,14 +138,7 @@ func (p *PushStream) ReceiveFrame(frame common.Frame) error {
 	// Process the frame depending on its type.
 	switch frame := frame.(type) {
 	case *frames.WINDOW_UPDATE:
-		err := p.flow.UpdateWindow(frame.DeltaWindowSize)
-		if err != nil {
-			reply := new(frames.RST_STREAM)
-			reply.StreamID = p.streamID
-			reply.Status = common.RST_STREAM_FLOW_CONTROL_ERROR
-			p.output <- reply
-			return err
-		}
+		// Ignore.
 
 	default:
 		return errors.New(fmt.Sprintf("Received unexpected frame of type %T.", frame))
@@ -209,18 +202,9 @@ func (p *PushStream) writeHeader() {
 
 	header := new(frames.HEADERS)
 	header.StreamID = p.streamID
-	header.Header = make(http.Header)
-
-	for name, values := range p.header {
-		for _, value := range values {
-			header.Header.Add(name, value)
-		}
+	header.Header = common.CloneHeader(p.header)
+	for name := range header.Header {
 		p.header.Del(name)
 	}
-
-	if len(header.Header) == 0 {
-		return
-	}
-
 	p.output <- header
 }

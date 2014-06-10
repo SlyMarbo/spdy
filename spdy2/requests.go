@@ -10,7 +10,6 @@ import (
 
 	"github.com/SlyMarbo/spdy/common"
 	"github.com/SlyMarbo/spdy/spdy2/frames"
-	"github.com/SlyMarbo/spdy/spdy2/streams"
 )
 
 // Request is used to make a client request.
@@ -116,7 +115,7 @@ func (c *Conn) Request(request *http.Request, receiver common.Receiver, priority
 	}
 
 	// // Create the request stream.
-	out := streams.NewRequestStream(c, syn.StreamID, c.output[0], c.stop)
+	out := NewRequestStream(c, syn.StreamID, c.output[0], c.stop)
 	out.Request = request
 	out.Receiver = receiver
 
