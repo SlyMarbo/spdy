@@ -108,7 +108,7 @@ func AddSPDY(srv *http.Server) {
 //              }
 //      }
 func GetPriority(w http.ResponseWriter) (int, error) {
-	if stream, ok := w.(common.PriorityStream); ok {
+	if stream, ok := w.(PriorityStream); ok {
 		return int(stream.Priority()), nil
 	}
 	return 0, common.ErrNotSPDY
@@ -152,11 +152,11 @@ func GetPriority(w http.ResponseWriter) (int, error) {
 //                      log.Fatal(err)
 //              }
 //      }
-func PingClient(w http.ResponseWriter) (<-chan common.Ping, error) {
-	if stream, ok := w.(common.Stream); !ok {
+func PingClient(w http.ResponseWriter) (<-chan bool, error) {
+	if stream, ok := w.(Stream); !ok {
 		return nil, common.ErrNotSPDY
 	} else {
-		return stream.Conn().(common.Pinger).Ping()
+		return stream.Conn().(Pinger).Ping()
 	}
 }
 
@@ -217,7 +217,7 @@ func PingServer(c http.Client, server string) (<-chan bool, error) {
 		if !ok || conn == nil {
 			return nil, common.ErrNotConnected
 		}
-		return conn.(common.Pinger).Ping()
+		return conn.(Pinger).Ping()
 	}
 }
 
@@ -258,19 +258,19 @@ func PingServer(c http.Client, server string) (<-chan bool, error) {
 //              }
 //      }
 func Push(w http.ResponseWriter, url string) (common.PushStream, error) {
-	if stream, ok := w.(common.Stream); !ok {
+	if stream, ok := w.(Stream); !ok {
 		return nil, common.ErrNotSPDY
 	} else {
-		return stream.Conn().(common.Pusher).Push(url, stream)
+		return stream.Conn().(Pusher).Push(url, stream)
 	}
 }
 
 // SetFlowControl can be used to set the flow control mechanism on
 // the underlying SPDY connection.
 func SetFlowControl(w http.ResponseWriter, f common.FlowControl) error {
-	if stream, ok := w.(common.Stream); !ok {
+	if stream, ok := w.(Stream); !ok {
 		return common.ErrNotSPDY
-	} else if controller, ok := stream.Conn().(common.SetFlowController); !ok {
+	} else if controller, ok := stream.Conn().(SetFlowController); !ok {
 		return common.ErrNotSPDY
 	} else {
 		controller.SetFlowControl(f)
@@ -282,7 +282,7 @@ func SetFlowControl(w http.ResponseWriter, f common.FlowControl) error {
 // connection used by the given http.ResponseWriter. This is 0 for
 // connections not using SPDY.
 func SPDYversion(w http.ResponseWriter) float64 {
-	if stream, ok := w.(common.Stream); ok {
+	if stream, ok := w.(Stream); ok {
 		switch stream := stream.Conn().(type) {
 		case *spdy3.Conn:
 			switch stream.Subversion {
@@ -306,6 +306,6 @@ func SPDYversion(w http.ResponseWriter) float64 {
 
 // UsingSPDY indicates whether a given ResponseWriter is using SPDY.
 func UsingSPDY(w http.ResponseWriter) bool {
-	_, ok := w.(common.Stream)
+	_, ok := w.(Stream)
 	return ok
 }
