@@ -12,7 +12,7 @@ import (
 
 // Ping is used by spdy.PingServer and spdy.PingClient to send
 // SPDY PINGs.
-func (c *Conn) Ping() (<-chan common.Ping, error) {
+func (c *Conn) Ping() (<-chan bool, error) {
 	if c.closed() {
 		return nil, errors.New("Error: Conn has been closed.")
 	}
@@ -33,7 +33,7 @@ func (c *Conn) Ping() (<-chan common.Ping, error) {
 
 	ping.PingID = pid
 	c.output[0] <- ping
-	ch := make(chan common.Ping, 1)
+	ch := make(chan bool, 1)
 	c.pingsLock.Lock()
 	c.pings[pid] = ch
 	c.pingsLock.Unlock()

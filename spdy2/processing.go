@@ -66,7 +66,7 @@ func (c *Conn) processFrame(frame common.Frame) bool {
 				c.pingsLock.Unlock()
 				return false
 			}
-			c.pings[frame.PingID] <- common.Ping{}
+			c.pings[frame.PingID] <- true
 			close(c.pings[frame.PingID])
 			delete(c.pings, frame.PingID)
 			c.pingsLock.Unlock()

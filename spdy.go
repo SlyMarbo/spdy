@@ -195,7 +195,7 @@ func PingClient(w http.ResponseWriter) (<-chan common.Ping, error) {
 //                      }
 //              }
 //      }
-func PingServer(c http.Client, server string) (<-chan common.Ping, error) {
+func PingServer(c http.Client, server string) (<-chan bool, error) {
 	if transport, ok := c.Transport.(*Transport); !ok {
 		return nil, common.ErrNotSPDY
 	} else {

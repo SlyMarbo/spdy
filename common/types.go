@@ -9,13 +9,6 @@ import (
 	"sort"
 )
 
-/********
- * Ping *
- ********/
-
-// Ping is used in indicating the response from a ping request.
-type Ping struct{}
-
 /************
  * StreamID *
  ************/

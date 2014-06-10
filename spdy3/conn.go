@@ -59,7 +59,7 @@ type Conn struct {
 	flowControlLock  sync.Mutex                     // protects flowControl.
 
 	// SPDY features
-	pings                map[uint32]chan<- common.Ping         // response channel for pings.
+	pings                map[uint32]chan<- bool                // response channel for pings.
 	pingsLock            sync.Mutex                            // protects pings.
 	nextPingID           uint32                                // next outbound ping ID.
 	nextPingIDLock       sync.Mutex                            // protects nextPingID.
@@ -108,7 +108,7 @@ func NewConn(conn net.Conn, server *http.Server, subversion int) *Conn {
 	out.output[5] = make(chan common.Frame)
 	out.output[6] = make(chan common.Frame)
 	out.output[7] = make(chan common.Frame)
-	out.pings = make(map[uint32]chan<- common.Ping)
+	out.pings = make(map[uint32]chan<- bool)
 	out.compressor = common.NewCompressor(3)
 	out.decompressor = common.NewDecompressor(3)
 	out.receivedSettings = make(common.Settings)

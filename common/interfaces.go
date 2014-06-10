@@ -10,10 +10,6 @@ import (
 	"net/http"
 )
 
-/**************
- * Interfaces *
- **************/
-
 // Connection represents a SPDY connection. The connection should
 // be started with a call to Run, which will return once the
 // connection has been terminated. The connection can be ended
@@ -81,7 +77,7 @@ type Decompressor interface {
 // Pinger represents something able to send and
 // receive PING frames.
 type Pinger interface {
-	Ping() (<-chan Ping, error)
+	Ping() (<-chan bool, error)
 }
 
 // Pusher represents something able to send
