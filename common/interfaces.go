@@ -18,23 +18,19 @@ import (
 // be started with a call to Run, which will return once the
 // connection has been terminated. The connection can be ended
 // early by using Close.
-//
-// Although it isn't specified here, all Conns also satisfy the
-// http.CloseNotifier interface.
 type Conn interface {
-	io.Closer
+	http.CloseNotifier
+	Close() error
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
 	RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error)
 	Run() error
 }
 
 // Stream contains a single SPDY stream.
-//
-// Although it isn't specified here, all Streams also satisfy the
-// http.CloseNotifier interface.
 type Stream interface {
+	http.CloseNotifier
 	http.ResponseWriter
-	io.Closer
+	Close() error
 	Conn() Conn
 	ReceiveFrame(Frame) error
 	Run() error
