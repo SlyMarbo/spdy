@@ -125,9 +125,8 @@ func (c *Conn) Push(resource string, origin common.Stream) (common.PushStream, e
 	return out, nil
 }
 
-func (c *Conn) SetFlowControl(f common.FlowControl) error {
+func (c *Conn) SetFlowControl(f common.FlowControl) {
 	c.flowControlLock.Lock()
 	c.flowControl = f
 	c.flowControlLock.Unlock()
-	return nil
 }

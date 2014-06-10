@@ -156,7 +156,7 @@ func PingClient(w http.ResponseWriter) (<-chan common.Ping, error) {
 	if stream, ok := w.(common.Stream); !ok {
 		return nil, common.ErrNotSPDY
 	} else {
-		return stream.Conn().Ping()
+		return stream.Conn().(common.Pinger).Ping()
 	}
 }
 
@@ -217,7 +217,7 @@ func PingServer(c http.Client, server string) (<-chan common.Ping, error) {
 		if !ok || conn == nil {
 			return nil, common.ErrNotConnected
 		}
-		return conn.Ping()
+		return conn.(common.Pinger).Ping()
 	}
 }
 
@@ -261,7 +261,7 @@ func Push(w http.ResponseWriter, url string) (common.PushStream, error) {
 	if stream, ok := w.(common.Stream); !ok {
 		return nil, common.ErrNotSPDY
 	} else {
-		return stream.Conn().Push(url, stream)
+		return stream.Conn().(common.Pusher).Push(url, stream)
 	}
 }
 
@@ -270,8 +270,11 @@ func Push(w http.ResponseWriter, url string) (common.PushStream, error) {
 func SetFlowControl(w http.ResponseWriter, f common.FlowControl) error {
 	if stream, ok := w.(common.Stream); !ok {
 		return common.ErrNotSPDY
+	} else if controller, ok := stream.Conn().(common.SetFlowController); !ok {
+		return common.ErrNotSPDY
 	} else {
-		return stream.Conn().SetFlowControl(f)
+		controller.SetFlowControl(f)
+		return nil
 	}
 }
 
