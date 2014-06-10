@@ -115,7 +115,7 @@ func (c *Conn) Request(request *http.Request, receiver common.Receiver, priority
 	}
 
 	// // Create the request stream.
-	out := NewRequestStream(c, syn.StreamID, c.output[0], c.stop)
+	out := NewRequestStream(c, syn.StreamID, c.output[0])
 	out.Request = request
 	out.Receiver = receiver
 

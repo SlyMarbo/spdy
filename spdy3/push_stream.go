@@ -21,7 +21,7 @@ type PushStream struct {
 	sync.Mutex
 
 	shutdownOnce sync.Once
-	conn         common.Conn
+	conn         *Conn
 	streamID     common.StreamID
 	flow         *flowControl
 	origin       common.Stream
@@ -31,13 +31,13 @@ type PushStream struct {
 	stop         <-chan bool
 }
 
-func NewPushStream(conn common.Conn, streamID common.StreamID, origin common.Stream, output chan<- common.Frame, stop chan bool) *PushStream {
+func NewPushStream(conn *Conn, streamID common.StreamID, origin common.Stream, output chan<- common.Frame) *PushStream {
 	out := new(PushStream)
 	out.conn = conn
 	out.streamID = streamID
 	out.origin = origin
 	out.output = output
-	out.stop = stop
+	out.stop = conn.stop
 	out.state = new(common.StreamState)
 	out.header = make(http.Header)
 	return out

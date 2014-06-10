@@ -23,7 +23,7 @@ type ResponseStream struct {
 	sync.Mutex
 
 	shutdownOnce   sync.Once
-	conn           common.Conn
+	conn           *Conn
 	streamID       common.StreamID
 	requestBody    *bytes.Buffer
 	state          *common.StreamState
@@ -39,7 +39,7 @@ type ResponseStream struct {
 	wroteHeader    bool
 }
 
-func NewResponseStream(conn common.Conn, frame *frames.SYN_STREAM, output chan<- common.Frame, handler http.Handler, request *http.Request, stop chan bool) *ResponseStream {
+func NewResponseStream(conn *Conn, frame *frames.SYN_STREAM, output chan<- common.Frame, handler http.Handler, request *http.Request) *ResponseStream {
 	out := new(ResponseStream)
 	out.conn = conn
 	out.streamID = frame.StreamID
@@ -50,7 +50,7 @@ func NewResponseStream(conn common.Conn, frame *frames.SYN_STREAM, output chan<-
 	}
 	out.request = request
 	out.priority = frame.Priority
-	out.stop = stop
+	out.stop = conn.stop
 	out.unidirectional = frame.Flags.UNIDIRECTIONAL()
 	out.requestBody = new(bytes.Buffer)
 	out.state = new(common.StreamState)

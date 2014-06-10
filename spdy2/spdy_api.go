@@ -113,7 +113,7 @@ func (c *Conn) Push(resource string, origin common.Stream) (common.PushStream, e
 	c.output[0] <- push
 
 	// Create the PushStream.
-	out := NewPushStream(c, newID, origin, c.output[3], c.stop)
+	out := NewPushStream(c, newID, origin, c.output[3])
 
 	// Store in the connection map.
 	c.streamsLock.Lock()

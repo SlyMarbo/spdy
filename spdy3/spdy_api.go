@@ -114,7 +114,7 @@ func (c *Conn) Push(resource string, origin common.Stream) (common.PushStream, e
 	c.output[0] <- push
 
 	// Create the pushStream.
-	out := NewPushStream(c, newID, origin, c.output[7], c.stop)
+	out := NewPushStream(c, newID, origin, c.output[7])
 	out.AddFlowControl(c.flowControl)
 
 	// Store in the connection map.

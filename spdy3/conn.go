@@ -232,7 +232,7 @@ func (c *Conn) newStream(frame *frames.SYN_STREAM) *ResponseStream {
 
 	output := c.output[frame.Priority]
 	c.streamCreation.Lock()
-	out := NewResponseStream(c, frame, output, c.server.Handler, request, c.stop)
+	out := NewResponseStream(c, frame, output, c.server.Handler, request)
 	c.streamCreation.Unlock()
 	c.flowControlLock.Lock()
 	f := c.flowControl

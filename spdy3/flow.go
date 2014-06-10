@@ -56,10 +56,10 @@ func (s *PushStream) AddFlowControl(f common.FlowControl) {
 	}
 
 	s.flow = new(flowControl)
-	s.flow.conn = s.conn.(*Conn)
-	s.flow.conn.initialWindowSizeLock.Lock()
-	initialWindow := s.flow.conn.initialWindowSize
-	s.flow.conn.initialWindowSizeLock.Unlock()
+	s.flow.conn = s.conn
+	s.conn.initialWindowSizeLock.Lock()
+	initialWindow := s.conn.initialWindowSize
+	s.conn.initialWindowSizeLock.Unlock()
 	s.flow.streamID = s.streamID
 	s.flow.output = s.output
 	s.flow.buffer = make([][]byte, 0, 10)
@@ -82,10 +82,10 @@ func (s *RequestStream) AddFlowControl(f common.FlowControl) {
 	}
 
 	s.flow = new(flowControl)
-	s.flow.conn = s.conn.(*Conn)
-	s.flow.conn.initialWindowSizeLock.Lock()
-	initialWindow := s.flow.conn.initialWindowSize
-	s.flow.conn.initialWindowSizeLock.Unlock()
+	s.flow.conn = s.conn
+	s.conn.initialWindowSizeLock.Lock()
+	initialWindow := s.conn.initialWindowSize
+	s.conn.initialWindowSizeLock.Unlock()
 	s.flow.streamID = s.streamID
 	s.flow.output = s.output
 	s.flow.buffer = make([][]byte, 0, 10)
@@ -108,10 +108,10 @@ func (s *ResponseStream) AddFlowControl(f common.FlowControl) {
 	}
 
 	s.flow = new(flowControl)
-	s.flow.conn = s.conn.(*Conn)
-	s.flow.conn.initialWindowSizeLock.Lock()
-	initialWindow := s.flow.conn.initialWindowSize
-	s.flow.conn.initialWindowSizeLock.Unlock()
+	s.flow.conn = s.conn
+	s.conn.initialWindowSizeLock.Lock()
+	initialWindow := s.conn.initialWindowSize
+	s.conn.initialWindowSizeLock.Unlock()
 	s.flow.streamID = s.streamID
 	s.flow.output = s.output
 	s.flow.buffer = make([][]byte, 0, 10)

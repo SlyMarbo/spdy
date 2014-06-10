@@ -24,7 +24,7 @@ type RequestStream struct {
 
 	recvMutex    sync.Mutex
 	shutdownOnce sync.Once
-	conn         common.Conn
+	conn         *Conn
 	streamID     common.StreamID
 	flow         *flowControl
 	state        *common.StreamState
@@ -36,12 +36,12 @@ type RequestStream struct {
 	finished     chan struct{}
 }
 
-func NewRequestStream(conn common.Conn, streamID common.StreamID, output chan<- common.Frame, stop chan bool) *RequestStream {
+func NewRequestStream(conn *Conn, streamID common.StreamID, output chan<- common.Frame) *RequestStream {
 	out := new(RequestStream)
 	out.conn = conn
 	out.streamID = streamID
 	out.output = output
-	out.stop = stop
+	out.stop = conn.stop
 	out.state = new(common.StreamState)
 	out.state.CloseHere()
 	out.header = make(http.Header)
