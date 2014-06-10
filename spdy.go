@@ -66,32 +66,11 @@ func AddSPDY(srv *http.Server) {
 	for _, str := range npnStrings {
 		switch str {
 		case "spdy/2":
-			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 2, 0)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			srv.TLSNextProto[str] = spdy2.NextProto
 		case "spdy/3":
-			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3, 0)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			srv.TLSNextProto[str] = spdy3.NextProto
 		case "spdy/3.1":
-			srv.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3, 1)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			srv.TLSNextProto[str] = spdy3.NextProto1
 		}
 	}
 }
@@ -301,9 +280,9 @@ func SetFlowControl(w http.ResponseWriter, f common.FlowControl) error {
 // connections not using SPDY.
 func SPDYversion(w http.ResponseWriter) float64 {
 	if stream, ok := w.(common.Stream); ok {
-		switch stream.Conn().(type) {
+		switch stream := stream.Conn().(type) {
 		case *spdy3.Conn:
-			switch stream.Conn().(*spdy3.Conn).Subversion {
+			switch stream.Subversion {
 			case 0:
 				return 3
 			case 1:

@@ -143,6 +143,12 @@ func NewConn(conn net.Conn, server *http.Server) *Conn {
 	return out
 }
 
+// NextProto is intended for use in http.Server.TLSNextProto,
+// using SPDY/2 for the connection.
+func NextProto(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
+	NewConn(tlsConn, s, 2).Run()
+}
+
 func (c *Conn) Run() error {
 	go c.send()        // Start the send loop.
 	if c.init != nil { // Must be after sending is enabled.

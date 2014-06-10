@@ -65,32 +65,11 @@ func ListenAndServeTLS(addr string, certFile string, keyFile string, handler htt
 	for _, str := range npnStrings {
 		switch str {
 		case "spdy/2":
-			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 2, 0)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			server.TLSNextProto[str] = spdy2.NextProto
 		case "spdy/3":
-			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3, 0)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			server.TLSNextProto[str] = spdy3.NextProto
 		case "spdy/3.1":
-			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3, 1)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			server.TLSNextProto[str] = spdy3.NextProto1
 		}
 	}
 
@@ -132,32 +111,11 @@ func ListenAndServeSpdyOnly(addr string, certFile string, keyFile string, handle
 	for _, str := range npnStrings {
 		switch str {
 		case "spdy/2":
-			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 2, 0)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			server.TLSNextProto[str] = spdy2.NextProto
 		case "spdy/3":
-			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3, 0)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			server.TLSNextProto[str] = spdy3.NextProto
 		case "spdy/3.1":
-			server.TLSNextProto[str] = func(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
-				conn, err := NewServerConn(tlsConn, s, 3, 1)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				conn.Run()
-			}
+			server.TLSNextProto[str] = spdy3.NextProto1
 		}
 	}
 
