@@ -2,6 +2,7 @@ package spdy
 
 import (
 	"io"
+	"net"
 	"net/http"
 
 	"github.com/SlyMarbo/spdy/common"
@@ -16,6 +17,7 @@ import (
 type Conn interface {
 	http.CloseNotifier
 	Close() error
+	Conn() net.Conn
 	Request(request *http.Request, receiver common.Receiver, priority common.Priority) (common.Stream, error)
 	RequestResponse(request *http.Request, receiver common.Receiver, priority common.Priority) (*http.Response, error)
 	Run() error

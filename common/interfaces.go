@@ -7,6 +7,7 @@ package common
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 )
 
@@ -17,6 +18,7 @@ import (
 type Conn interface {
 	http.CloseNotifier
 	Close() error
+	Conn() net.Conn
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
 	RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error)
 	Run() error

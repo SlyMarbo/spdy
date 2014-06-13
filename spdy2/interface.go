@@ -1,11 +1,16 @@
 package spdy2
 
 import (
+	"net"
 	"time"
 )
 
 func (c *Conn) CloseNotify() <-chan bool {
 	return c.stop
+}
+
+func (c *Conn) Conn() net.Conn {
+	return c.conn
 }
 
 func (c *Conn) SetReadTimeout(d time.Duration) {
