@@ -21,7 +21,7 @@ import (
 // on the internet. The connection is then reversed
 // so that the 'server' sends requests to the 'client'.
 // See ConnectAndServe() for a blocking version of this
-func Connect(addr string, config *tls.Config, srv *http.Server) (common.Conn, error) {
+func Connect(addr string, config *tls.Config, srv *http.Server) (Conn, error) {
 	if config == nil {
 		config = new(tls.Config)
 	}
@@ -91,12 +91,12 @@ func ConnectAndServe(addr string, config *tls.Config, srv *http.Server) error {
 }
 
 type ProxyConnHandler interface {
-	ProxyConnHandle(common.Conn)
+	ProxyConnHandle(Conn)
 }
 
-type ProxyConnHandlerFunc func(common.Conn)
+type ProxyConnHandlerFunc func(Conn)
 
-func (p ProxyConnHandlerFunc) ProxyConnHandle(c common.Conn) {
+func (p ProxyConnHandlerFunc) ProxyConnHandle(c Conn) {
 	p(c)
 }
 
