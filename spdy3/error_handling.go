@@ -49,7 +49,8 @@ func (c *Conn) _GOAWAY(status common.StatusCode) {
 // unexpected errors when performing I/O with the network,
 // then shuts down the connection.
 func (c *Conn) handleReadWriteError(err error) {
-	if _, ok := err.(*net.OpError); ok || err == io.EOF || err == common.ErrConnNil {
+	if _, ok := err.(*net.OpError); ok || err == io.EOF || err == common.ErrConnNil ||
+		err.Error() == "use of closed network connection" {
 		// Client has closed the TCP connection.
 		debug.Println("Note: Endpoint has disconnected.")
 	} else {
