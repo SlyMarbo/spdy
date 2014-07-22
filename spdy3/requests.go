@@ -1,7 +1,6 @@
 package spdy3
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -126,10 +125,7 @@ func (c *Conn) Request(request *http.Request, receiver common.Receiver, priority
 }
 
 func (c *Conn) RequestResponse(request *http.Request, receiver common.Receiver, priority common.Priority) (*http.Response, error) {
-	res := new(common.Response)
-	res.Request = request
-	res.Data = new(bytes.Buffer)
-	res.Receiver = receiver
+	res := common.NewResponse(request, receiver)
 
 	// Send the request.
 	stream, err := c.Request(request, res, priority)
