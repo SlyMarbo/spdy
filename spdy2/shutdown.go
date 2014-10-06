@@ -35,6 +35,7 @@ func (c *Conn) shutdown() {
 	c.sendingLock.Unlock()
 	c.goawayLock.Lock()
 	sent := c.goawaySent
+	c.goawayReceived = true
 	c.goawayLock.Unlock()
 	if !sent && !isSending {
 		goaway := new(frames.GOAWAY)
