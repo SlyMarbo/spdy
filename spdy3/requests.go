@@ -49,13 +49,18 @@ func (c *Conn) Request(request *http.Request, receiver common.Receiver, priority
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
+
+	host := url.Host
+	if len(request.Host) > 0 {
+		host = request.Host
+	}
 	syn := new(frames.SYN_STREAM)
 	syn.Priority = priority
 	syn.Header = request.Header
 	syn.Header.Set(":method", request.Method)
 	syn.Header.Set(":path", path)
 	syn.Header.Set(":version", "HTTP/1.1")
-	syn.Header.Set(":host", url.Host)
+	syn.Header.Set(":host", host)
 	syn.Header.Set(":scheme", url.Scheme)
 
 	// Prepare the request body, if any.
