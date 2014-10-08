@@ -18,6 +18,7 @@ import (
 type Conn interface {
 	http.CloseNotifier
 	Close() error
+	Closed() bool
 	Conn() net.Conn
 	Request(request *http.Request, receiver Receiver, priority Priority) (Stream, error)
 	RequestResponse(request *http.Request, receiver Receiver, priority Priority) (*http.Response, error)

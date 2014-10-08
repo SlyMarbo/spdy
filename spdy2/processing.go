@@ -173,7 +173,7 @@ func (c *Conn) handlePush(frame *frames.SYN_STREAM) {
 	c.goawayLock.Lock()
 	goaway := c.goawayReceived || c.goawaySent
 	c.goawayLock.Unlock()
-	if goaway || c.closed() {
+	if goaway || c.Closed() {
 		return
 	}
 
@@ -266,7 +266,7 @@ func (c *Conn) handleRequest(frame *frames.SYN_STREAM) {
 	c.goawayLock.Lock()
 	goaway := c.goawayReceived || c.goawaySent
 	c.goawayLock.Unlock()
-	if goaway || c.closed() {
+	if goaway || c.Closed() {
 		return
 	}
 

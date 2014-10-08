@@ -23,6 +23,7 @@ var MaxBenignErrors = 0
 
 var (
 	ErrConnNil        = errors.New("Error: Connection is nil.")
+	ErrConnClosed     = errors.New("Error: Connection is closed.")
 	ErrGoaway         = errors.New("Error: GOAWAY received.")
 	ErrNoFlowControl  = errors.New("Error: This connection does not use flow control.")
 	ErrConnectFail    = errors.New("Error: Failed to connect.")

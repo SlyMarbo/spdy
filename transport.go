@@ -198,7 +198,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// Check the SPDY connection pool.
 	conn, ok := t.spdyConns[u.Host]
-	if !ok || u.Scheme == "http" {
+	if !ok || u.Scheme == "http" || (conn != nil && conn.Closed()) {
 		tcpConn, err := t.dial(req.URL)
 		if err != nil {
 			t.m.Unlock()

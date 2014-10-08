@@ -13,6 +13,9 @@ import (
 
 // Request is used to make a client request.
 func (c *Conn) Request(request *http.Request, receiver common.Receiver, priority common.Priority) (common.Stream, error) {
+	if c.Closed() {
+		return nil, common.ErrConnClosed
+	}
 	c.goawayLock.Lock()
 	goaway := c.goawayReceived || c.goawaySent
 	c.goawayLock.Unlock()

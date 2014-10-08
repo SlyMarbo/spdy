@@ -13,9 +13,9 @@ func (c *Conn) Close() (err error) {
 	return nil
 }
 
-// closed indicates whether the connection has
+// Closed indicates whether the connection has
 // been closed.
-func (c *Conn) closed() bool {
+func (c *Conn) Closed() bool {
 	select {
 	case <-c.stop:
 		return true
@@ -25,7 +25,7 @@ func (c *Conn) closed() bool {
 }
 
 func (c *Conn) shutdown() {
-	if c.closed() {
+	if c.Closed() {
 		return
 	}
 

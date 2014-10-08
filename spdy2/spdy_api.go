@@ -13,7 +13,7 @@ import (
 // Ping is used by spdy.PingServer and spdy.PingClient to send
 // SPDY PINGs.
 func (c *Conn) Ping() (<-chan bool, error) {
-	if c.closed() {
+	if c.Closed() {
 		return nil, errors.New("Error: Conn has been closed.")
 	}
 

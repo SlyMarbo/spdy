@@ -15,7 +15,7 @@ func (c *Conn) readFrames() {
 	// Ensure no panics happen.
 	defer func() {
 		if v := recover(); v != nil {
-			if !c.closed() {
+			if !c.Closed() {
 				log.Printf("Encountered receive error: %v (%[1]T)\n", v)
 			}
 		}
@@ -60,7 +60,7 @@ func (c *Conn) send() {
 	// Catch any panics.
 	defer func() {
 		if v := recover(); v != nil {
-			if !c.closed() {
+			if !c.Closed() {
 				log.Printf("Encountered send error: %v (%[1]T)\n", v)
 			}
 		}
@@ -131,7 +131,7 @@ func (c *Conn) send() {
 // this priority is temporarily ignored, which can be used
 // when high load is ignoring low-priority frames.
 func (c *Conn) selectFrameToSend(prioritise bool) (frame common.Frame) {
-	if c.closed() {
+	if c.Closed() {
 		return nil
 	}
 
