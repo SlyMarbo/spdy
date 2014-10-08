@@ -7,6 +7,8 @@ package common
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
 )
 
 // MaxBenignErrors is the maximum number of minor errors each
@@ -85,4 +87,30 @@ type UnsupportedVersion uint16
 
 func (u UnsupportedVersion) Error() string {
 	return fmt.Sprintf("Error: Unsupported SPDY version: %d.\n", u)
+}
+
+func Recover() {
+	v := recover()
+	if v == nil {
+		return
+	}
+
+	log.Printf("spdy: panic: %v (%[1]T)\n", v)
+	for skip := 1; ; skip++ {
+		pc, file, line, ok := runtime.Caller(skip)
+		if ok {
+			f := runtime.FuncForPC(pc)
+			if filepath.Ext(file) != ".go" {
+				continue
+			}
+
+			log.Printf("- %s:%d in %s()\n", file, line, f.Name())
+			if f.Name() == "main.main" {
+				return
+			}
+		} else {
+			log.Println("- ???:? in ???()")
+			return
+		}
+	}
 }

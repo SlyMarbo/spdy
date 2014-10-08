@@ -9,7 +9,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"runtime"
 	"time"
 
 	"github.com/SlyMarbo/spdy/common"
@@ -216,14 +215,7 @@ func ListenAndServeSPDYNoNPN(addr string, certFile string, keyFile string, handl
 }
 
 func serveSPDY(conn net.Conn, srv *http.Server) {
-	defer func() {
-		if v := recover(); v != nil {
-			const size = 4096
-			buf := make([]byte, size)
-			buf = buf[:runtime.Stack(buf, false)]
-			log.Printf("panic serving %v: %v\n%s", conn.RemoteAddr(), v, buf)
-		}
-	}()
+	defer common.Recover()
 
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok { // Only allow TLS connections.
@@ -250,14 +242,7 @@ func serveSPDY(conn net.Conn, srv *http.Server) {
 }
 
 func serveSPDYNoNPN(conn net.Conn, srv *http.Server, version, subversion int) {
-	defer func() {
-		if v := recover(); v != nil {
-			const size = 4096
-			buf := make([]byte, size)
-			buf = buf[:runtime.Stack(buf, false)]
-			log.Printf("panic serving %v: %v\n%s", conn.RemoteAddr(), v, buf)
-		}
-	}()
+	defer common.Recover()
 
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok { // Only allow TLS connections.

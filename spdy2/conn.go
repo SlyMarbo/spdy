@@ -149,6 +149,7 @@ func NextProto(s *http.Server, tlsConn *tls.Conn, handler http.Handler) {
 }
 
 func (c *Conn) Run() error {
+	defer common.Recover()
 	go c.send()        // Start the send loop.
 	if c.init != nil { // Must be after sending is enabled.
 		c.init() // Prepare any initialisation frames.

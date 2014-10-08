@@ -16,7 +16,7 @@ func (c *Conn) readFrames() {
 	defer func() {
 		if v := recover(); v != nil {
 			if !c.closed() {
-				log.Println("Encountered receive error:", v)
+				log.Printf("Encountered receive error: %v (%[1]T)\n", v)
 			}
 		}
 	}()
@@ -68,7 +68,7 @@ func (c *Conn) send() {
 	defer func() {
 		if v := recover(); v != nil {
 			if !c.closed() {
-				log.Println("Encountered send error:", v)
+				log.Printf("Encountered send error: %v (%[1]T)\n", v)
 			}
 		}
 	}()

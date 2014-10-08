@@ -160,6 +160,7 @@ func (s *ResponseStream) WriteHeader(code int) {
  *****************/
 
 func (s *ResponseStream) Close() error {
+	defer common.Recover()
 	s.Lock()
 	s.shutdownOnce.Do(s.shutdown)
 	s.Unlock()
@@ -260,7 +261,7 @@ func (s *ResponseStream) Run() error {
 	defer func() {
 		if v := recover(); v != nil {
 			if s != nil && s.state != nil && !s.state.Closed() {
-				log.Println("Encountered stream error:", v)
+				log.Printf("Encountered stream error: %v (%[1]T)\n", v)
 			}
 		}
 	}()

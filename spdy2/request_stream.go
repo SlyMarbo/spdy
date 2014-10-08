@@ -107,6 +107,7 @@ func (s *RequestStream) WriteHeader(int) {
 // Close is used to cancel a mid-air
 // request.
 func (s *RequestStream) Close() error {
+	defer common.Recover()
 	s.Lock()
 	s.shutdownOnce.Do(s.shutdown)
 	s.Unlock()
@@ -265,6 +266,7 @@ func (s *RequestStream) writeHeader() {
 }
 
 func (s *RequestStream) processFrames() {
+	defer common.Recover()
 	for f := range s.headerChan {
 		f()
 	}

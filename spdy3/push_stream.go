@@ -99,6 +99,7 @@ func (p *PushStream) WriteHeader(int) {
  *****************/
 
 func (p *PushStream) Close() error {
+	defer common.Recover()
 	p.Lock()
 	p.shutdownOnce.Do(p.shutdown)
 	p.Unlock()
