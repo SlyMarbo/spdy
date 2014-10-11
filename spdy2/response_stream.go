@@ -177,6 +177,7 @@ func (s *ResponseStream) shutdown() {
 		s.requestBody.Reset()
 		s.requestBody = nil
 	}
+	s.conn.requestStreamLimit.Close()
 	s.output = nil
 	s.request = nil
 	s.handler = nil

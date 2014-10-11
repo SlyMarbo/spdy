@@ -114,6 +114,7 @@ func (p *PushStream) shutdown() {
 	if p.flow != nil {
 		p.flow.Close()
 	}
+	p.conn.pushStreamLimit.Close()
 	p.origin = nil
 	p.output = nil
 	p.header = nil

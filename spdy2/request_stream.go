@@ -136,6 +136,7 @@ func (s *RequestStream) shutdown() {
 	default:
 		close(s.headerChan)
 	}
+	s.conn.requestStreamLimit.Close()
 	s.output = nil
 	s.Request = nil
 	s.Receiver = nil
