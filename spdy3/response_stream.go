@@ -327,6 +327,11 @@ func (s *ResponseStream) Run() error {
 
 	// Clean up state.
 	s.state.CloseHere()
+
+	if s.state.Closed() {
+		return s.Close()
+	}
+
 	return nil
 }
 
