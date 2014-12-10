@@ -248,7 +248,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 
 			// Ensure the negotiated protocol is supported.
-			if !supported {
+			if !supported && state.NegotiatedProtocol != "" {
 				msg := fmt.Sprintf("Error: Unsupported negotiated protocol %q.", state.NegotiatedProtocol)
 				t.m.Unlock()
 				return nil, errors.New(msg)
