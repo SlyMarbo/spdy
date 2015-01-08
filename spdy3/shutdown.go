@@ -58,6 +58,13 @@ func (c *Conn) shutdown() {
 		}
 	}
 
+	c.streamsLock.Lock()
+	for _, stream := range c.streams {
+		stream.Close()
+	}
+	c.streams = nil
+	c.streamsLock.Unlock()
+
 	// Ensure any pending frames are sent.
 	c.sendingLock.Lock()
 	if c.sending == nil {
@@ -85,13 +92,6 @@ func (c *Conn) shutdown() {
 		c.conn.Close()
 		c.conn = nil
 	}
-
-	c.streamsLock.Lock()
-	for _, stream := range c.streams {
-		stream.Close()
-	}
-	c.streams = nil
-	c.streamsLock.Unlock()
 
 	if c.compressor != nil {
 		c.compressor.Close()
