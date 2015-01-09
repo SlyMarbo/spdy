@@ -77,5 +77,6 @@ func (c *Conn) protocolError(streamID common.StreamID) {
 	case <-time.After(100 * time.Millisecond):
 		debug.Println("Failed to send PROTOCOL_ERROR RST_STREAM.")
 	}
+	c.shutdownError = reply
 	c.Close()
 }

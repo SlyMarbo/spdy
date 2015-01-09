@@ -29,6 +29,7 @@ func (c *Conn) processFrame(frame common.Frame) bool {
 		if frame.Status.IsFatal() {
 			code := frame.Status.String()
 			c.check(true, "Received %s on stream %d. Closing connection", code, frame.StreamID)
+			c.shutdownError = frame
 			c.Close()
 			return true
 		}

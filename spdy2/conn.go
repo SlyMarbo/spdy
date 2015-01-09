@@ -67,11 +67,12 @@ type Conn struct {
 	requestStreamLimit      *common.StreamLimit // Limit on streams started by the client.
 
 	// startup and shutdown
-	stop         chan bool     // this channel is closed when the connection closes.
-	sending      chan struct{} // this channel is used to ensure pending frames are sent.
-	sendingLock  sync.Mutex    // protects changes to sending's value.
-	init         func()        // this function is called before the connection begins.
-	shutdownOnce sync.Once     // used to ensure clean shutdown.
+	stop          chan bool     // this channel is closed when the connection closes.
+	sending       chan struct{} // this channel is used to ensure pending frames are sent.
+	sendingLock   sync.Mutex    // protects changes to sending's value.
+	init          func()        // this function is called before the connection begins.
+	shutdownOnce  sync.Once     // used to ensure clean shutdown.
+	shutdownError error         // error that caused shutdown if non-nil
 }
 
 // NewConn produces an initialised spdy3 connection.

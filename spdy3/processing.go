@@ -43,6 +43,7 @@ func (c *Conn) processFrame(frame common.Frame) bool {
 		if frame.Status.IsFatal() {
 			code := frame.Status.String()
 			log.Printf("Warning: Received %s on stream %d. Closing connection.\n", code, frame.StreamID)
+			c.shutdownError = frame
 			c.Close()
 			return true
 		}
@@ -107,6 +108,7 @@ func (c *Conn) processFrame(frame common.Frame) bool {
 			}
 		}
 		c.streamsLock.Unlock()
+		c.shutdownError = frame
 		c.goawayLock.Lock()
 		c.goawayReceived = true
 		c.goawayLock.Unlock()

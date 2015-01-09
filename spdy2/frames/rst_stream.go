@@ -25,6 +25,14 @@ func (frame *RST_STREAM) Decompress(decomp common.Decompressor) error {
 	return nil
 }
 
+func (frame *RST_STREAM) Error() string {
+	if err := frame.Status.String(); err != "" {
+		return err
+	}
+
+	return fmt.Sprintf("[unknown status code %d]", frame.Status)
+}
+
 func (frame *RST_STREAM) Name() string {
 	return "RST_STREAM"
 }

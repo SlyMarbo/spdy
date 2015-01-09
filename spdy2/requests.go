@@ -146,5 +146,5 @@ func (c *Conn) RequestResponse(request *http.Request, receiver common.Receiver, 
 	// Let the request run its course.
 	stream.Run()
 
-	return res.Response(), nil
+	return res.Response(), c.shutdownError
 }
