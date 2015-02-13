@@ -6,6 +6,7 @@ package common
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -104,8 +105,19 @@ func (r *Response) Response() *http.Response {
 	r.dataM.Lock()
 	if r.data != nil {
 		r.data.Prep()
-		out.Body = r.data
-		out.ContentLength = r.data.written
+		if r.UsesServerInitiatedGzip() {
+			// User-agents MUST support gzip compression.
+			// Regardless of the Accept-Encoding sent by the user-agent, the server may
+			// always send content encoded with gzip or deflate encoding.
+			out.Header.Del("Content-Encoding")
+			out.Header.Del("Content-Length")
+			out.ContentLength = -1
+			out.Body = &gzipReader{body: r.data}
+		} else {
+			out.Body = r.data
+			out.ContentLength = r.data.written
+		}
+
 	} else {
 		out.Body = &ReadCloser{new(bytes.Buffer)}
 	}
@@ -116,6 +128,10 @@ func (r *Response) Response() *http.Response {
 	out.Trailer = make(http.Header)
 	out.Request = r.Request
 	return out
+}
+
+func (r *Response) UsesServerInitiatedGzip() bool {
+	return r.Header.Get("Content-Encoding") == "gzip" && strings.Contains(r.Request.Header.Get("Accept-Encoding"), "gzip")
 }
 
 // 10 MB
@@ -208,4 +224,25 @@ func (h *hybridBuffer) Write(b []byte) (int, error) {
 	n, err := h.file.Write(b)
 	h.written += int64(n)
 	return n, err
+}
+
+// gzipReader wraps a response body so it can lazily
+// call gzip.NewReader on the first call to Read
+type gzipReader struct {
+	body io.ReadCloser // underlying Response.Body
+	zr   io.Reader     // lazily-initialized gzip reader
+}
+
+func (gz *gzipReader) Read(p []byte) (n int, err error) {
+	if gz.zr == nil {
+		gz.zr, err = gzip.NewReader(gz.body)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return gz.zr.Read(p)
+}
+
+func (gz *gzipReader) Close() error {
+	return gz.body.Close()
 }
