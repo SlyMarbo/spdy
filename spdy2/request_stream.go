@@ -176,7 +176,7 @@ func (s *RequestStream) ReceiveFrame(frame common.Frame) error {
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
-				close(s.finished)
+				s.Close()
 			}
 		}
 
@@ -186,7 +186,7 @@ func (s *RequestStream) ReceiveFrame(frame common.Frame) error {
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
-				close(s.finished)
+				s.Close()
 			}
 		}
 
@@ -196,7 +196,7 @@ func (s *RequestStream) ReceiveFrame(frame common.Frame) error {
 
 			if frame.Flags.FIN() {
 				s.state.CloseThere()
-				close(s.finished)
+				s.Close()
 			}
 		}
 
