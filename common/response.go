@@ -6,6 +6,7 @@ package common
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -102,12 +103,21 @@ func (r *Response) Response() *http.Response {
 	out.ProtoMinor = 1
 
 	r.dataM.Lock()
-	if r.data != nil {
+	if r.data == nil {
+		out.Body = &ReadCloser{new(bytes.Buffer)}
+	} else if unrequestedGzip(r) {
+		// User-agents MUST support gzip compression.
+		// Regardless of the Accept-Encoding sent by the user-agent, the server may
+		// always send content encoded with gzip or deflate encoding.
+		r.data.Prep()
+		out.Header.Del("Content-Encoding")
+		out.Header.Del("Content-Length")
+		out.ContentLength = -1
+		out.Body = &gzipReader{body: r.data}
+	} else {
 		r.data.Prep()
 		out.Body = r.data
 		out.ContentLength = r.data.written
-	} else {
-		out.Body = &ReadCloser{new(bytes.Buffer)}
 	}
 	r.dataM.Unlock()
 
@@ -208,4 +218,41 @@ func (h *hybridBuffer) Write(b []byte) (int, error) {
 	n, err := h.file.Write(b)
 	h.written += int64(n)
 	return n, err
+}
+
+// unrequestedGzip returns true iff the request did
+// not ask for the returned content encoding and that
+// encoding is gzip or deflate, which is allowed in
+// the SPDY spec.
+func unrequestedGzip(r *Response) bool {
+	got := r.Header.Get("Content-Encoding")
+	switch got {
+	case "gzip", "deflate":
+	default:
+		return false
+	}
+
+	requested := r.Request.Header.Get("Accept-Encoding")
+	return !strings.Contains(requested, got)
+}
+
+// gzipReader wraps a response body so it can lazily
+// call gzip.NewReader on the first call to Read
+type gzipReader struct {
+	body io.ReadCloser // underlying Response.Body
+	zr   io.Reader     // lazily-initialized gzip reader
+}
+
+func (gz *gzipReader) Read(p []byte) (n int, err error) {
+	if gz.zr == nil {
+		gz.zr, err = gzip.NewReader(gz.body)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return gz.zr.Read(p)
+}
+
+func (gz *gzipReader) Close() error {
+	return gz.body.Close()
 }
