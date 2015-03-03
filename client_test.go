@@ -8,9 +8,12 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/SlyMarbo/spdy"
@@ -51,6 +54,40 @@ func TestClientHead(t *testing.T) {
 	if _, ok := r.Header["Last-Modified"]; !ok {
 		t.Error("Last-Modified header not found.")
 	}
+}
+
+func TestClientInGoroutines(t *testing.T) {
+	ts := newServer(robotsTxtHandler)
+	ts.Config.ErrorLog = log.New(ioutil.Discard, "", 0) // ignore messages
+	defer ts.Close()
+
+	client := spdy.NewClient(false)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var b []byte
+			r, err := client.Get(ts.URL)
+			if err == nil {
+				b, err = pedanticReadAll(r.Body)
+				r.Body.Close()
+			}
+			if err != nil {
+				// We've turned off InsecureSkipVerify, so
+				// ignore bad cert warnings.
+				if !strings.Contains(err.Error(), "certificate signed by unknown authority") {
+					t.Error(err)
+				}
+			} else if s := string(b); !strings.HasPrefix(s, "User-agent:") {
+				t.Errorf("Incorrect page body (did not begin with User-agent): %q", s)
+			}
+		}()
+	}
+
+	wg.Wait()
 }
 
 // FIXME: Fails
