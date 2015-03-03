@@ -167,7 +167,34 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 
+	conn, tcpConn, err := t.process(req)
+	if err != nil {
+		return nil, err
+	}
+	if tcpConn != nil {
+		return t.doHTTP(tcpConn, req)
+	}
+
+	// The connection has now been established.
+
+	debug.Printf("Requesting %q over SPDY.\n", u.String())
+
+	// Determine the request priority.
+	var priority common.Priority
+	if t.Priority != nil {
+		priority = t.Priority(req.URL)
+	} else {
+		priority = common.DefaultPriority(req.URL)
+	}
+
+	return conn.RequestResponse(req, t.Receiver, priority)
+}
+
+func (t *Transport) process(req *http.Request) (common.Conn, net.Conn, error) {
 	t.m.Lock()
+	defer t.m.Unlock()
+
+	u := req.URL
 
 	// Initialise structures if necessary.
 	if t.spdyConns == nil {
@@ -194,9 +221,8 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if connChan, ok := t.tcpConns[u.Host]; ok {
 		select {
 		case tcpConn := <-connChan:
-			t.m.Unlock()
 			// Use a connection from the pool.
-			return t.doHTTP(tcpConn, req)
+			return nil, tcpConn, nil
 		default:
 		}
 	} else {
@@ -208,20 +234,21 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if !ok || u.Scheme == "http" || (conn != nil && conn.Closed()) {
 		tcpConn, err := t.dial(req.URL)
 		if err != nil {
-			t.m.Unlock()
-			return nil, err
+			return nil, nil, err
 		}
 
-		// Handle HTTPS/SPDY requests.
-		if tlsConn, ok := tcpConn.(*tls.Conn); ok {
+		if tlsConn, ok := tcpConn.(*tls.Conn); !ok {
+			// Handle HTTP requests.
+			return nil, tcpConn, nil
+		} else {
+			// Handle HTTPS/SPDY requests.
 			state := tlsConn.ConnectionState()
 
 			// Complete handshake if necessary.
 			if !state.HandshakeComplete {
 				err = tlsConn.Handshake()
 				if err != nil {
-					t.m.Unlock()
-					return nil, err
+					return nil, nil, err
 				}
 			}
 
@@ -233,16 +260,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 					i := strings.Index(req.URL.Host, ":")
 					err = tlsConn.VerifyHostname(req.URL.Host[:i])
 					if err != nil {
-						t.m.Unlock()
-						return nil, err
+						return nil, nil, err
 					}
 				}
 			}
 
 			// If a protocol could not be negotiated, assume HTTPS.
 			if !state.NegotiatedProtocolIsMutual {
-				t.m.Unlock()
-				return t.doHTTP(tcpConn, req)
+				return nil, tcpConn, nil
 			}
 
 			// Scan the list of supported NPN strings.
@@ -257,20 +282,18 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			// Ensure the negotiated protocol is supported.
 			if !supported && state.NegotiatedProtocol != "" {
 				msg := fmt.Sprintf("Error: Unsupported negotiated protocol %q.", state.NegotiatedProtocol)
-				t.m.Unlock()
-				return nil, errors.New(msg)
+				return nil, nil, errors.New(msg)
 			}
 
 			// Handle the protocol.
 			switch state.NegotiatedProtocol {
 			case "http/1.1", "":
-				t.m.Unlock()
-				return t.doHTTP(tcpConn, req)
+				return nil, tcpConn, nil
 
 			case "spdy/3.1":
 				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 3, 1)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				go newConn.Run()
 				t.spdyConns[u.Host] = newConn
@@ -279,7 +302,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			case "spdy/3":
 				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 3, 0)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				go newConn.Run()
 				t.spdyConns[u.Host] = newConn
@@ -288,31 +311,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			case "spdy/2":
 				newConn, err := NewClientConn(tlsConn, t.PushReceiver, 2, 0)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				go newConn.Run()
 				t.spdyConns[u.Host] = newConn
 				conn = newConn
 			}
-		} else {
-			// Handle HTTP requests.
-			t.m.Unlock()
-			return t.doHTTP(tcpConn, req)
 		}
 	}
-	t.m.Unlock()
 
-	// The connection has now been established.
-
-	debug.Printf("Requesting %q over SPDY.\n", u.String())
-
-	// Determine the request priority.
-	var priority common.Priority
-	if t.Priority != nil {
-		priority = t.Priority(req.URL)
-	} else {
-		priority = common.DefaultPriority(req.URL)
-	}
-
-	return conn.RequestResponse(req, t.Receiver, priority)
+	return conn, nil, nil
 }
