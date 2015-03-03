@@ -21,7 +21,6 @@ func init() {
 }
 
 func TestClient(t *testing.T) {
-	defer afterTest(t)
 	ts := newServer(robotsTxtHandler)
 	defer ts.Close()
 
@@ -41,7 +40,6 @@ func TestClient(t *testing.T) {
 }
 
 func TestClientHead(t *testing.T) {
-	defer afterTest(t)
 	ts := newServer(robotsTxtHandler)
 	defer ts.Close()
 
@@ -270,7 +268,4 @@ func newClient() *http.Client {
 		},
 	}
 	return &http.Client{Transport: &tr}
-}
-
-func afterTest(t *testing.T) {
 }
