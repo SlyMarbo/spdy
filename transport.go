@@ -94,7 +94,7 @@ func NewTransport(insecureSkipVerify bool) *Transport {
 }
 
 // dial makes the connection to an endpoint.
-func (t *Transport) dial(u *url.URL) (net.Conn, error) {
+func (t *Transport) dial(u *url.URL) (conn net.Conn, err error) {
 
 	if t.TLSClientConfig == nil {
 		t.TLSClientConfig = &tls.Config{
@@ -109,12 +109,19 @@ func (t *Transport) dial(u *url.URL) (net.Conn, error) {
 
 	switch u.Scheme {
 	case "http":
-		return net.Dial("tcp", u.Host)
+		conn, err = net.Dial("tcp", u.Host)
 	case "https":
-		return tls.Dial("tcp", u.Host, t.TLSClientConfig)
+		conn, err = tls.Dial("tcp", u.Host, t.TLSClientConfig)
 	default:
-		return nil, errors.New(fmt.Sprintf("Error: URL has invalid scheme %q.", u.Scheme))
+		err = errors.New(fmt.Sprintf("Error: URL has invalid scheme %q.", u.Scheme))
 	}
+
+	if err != nil {
+		// The connection never happened, which frees up a slot.
+		t.connLimit[u.Host] <- struct{}{}
+	}
+
+	return conn, err
 }
 
 // doHTTP is used to process an HTTP(S) request, using the TCP connection pool.
