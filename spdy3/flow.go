@@ -316,16 +316,24 @@ func (f *flowControl) Write(data []byte) (int, error) {
 	} else {
 		window = uint32(f.transferWindow)
 	}
-	f.Unlock()
 
-	if uint32(len(data)) > window {
+	constrained := false
+	sending := uint32(len(data))
+	if sending > window {
+		sending = window
+		constrained = true
+	}
+
+	f.sent += sending
+	f.transferWindow -= int64(sending)
+
+	if constrained {
 		f.buffer = append(f.buffer, data[window:])
 		data = data[:window]
-		f.sent += window
-		f.transferWindow -= int64(window)
 		f.constrained = true
 		debug.Printf("Stream %d is now constrained.\n", f.streamID)
 	}
+	f.Unlock()
 
 	if len(data) == 0 {
 		return l, nil
