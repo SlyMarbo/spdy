@@ -513,8 +513,8 @@ func (c *Conn) handleWindowUpdate(frame *frames.WINDOW_UPDATE) {
 	c.streamsLock.Lock()
 	stream := c.streams[sid]
 	c.streamsLock.Unlock()
-	bad = stream == nil || stream.State().ClosedHere()
-	if c.check(bad, "Received WINDOW_UPDATE with closed or unopened Stream ID %d", sid) {
+	if stream == nil || stream.State().ClosedHere() {
+		// This is almost certainly benign
 		return
 	}
 
