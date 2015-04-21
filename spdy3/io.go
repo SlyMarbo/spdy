@@ -87,8 +87,28 @@ func (c *Conn) send() {
 		if c.Subversion > 0 {
 			c.connectionWindowLock.Lock()
 			if frame, ok := frame.(*frames.DATA); ok {
-				size := int64(8 + len(frame.Data))
-				if size > c.connectionWindowSize {
+				size := int64(len(frame.Data))
+				constrained := false
+				sending := size
+				if sending > c.connectionWindowSize {
+					sending = c.connectionWindowSize
+					constrained = true
+				}
+				if sending < 0 {
+					sending = 0
+				}
+
+				c.connectionWindowSize -= sending
+
+				if constrained {
+					// Chop off what we can send now.
+					partial := new(frames.DATA)
+					partial.Flags = frame.Flags
+					partial.StreamID = frame.StreamID
+					partial.Data = make([]byte, int(sending))
+					copy(partial.Data, frame.Data[:sending])
+					frame.Data = frame.Data[sending:]
+
 					// Buffer this frame and try again.
 					if c.dataBuffer == nil {
 						c.dataBuffer = []*frames.DATA{frame}
@@ -98,9 +118,8 @@ func (c *Conn) send() {
 						buffer = append(buffer, c.dataBuffer...)
 						c.dataBuffer = buffer
 					}
-					continue
-				} else {
-					c.connectionWindowSize -= size
+
+					frame = partial
 				}
 			}
 			c.connectionWindowLock.Unlock()
