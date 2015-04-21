@@ -85,6 +85,7 @@ func (c *Conn) send() {
 
 		// Process connection-level flow control.
 		if c.Subversion > 0 {
+			c.connectionWindowLock.Lock()
 			if frame, ok := frame.(*frames.DATA); ok {
 				size := int64(8 + len(frame.Data))
 				if size > c.connectionWindowSize {
@@ -102,6 +103,7 @@ func (c *Conn) send() {
 					c.connectionWindowSize -= size
 				}
 			}
+			c.connectionWindowLock.Unlock()
 		}
 
 		// Compress any name/value header blocks.

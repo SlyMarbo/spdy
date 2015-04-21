@@ -26,6 +26,7 @@ type Conn struct {
 	Subversion   int             // SPDY 3 subversion (eg 0 for SPDY/3, 1 for SPDY/3.1).
 
 	// SPDY/3.1
+	connectionWindowLock      sync.Mutex
 	dataBuffer                []*frames.DATA // used to store frames witheld for flow control.
 	connectionWindowSize      int64
 	initialWindowSizeThere    uint32

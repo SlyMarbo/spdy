@@ -487,6 +487,9 @@ func (c *Conn) handleWindowUpdate(frame *frames.WINDOW_UPDATE) {
 
 	// Handle connection-level flow control.
 	if sid.Zero() && c.Subversion > 0 {
+		c.connectionWindowLock.Lock()
+		defer c.connectionWindowLock.Unlock()
+
 		if int64(delta)+c.connectionWindowSize > common.MAX_TRANSFER_WINDOW_SIZE {
 			goaway := new(frames.GOAWAY)
 			if c.server != nil {
