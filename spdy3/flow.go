@@ -43,6 +43,7 @@ type flowControl struct {
 	initialWindowThere  uint32
 	transferWindowThere int64
 	flowControl         common.FlowControl
+	waiting             chan bool
 }
 
 // AddFlowControl initialises flow control for
@@ -252,7 +253,40 @@ func (f *flowControl) UpdateWindow(deltaWindowSize uint32) error {
 	f.transferWindow += int64(deltaWindowSize)
 
 	f.Flush()
+	select {
+	case f.waiting <- true:
+	default:
+	}
+
 	return nil
+}
+
+// Wait blocks until any buffered data has been sent.
+// This may involve waiting for a window update from
+// the peer.
+func (f *flowControl) Wait() error {
+	f.Lock()
+	f.Flush()
+	if !f.Paused() {
+		f.Unlock()
+		return nil
+	}
+
+	if f.waiting != nil {
+		f.Unlock()
+		return errors.New("waiting for flow control twice")
+	}
+
+	f.waiting = make(chan bool)
+	f.Unlock()
+
+	for {
+		<-f.waiting
+		f.Flush()
+		if !f.Paused() {
+			return nil
+		}
+	}
 }
 
 // Write is used to send data to the connection. This

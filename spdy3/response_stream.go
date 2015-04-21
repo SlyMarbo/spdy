@@ -282,11 +282,8 @@ func (s *ResponseStream) Run() error {
 	s.handler.ServeHTTP(s, s.request)
 
 	// Make sure any queued data has been sent.
-	if s.flow.Paused() && s.state.OpenThere() {
-		s.flow.Flush()
-	}
-	if s.flow.Paused() {
-		log.Printf("Error: Stream %d has been closed with data still buffered.\n", s.streamID)
+	if err := s.flow.Wait(); err != nil {
+		log.Println(err)
 	}
 
 	// Close the stream with a SYN_REPLY if
