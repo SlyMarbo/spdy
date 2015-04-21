@@ -192,7 +192,7 @@ func (f *flowControl) Flush() {
 
 	if f.transferWindow > 0 {
 		f.constrained = false
-		log.Printf("Stream %d is no longer constrained.\n", f.streamID)
+		debug.Printf("Stream %d is no longer constrained.\n", f.streamID)
 	}
 
 	dataFrame := new(frames.DATA)
@@ -308,6 +308,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
 	if f.constrained {
 		f.Flush()
 	}
+
 	f.Lock()
 	var window uint32
 	if f.transferWindow < 0 {
@@ -323,7 +324,7 @@ func (f *flowControl) Write(data []byte) (int, error) {
 		f.sent += window
 		f.transferWindow -= int64(window)
 		f.constrained = true
-		log.Printf("Stream %d is now constrained.\n", f.streamID)
+		debug.Printf("Stream %d is now constrained.\n", f.streamID)
 	}
 
 	if len(data) == 0 {
