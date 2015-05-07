@@ -96,7 +96,6 @@ func (c *Conn) Push(resource string, origin common.Stream) (common.PushStream, e
 	push.Header.Set("host", url.Host)
 	push.Header.Set("url", path)
 	push.Header.Set("version", "HTTP/1.1")
-	push.Header.Set(":status", "200 OK")
 
 	// Send.
 	c.streamCreation.Lock()
