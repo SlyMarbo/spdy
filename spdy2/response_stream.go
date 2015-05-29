@@ -183,6 +183,10 @@ func (s *ResponseStream) shutdown() {
 	s.handler = nil
 	s.header = nil
 	s.stop = nil
+
+	s.conn.streamsLock.Lock()
+	delete(s.conn.streams, s.streamID)
+	s.conn.streamsLock.Unlock()
 }
 
 /**********
