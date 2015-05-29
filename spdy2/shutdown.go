@@ -3,6 +3,7 @@ package spdy2
 import (
 	"time"
 
+	"github.com/SlyMarbo/spdy/common"
 	"github.com/SlyMarbo/spdy/spdy2/frames"
 )
 
@@ -58,12 +59,21 @@ func (c *Conn) shutdown() {
 		}
 	}
 
+	// Close all streams. Make a copy so close() can modify the map.
+	var streams []common.Stream
 	c.streamsLock.Lock()
 	for _, stream := range c.streams {
+		streams = append(streams, stream)
+	}
+	c.streamsLock.Unlock()
+
+	for _, stream := range streams {
 		if err := stream.Close(); err != nil {
 			debug.Println(err)
 		}
 	}
+
+	c.streamsLock.Lock()
 	c.streams = nil
 	c.streamsLock.Unlock()
 

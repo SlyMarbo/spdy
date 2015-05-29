@@ -145,6 +145,10 @@ func (s *RequestStream) shutdown() {
 	s.Receiver = nil
 	s.header = nil
 	s.stop = nil
+
+	s.conn.streamsLock.Lock()
+	delete(s.conn.streams, s.streamID)
+	s.conn.streamsLock.Unlock()
 }
 
 /**********
