@@ -187,7 +187,15 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		priority = common.DefaultPriority(req.URL)
 	}
 
-	return conn.RequestResponse(req, t.Receiver, priority)
+	res, err := conn.RequestResponse(req, t.Receiver, priority)
+	if conn.Closed() {
+		t.connLimit[u.Host] <- struct{}{}
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (t *Transport) process(req *http.Request) (common.Conn, net.Conn, error) {
