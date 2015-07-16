@@ -77,7 +77,7 @@ func (frame *SETTINGS) ReadFrom(reader io.Reader) (int64, error) {
 		frame.Settings[setting.ID] = setting
 	}
 
-	return int64(length), nil
+	return int64(length + 8), nil
 }
 
 func (frame *SETTINGS) String() string {
