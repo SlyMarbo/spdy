@@ -87,7 +87,7 @@ func (frame *RST_STREAM) WriteTo(writer io.Writer) (int64, error) {
 	out[0] = 128                  // Control bit and Version
 	out[1] = 2                    // Version
 	out[2] = 0                    // Type
-	out[3] = 2                    // Type
+	out[3] = 3                    // Type
 	out[4] = 0                    // Flags
 	out[5] = 0                    // Length
 	out[6] = 0                    // Length
