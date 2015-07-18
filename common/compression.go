@@ -194,14 +194,14 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 			case c.w = <-zlibV2Writers:
 				c.w.Reset(c.buf)
 			default:
-				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
+				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.NoCompression, HeaderDictionaryV2)
 			}
 		case 3:
 			select {
 			case c.w = <-zlibV3Writers:
 				c.w.Reset(c.buf)
 			default:
-				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV3)
+				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.NoCompression, HeaderDictionaryV3)
 			}
 		default:
 			err = versionError
