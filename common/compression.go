@@ -14,6 +14,10 @@ import (
 	"sync"
 )
 
+// CompressionLevel can be used to customise the level of
+// compression used when sending headers.
+var CompressionLevel = zlib.BestCompression
+
 var versionError = errors.New("Version not supported.")
 
 var zlibV2Writers chan *zlib.Writer
@@ -194,14 +198,14 @@ func (c *compressor) Compress(h http.Header) ([]byte, error) {
 			case c.w = <-zlibV2Writers:
 				c.w.Reset(c.buf)
 			default:
-				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV2)
+				c.w, err = zlib.NewWriterLevelDict(c.buf, CompressionLevel, HeaderDictionaryV2)
 			}
 		case 3:
 			select {
 			case c.w = <-zlibV3Writers:
 				c.w.Reset(c.buf)
 			default:
-				c.w, err = zlib.NewWriterLevelDict(c.buf, zlib.BestCompression, HeaderDictionaryV3)
+				c.w, err = zlib.NewWriterLevelDict(c.buf, CompressionLevel, HeaderDictionaryV3)
 			}
 		default:
 			err = versionError
