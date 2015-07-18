@@ -55,35 +55,36 @@ func (frame *SYN_REPLY) Name() string {
 }
 
 func (frame *SYN_REPLY) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 14)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 14)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _SYN_REPLY, common.FLAG_FIN)
 	if err != nil {
-		return 14, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length < 8 {
-		return 14, common.IncorrectDataLength(length, 8)
+		return c.N, common.IncorrectDataLength(length, 8)
 	} else if length > common.MAX_FRAME_SIZE-8 {
-		return 14, common.FrameTooLarge
+		return c.N, common.FrameTooLarge
 	}
 
 	// Read in data.
-	header, err := common.ReadExactly(reader, length-6)
+	header, err := common.ReadExactly(&c, length-6)
 	if err != nil {
-		return 14, err
+		return c.N, err
 	}
 
 	frame.Flags = common.Flags(data[4])
 	frame.StreamID = common.StreamID(common.BytesToUint32(data[8:12]))
 	frame.rawHeader = header
 
-	return int64(length + 8), nil
+	return c.N, nil
 }
 
 func (frame *SYN_REPLY) String() string {
@@ -108,14 +109,15 @@ func (frame *SYN_REPLY) String() string {
 }
 
 func (frame *SYN_REPLY) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	if frame.rawHeader == nil {
-		return 0, errors.New("Error: Header not written.")
+		return c.N, errors.New("Error: Header not written.")
 	}
 	if !frame.StreamID.Valid() {
-		return 0, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 	if frame.StreamID.Zero() {
-		return 0, common.StreamIdIsZero
+		return c.N, common.StreamIdIsZero
 	}
 
 	header := frame.rawHeader
@@ -137,15 +139,15 @@ func (frame *SYN_REPLY) WriteTo(writer io.Writer) (int64, error) {
 	out[12] = 0                   // Unused
 	out[13] = 0                   // Unused
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
-	err = common.WriteExactly(writer, header)
+	err = common.WriteExactly(&c, header)
 	if err != nil {
-		return 14, err
+		return c.N, err
 	}
 
-	return int64(len(header) + 14), nil
+	return c.N, nil
 }

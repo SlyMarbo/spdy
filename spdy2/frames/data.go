@@ -32,32 +32,33 @@ func (frame *DATA) Name() string {
 }
 
 func (frame *DATA) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 8)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 8)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	// Check it's a data frame.
 	if data[0]&0x80 == 1 {
-		return 8, common.IncorrectFrame(_CONTROL_FRAME, _DATA_FRAME, 2)
+		return c.N, common.IncorrectFrame(_CONTROL_FRAME, _DATA_FRAME, 2)
 	}
 
 	// Check flags.
 	if data[4] & ^byte(common.FLAG_FIN) != 0 {
-		return 8, common.InvalidField("flags", int(data[4]), common.FLAG_FIN)
+		return c.N, common.InvalidField("flags", int(data[4]), common.FLAG_FIN)
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length > common.MAX_FRAME_SIZE-8 {
-		return 8, common.FrameTooLarge
+		return c.N, common.FrameTooLarge
 	}
 
 	// Read in data.
 	if length != 0 {
-		frame.Data, err = common.ReadExactly(reader, length)
+		frame.Data, err = common.ReadExactly(&c, length)
 		if err != nil {
-			return 8, err
+			return c.N, err
 		}
 	}
 
@@ -67,7 +68,7 @@ func (frame *DATA) ReadFrom(reader io.Reader) (int64, error) {
 		frame.Data = []byte{}
 	}
 
-	return int64(length + 8), nil
+	return c.N, nil
 }
 
 func (frame *DATA) String() string {
@@ -98,12 +99,13 @@ func (frame *DATA) String() string {
 }
 
 func (frame *DATA) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	length := len(frame.Data)
 	if length > common.MAX_DATA_SIZE {
-		return 0, errors.New("Error: Data size too large.")
+		return c.N, errors.New("Error: Data size too large.")
 	}
 	if length == 0 && !frame.Flags.FIN() {
-		return 0, errors.New("Error: Data is empty.")
+		return c.N, errors.New("Error: Data is empty.")
 	}
 
 	out := make([]byte, 8)
@@ -117,15 +119,15 @@ func (frame *DATA) WriteTo(writer io.Writer) (int64, error) {
 	out[6] = byte(length >> 8)   // Length
 	out[7] = byte(length)        // Length
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
-	err = common.WriteExactly(writer, frame.Data)
+	err = common.WriteExactly(&c, frame.Data)
 	if err != nil {
-		return 8, err
+		return c.N, err
 	}
 
-	return int64(length + 8), nil
+	return c.N, nil
 }

@@ -25,23 +25,24 @@ func (frame *NOOP) Name() string {
 }
 
 func (frame *NOOP) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 8)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 8)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _NOOP, 0)
 	if err != nil {
-		return 8, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length != 0 {
-		return 8, common.IncorrectDataLength(length, 0)
+		return c.N, common.IncorrectDataLength(length, 0)
 	}
 
-	return 8, nil
+	return c.N, nil
 }
 
 func (frame *NOOP) String() string {

@@ -38,30 +38,31 @@ func (frame *GOAWAY) Name() string {
 }
 
 func (frame *GOAWAY) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 16)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 16)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _GOAWAY, 0)
 	if err != nil {
-		return 16, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length != 8 {
-		return 16, common.IncorrectDataLength(length, 8)
+		return c.N, common.IncorrectDataLength(length, 8)
 	}
 
 	frame.LastGoodStreamID = common.StreamID(common.BytesToUint32(data[8:12]))
 	frame.Status = common.StatusCode(common.BytesToUint32(data[12:16]))
 
 	if !frame.LastGoodStreamID.Valid() {
-		return 16, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 
-	return 16, nil
+	return c.N, nil
 }
 
 func (frame *GOAWAY) String() string {
@@ -76,8 +77,9 @@ func (frame *GOAWAY) String() string {
 }
 
 func (frame *GOAWAY) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	if !frame.LastGoodStreamID.Valid() {
-		return 0, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 
 	out := make([]byte, 16)
@@ -99,10 +101,10 @@ func (frame *GOAWAY) WriteTo(writer io.Writer) (int64, error) {
 	out[14] = byte(frame.Status >> 8)     // Status Code
 	out[15] = byte(frame.Status)          // Status Code
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
-	return 16, nil
+	return c.N, nil
 }

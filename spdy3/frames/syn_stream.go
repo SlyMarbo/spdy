@@ -58,28 +58,29 @@ func (frame *SYN_STREAM) Name() string {
 }
 
 func (frame *SYN_STREAM) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 18)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 18)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _SYN_STREAM, common.FLAG_FIN|common.FLAG_UNIDIRECTIONAL)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length < 10 {
-		return 18, common.IncorrectDataLength(length, 10)
+		return c.N, common.IncorrectDataLength(length, 10)
 	} else if length > common.MAX_FRAME_SIZE-18 {
-		return 18, common.FrameTooLarge
+		return c.N, common.FrameTooLarge
 	}
 
 	// Read in data.
-	header, err := common.ReadExactly(reader, length-10)
+	header, err := common.ReadExactly(&c, length-10)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
 	frame.Flags = common.Flags(data[4])
@@ -90,16 +91,16 @@ func (frame *SYN_STREAM) ReadFrom(reader io.Reader) (int64, error) {
 	frame.rawHeader = header
 
 	if !frame.StreamID.Valid() {
-		return 18, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 	if frame.StreamID.Zero() {
-		return 18, common.StreamIdIsZero
+		return c.N, common.StreamIdIsZero
 	}
 	if !frame.AssocStreamID.Valid() {
-		return 18, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 
-	return int64(length + 8), nil
+	return c.N, nil
 }
 
 func (frame *SYN_STREAM) String() string {
@@ -130,17 +131,18 @@ func (frame *SYN_STREAM) String() string {
 }
 
 func (frame *SYN_STREAM) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	if frame.rawHeader == nil {
-		return 0, errors.New("Error: Headers not written.")
+		return c.N, errors.New("Error: Headers not written.")
 	}
 	if !frame.StreamID.Valid() {
-		return 0, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 	if frame.StreamID.Zero() {
-		return 0, common.StreamIdIsZero
+		return c.N, common.StreamIdIsZero
 	}
 	if !frame.AssocStreamID.Valid() {
-		return 0, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 
 	header := frame.rawHeader
@@ -166,17 +168,17 @@ func (frame *SYN_STREAM) WriteTo(writer io.Writer) (int64, error) {
 	out[16] = frame.Priority.Byte(3)   // Priority and unused
 	out[17] = frame.Slot               // Slot
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
-	err = common.WriteExactly(writer, header)
+	err = common.WriteExactly(&c, header)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
-	return int64(len(header) + 18), nil
+	return c.N, nil
 }
 
 // SPDY/3.1
@@ -223,28 +225,29 @@ func (frame *SYN_STREAMV3_1) Name() string {
 }
 
 func (frame *SYN_STREAMV3_1) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 18)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 18)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _SYN_STREAM, common.FLAG_FIN|common.FLAG_UNIDIRECTIONAL)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length < 10 {
-		return 18, common.IncorrectDataLength(length, 10)
+		return c.N, common.IncorrectDataLength(length, 10)
 	} else if length > common.MAX_FRAME_SIZE-18 {
-		return 18, common.FrameTooLarge
+		return c.N, common.FrameTooLarge
 	}
 
 	// Read in data.
-	header, err := common.ReadExactly(reader, length-10)
+	header, err := common.ReadExactly(&c, length-10)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
 	frame.Flags = common.Flags(data[4])
@@ -254,16 +257,16 @@ func (frame *SYN_STREAMV3_1) ReadFrom(reader io.Reader) (int64, error) {
 	frame.rawHeader = header
 
 	if !frame.StreamID.Valid() {
-		return 18, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 	if frame.StreamID.Zero() {
-		return 18, common.StreamIdIsZero
+		return c.N, common.StreamIdIsZero
 	}
 	if !frame.AssocStreamID.Valid() {
-		return 18, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 
-	return int64(length + 8), nil
+	return c.N, nil
 }
 
 func (frame *SYN_STREAMV3_1) String() string {
@@ -293,17 +296,18 @@ func (frame *SYN_STREAMV3_1) String() string {
 }
 
 func (frame *SYN_STREAMV3_1) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	if frame.rawHeader == nil {
-		return 0, errors.New("Error: Headers not written.")
+		return c.N, errors.New("Error: Headers not written.")
 	}
 	if !frame.StreamID.Valid() {
-		return 0, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 	if frame.StreamID.Zero() {
-		return 0, common.StreamIdIsZero
+		return c.N, common.StreamIdIsZero
 	}
 	if !frame.AssocStreamID.Valid() {
-		return 0, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 
 	header := frame.rawHeader
@@ -329,15 +333,15 @@ func (frame *SYN_STREAMV3_1) WriteTo(writer io.Writer) (int64, error) {
 	out[16] = frame.Priority.Byte(3)   // Priority and unused
 	out[17] = 0                        // Reserved
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
-	err = common.WriteExactly(writer, header)
+	err = common.WriteExactly(&c, header)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
-	return int64(len(header) + 18), nil
+	return c.N, nil
 }

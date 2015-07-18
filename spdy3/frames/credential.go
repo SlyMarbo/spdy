@@ -32,28 +32,29 @@ func (frame *CREDENTIAL) Name() string {
 }
 
 func (frame *CREDENTIAL) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 18)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 18)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _CREDENTIAL, 0)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length < 6 {
-		return 18, common.IncorrectDataLength(length, 6)
+		return c.N, common.IncorrectDataLength(length, 6)
 	} else if length > common.MAX_FRAME_SIZE-8 {
-		return 18, common.FrameTooLarge
+		return c.N, common.FrameTooLarge
 	}
 
 	// Read in data.
-	certs, err := common.ReadExactly(reader, length-10)
+	certs, err := common.ReadExactly(&c, length-10)
 	if err != nil {
-		return 18, err
+		return c.N, err
 	}
 
 	frame.Slot = common.BytesToUint16(data[8:10])
@@ -76,12 +77,12 @@ func (frame *CREDENTIAL) ReadFrom(reader io.Reader) (int64, error) {
 		rawCert := certs[offset+4 : offset+4+length]
 		frame.Certificates[i], err = x509.ParseCertificate(rawCert)
 		if err != nil {
-			return int64(length + 8), err
+			return c.N, err
 		}
 		offset += length + 4
 	}
 
-	return int64(length + 8), nil
+	return c.N, nil
 }
 
 func (frame *CREDENTIAL) String() string {
@@ -97,6 +98,7 @@ func (frame *CREDENTIAL) String() string {
 }
 
 func (frame *CREDENTIAL) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	proofLength := len(frame.Proof)
 	certsLength := 0
 	for _, cert := range frame.Certificates {
@@ -121,26 +123,26 @@ func (frame *CREDENTIAL) WriteTo(writer io.Writer) (int64, error) {
 	out[12] = byte(proofLength >> 8)  // Proof Length
 	out[13] = byte(proofLength)       // Proof Length
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	if len(frame.Proof) > 0 {
-		err = common.WriteExactly(writer, frame.Proof)
+		err = common.WriteExactly(&c, frame.Proof)
 		if err != nil {
-			return 14, err
+			return c.N, err
 		}
 	}
 
 	written := int64(14 + len(frame.Proof))
 	for _, cert := range frame.Certificates {
-		err = common.WriteExactly(writer, cert.Raw)
+		err = common.WriteExactly(&c, cert.Raw)
 		if err != nil {
-			return written, err
+			return c.N, err
 		}
 		written += int64(len(cert.Raw))
 	}
 
-	return written, nil
+	return c.N, nil
 }

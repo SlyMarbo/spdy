@@ -99,3 +99,31 @@ type ReadCloser struct {
 func (r *ReadCloser) Close() error {
 	return nil
 }
+
+// ReadCounter is a helper structure for
+// keeping track of the number of bytes
+// read from an io.Reader
+type ReadCounter struct {
+	N int64
+	R io.Reader
+}
+
+func (r *ReadCounter) Read(b []byte) (n int, err error) {
+	n, err = r.R.Read(b)
+	r.N += int64(n)
+	return
+}
+
+// WriteCounter is a helper structure for
+// keeping track of the number of bytes
+// written from an io.Writer
+type WriteCounter struct {
+	N int64
+	W io.Writer
+}
+
+func (w *WriteCounter) Write(b []byte) (n int, err error) {
+	n, err = w.W.Write(b)
+	w.N += int64(n)
+	return
+}

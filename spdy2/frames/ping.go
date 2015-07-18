@@ -29,25 +29,26 @@ func (frame *PING) Name() string {
 }
 
 func (frame *PING) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 12)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 12)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _PING, 0)
 	if err != nil {
-		return 12, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length != 4 {
-		return 12, common.IncorrectDataLength(length, 4)
+		return c.N, common.IncorrectDataLength(length, 4)
 	}
 
 	frame.PingID = common.BytesToUint32(data[8:12])
 
-	return 12, nil
+	return c.N, nil
 }
 
 func (frame *PING) String() string {
@@ -61,6 +62,7 @@ func (frame *PING) String() string {
 }
 
 func (frame *PING) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	out := make([]byte, 12)
 
 	out[0] = 128                      // Control bit and Version
@@ -76,10 +78,10 @@ func (frame *PING) WriteTo(writer io.Writer) (int64, error) {
 	out[10] = byte(frame.PingID >> 8) // Ping ID
 	out[11] = byte(frame.PingID)      // Ping ID
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
-	return 12, nil
+	return c.N, nil
 }

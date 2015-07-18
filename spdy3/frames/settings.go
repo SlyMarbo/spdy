@@ -36,34 +36,36 @@ func (frame *SETTINGS) Name() string {
 }
 
 func (frame *SETTINGS) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 12)
+	c := common.ReadCounter{R: reader}
+
+	data, err := common.ReadExactly(&c, 12)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _SETTINGS, common.FLAG_SETTINGS_CLEAR_SETTINGS)
 	if err != nil {
-		return 12, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length < 4 {
-		return 12, common.IncorrectDataLength(length, 8)
+		return c.N, common.IncorrectDataLength(length, 8)
 	} else if length > common.MAX_FRAME_SIZE-8 {
-		return 12, common.FrameTooLarge
+		return c.N, common.FrameTooLarge
 	}
 
 	// Check size.
 	numSettings := int(common.BytesToUint32(data[8:12]))
 	if length != 4+(8*numSettings) {
-		return 12, common.IncorrectDataLength(length, 4+(8*numSettings))
+		return c.N, common.IncorrectDataLength(length, 4+(8*numSettings))
 	}
 
 	// Read in data.
-	settings, err := common.ReadExactly(reader, 8*numSettings)
+	settings, err := common.ReadExactly(&c, 8*numSettings)
 	if err != nil {
-		return 12, err
+		return c.N, err
 	}
 
 	frame.Flags = common.Flags(data[4])
@@ -72,12 +74,12 @@ func (frame *SETTINGS) ReadFrom(reader io.Reader) (int64, error) {
 		j := i * 8
 		setting := decodeSetting(settings[j:])
 		if setting == nil {
-			return int64(length), errors.New("Error: Failed to parse settings.")
+			return c.N, errors.New("Error: Failed to parse settings.")
 		}
 		frame.Settings[setting.ID] = setting
 	}
 
-	return int64(length), nil
+	return c.N, nil
 }
 
 func (frame *SETTINGS) String() string {
@@ -106,6 +108,7 @@ func (frame *SETTINGS) String() string {
 }
 
 func (frame *SETTINGS) WriteTo(writer io.Writer) (int64, error) {
+	c := common.WriteCounter{W: writer}
 	settings := encodeSettings(frame.Settings)
 	numSettings := uint32(len(frame.Settings))
 	length := 4 + len(settings)
@@ -124,17 +127,17 @@ func (frame *SETTINGS) WriteTo(writer io.Writer) (int64, error) {
 	out[10] = byte(numSettings >> 8) // Number of Entries
 	out[11] = byte(numSettings)      // Number of Entries
 
-	err := common.WriteExactly(writer, out)
+	err := common.WriteExactly(&c, out)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
-	err = common.WriteExactly(writer, settings)
+	err = common.WriteExactly(&c, settings)
 	if err != nil {
-		return 12, err
+		return c.N, err
 	}
 
-	return int64(length + 8), nil
+	return c.N, nil
 }
 
 func decodeSetting(data []byte) *common.Setting {

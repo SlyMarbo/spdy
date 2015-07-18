@@ -31,36 +31,37 @@ func (frame *WINDOW_UPDATE) Name() string {
 }
 
 func (frame *WINDOW_UPDATE) ReadFrom(reader io.Reader) (int64, error) {
-	data, err := common.ReadExactly(reader, 16)
+	c := common.ReadCounter{R: reader}
+	data, err := common.ReadExactly(&c, 16)
 	if err != nil {
-		return 0, err
+		return c.N, err
 	}
 
 	err = controlFrameCommonProcessing(data[:5], _WINDOW_UPDATE, 0)
 	if err != nil {
-		return 16, err
+		return c.N, err
 	}
 
 	// Get and check length.
 	length := int(common.BytesToUint24(data[5:8]))
 	if length != 8 {
-		return 16, common.IncorrectDataLength(length, 8)
+		return c.N, common.IncorrectDataLength(length, 8)
 	}
 
 	frame.StreamID = common.StreamID(common.BytesToUint32(data[8:12]))
 	frame.DeltaWindowSize = common.BytesToUint32(data[12:16])
 
 	if !frame.StreamID.Valid() {
-		return 16, common.StreamIdTooLarge
+		return c.N, common.StreamIdTooLarge
 	}
 	if frame.StreamID.Zero() {
-		return 16, common.StreamIdIsZero
+		return c.N, common.StreamIdIsZero
 	}
 	if frame.DeltaWindowSize > common.MAX_DELTA_WINDOW_SIZE {
-		return 16, errors.New("Error: Delta Window Size too large.")
+		return c.N, errors.New("Error: Delta Window Size too large.")
 	}
 
-	return 16, nil
+	return c.N, nil
 }
 
 func (frame *WINDOW_UPDATE) String() string {
