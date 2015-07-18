@@ -156,7 +156,7 @@ func (c *Conn) selectFrameToSend(prioritise bool) (frame common.Frame) {
 		return frame
 	case frame = <-c.output[2]:
 		return frame
-	case frame = <-c.output[2]:
+	case frame = <-c.output[3]:
 		return frame
 	case frame = <-c.output[4]:
 		return frame
