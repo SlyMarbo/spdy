@@ -80,7 +80,7 @@ func (frame *GOAWAY) WriteTo(writer io.Writer) (int64, error) {
 	out[4] = 0                            // Flags
 	out[5] = 0                            // Length
 	out[6] = 0                            // Length
-	out[7] = 8                            // Length
+	out[7] = 4                            // Length
 	out[8] = frame.LastGoodStreamID.B1()  // Last Good Stream ID
 	out[9] = frame.LastGoodStreamID.B2()  // Last Good Stream ID
 	out[10] = frame.LastGoodStreamID.B3() // Last Good Stream ID
