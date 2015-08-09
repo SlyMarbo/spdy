@@ -298,8 +298,13 @@ func (s *ResponseStream) Run() error {
 	// this end, then nothing happens.
 	if !s.unidirectional {
 		if s.state.OpenHere() && !s.wroteHeader {
-			s.header.Set(":status", "200")
-			s.header.Set(":version", "HTTP/1.1")
+			h := s.header
+			if h == nil {
+				h = make(http.Header)
+			}
+
+			h.Set(":status", "200")
+			h.Set(":version", "HTTP/1.1")
 
 			// Create the response SYN_REPLY.
 			synReply := new(frames.SYN_REPLY)
@@ -307,11 +312,11 @@ func (s *ResponseStream) Run() error {
 			synReply.StreamID = s.streamID
 			synReply.Header = make(http.Header)
 
-			for name, values := range s.header {
+			for name, values := range h {
 				for _, value := range values {
 					synReply.Header.Add(name, value)
 				}
-				s.header.Del(name)
+				h.Del(name)
 			}
 
 			s.output <- synReply

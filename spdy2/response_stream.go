@@ -283,14 +283,19 @@ func (s *ResponseStream) Run() error {
 	// this end, then nothing happens.
 	if !s.unidirectional {
 		if s.state.OpenHere() && !s.wroteHeader {
-			s.header.Set("status", "200")
-			s.header.Set("version", "HTTP/1.1")
+			h := s.header
+			if h == nil {
+				h = make(http.Header)
+			}
+
+			h.Set("status", "200")
+			h.Set("version", "HTTP/1.1")
 
 			// Create the response SYN_REPLY.
 			synReply := new(frames.SYN_REPLY)
 			synReply.Flags = common.FLAG_FIN
 			synReply.StreamID = s.streamID
-			synReply.Header = s.header
+			synReply.Header = h
 
 			s.output <- synReply
 		} else if s.state.OpenHere() {
