@@ -178,10 +178,8 @@ func (s *ResponseStream) shutdown() {
 		s.requestBody = nil
 	}
 	s.conn.requestStreamLimit.Close()
-	s.output = nil
 	s.request = nil
 	s.handler = nil
-	s.header = nil
 	s.stop = nil
 
 	s.conn.streamsLock.Lock()
