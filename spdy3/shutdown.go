@@ -62,18 +62,15 @@ func (c *Conn) shutdown() {
 	// Close all streams. Make a copy so close() can modify the map.
 	var streams []common.Stream
 	c.streamsLock.Lock()
-	for _, stream := range c.streams {
+	for key, stream := range c.streams {
 		streams = append(streams, stream)
+		delete(c.streams, key)
 	}
 	c.streamsLock.Unlock()
 
 	for _, stream := range streams {
 		stream.Close()
 	}
-
-	c.streamsLock.Lock()
-	c.streams = nil
-	c.streamsLock.Unlock()
 
 	// Ensure any pending frames are sent.
 	c.sendingLock.Lock()
