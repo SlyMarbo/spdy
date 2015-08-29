@@ -95,16 +95,16 @@ func (c *Conn) shutdown() {
 		close(c.stop)
 	}
 
+	c.connLock.Lock()
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
 	}
+	c.connLock.Unlock()
 
-	if c.compressor != nil {
-		c.compressor.Close()
-		c.compressor = nil
+	if compressor := c.compressor; compressor != nil {
+		compressor.Close()
 	}
-	c.decompressor = nil
 
 	c.pushedResources = nil
 

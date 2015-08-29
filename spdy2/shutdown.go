@@ -104,11 +104,9 @@ func (c *Conn) shutdown() {
 	}
 	c.connLock.Unlock()
 
-	if c.compressor != nil {
-		c.compressor.Close()
-		c.compressor = nil
+	if compressor := c.compressor; compressor != nil {
+		compressor.Close()
 	}
-	c.decompressor = nil
 
 	c.pushedResources = nil
 
