@@ -103,7 +103,8 @@ func (s *ResponseStream) Write(inputData []byte) (int, error) {
 		dataFrame.StreamID = s.streamID
 		dataFrame.Data = data[:common.MAX_DATA_SIZE]
 		s.output <- dataFrame
-
+		
+		data = data[common.MAX_DATA_SIZE:]
 		written += common.MAX_DATA_SIZE
 	}
 
