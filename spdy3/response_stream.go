@@ -231,7 +231,7 @@ func (s *ResponseStream) ReceiveFrame(frame common.Frame) error {
 		}
 
 	case *frames.HEADERS:
-		common.UpdateHeader(s.header, frame.Header)
+		return errors.New("Received unexpected HEADERS frame")
 
 	case *frames.WINDOW_UPDATE:
 		err := s.flow.UpdateWindow(frame.DeltaWindowSize)
