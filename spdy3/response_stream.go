@@ -220,7 +220,6 @@ func (s *ResponseStream) ReceiveFrame(frame common.Frame) error {
 		}
 
 	case *frames.SYN_REPLY:
-		common.UpdateHeader(s.header, frame.Header)
 		if frame.Flags.FIN() {
 			select {
 			case <-s.ready:
