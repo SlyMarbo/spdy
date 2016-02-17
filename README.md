@@ -1,11 +1,16 @@
-spdy
-====
+# Deprecated
+
+With the release of [Go1.6](https://golang.org/doc/go1.6) and the addition of [http2](https://golang.org/x/net/http2)
+to the standard library, this package is no longer under active development. It is highly recommended that former
+users of this package migrate to HTTP/2.
+
+# spdy
 
 [![GoDoc](https://godoc.org/github.com/SlyMarbo/spdy?status.png)](https://godoc.org/github.com/SlyMarbo/spdy)
 
-A full-featured SPDY library for the Go language (still under very active development).
+A full-featured SPDY library for the Go language.
  
-Note that this implementation currently supports SPDY drafts 2 and 3, and support for SPDY/4, and HTTP/2.0 is upcoming.
+Note that this implementation currently supports SPDY drafts 2 and 3.
 
 See [these examples][examples] for a quick intro to the package.
 
