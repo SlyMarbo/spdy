@@ -135,6 +135,9 @@ func (c *Conn) Request(request *http.Request, receiver common.Receiver, priority
 func (c *Conn) RequestResponse(request *http.Request, receiver common.Receiver, priority common.Priority) (*http.Response, error) {
 	res := common.NewResponse(request, receiver)
 
+	// Ensure that we decrement the counter once the request is done
+	defer c.requestStreamLimit.Close()
+
 	// Send the request.
 	stream, err := c.Request(request, res, priority)
 	if err != nil {

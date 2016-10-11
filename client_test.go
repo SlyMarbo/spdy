@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/SlyMarbo/spdy"
+	"github.com/SlyMarbo/spdy/common"
 )
 
 func init() {
@@ -39,6 +40,28 @@ func TestClient(t *testing.T) {
 		t.Error(err)
 	} else if s := string(b); !strings.HasPrefix(s, "User-agent:") {
 		t.Errorf("Incorrect page body (did not begin with User-agent): %q", s)
+	}
+}
+
+func TestClientClosesResources(t *testing.T) {
+	defer afterTest(t)
+	ts := newServer(robotsTxtHandler)
+	defer ts.Close()
+
+	client := newClient()
+
+	for i := 0; i < common.DEFAULT_STREAM_LIMIT+1; i++ {
+		r, err := client.Get(ts.URL)
+		var b []byte
+		if err == nil {
+			b, err = pedanticReadAll(r.Body)
+			r.Body.Close()
+		}
+		if err != nil {
+			t.Error(err)
+		} else if s := string(b); !strings.HasPrefix(s, "User-agent:") {
+			t.Errorf("Incorrect page body (did not begin with User-agent): %q", s)
+		}
 	}
 }
 
